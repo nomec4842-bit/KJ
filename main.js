@@ -17,34 +17,25 @@ const tracks = [];
 let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
 
-// ===== Sequencer Grid =====
+// ===== Sequencer Grid (with OFF cycle, drag threshold) =====
 const OFF_THRESHOLD = 0.15;
-
 const grid = createGrid(
   seqEl,
-  // onToggle (single tap): cycle OFF → 100 → 60 → 30 → OFF
-  (i) => {
+  (i) => { // click cycle
     const st = currentTrack().steps[i];
-    if (!st.on) {
-      st.on = true; st.vel = 1.0;
-    } else if (st.vel > 0.95) {
-      st.vel = 0.6;
-    } else if (st.vel > 0.55) {
-      st.vel = 0.3;
-    } else {
-      st.on = false; st.vel = 0;
-    }
+    if (!st.on) { st.on = true; st.vel = 1.0; }
+    else if (st.vel > 0.95) { st.vel = 0.6; }
+    else if (st.vel > 0.55) { st.vel = 0.3; }
+    else { st.on = false; st.vel = 0; }
     renderGrid();
   },
-  // onSetVel (drag): drag below threshold turns OFF
-  (i, v) => {
+  (i, v) => { // drag velocity
     const st = currentTrack().steps[i];
     if (v < OFF_THRESHOLD) { st.on = false; st.vel = 0; }
     else { st.on = true; st.vel = v; }
     renderGrid();
   },
-  // onDoubleToggle (double tap/click): quick place/remove
-  (i) => {
+  (i) => { // double: quick place/remove
     const st = currentTrack().steps[i];
     if (st.on) { st.on = false; st.vel = 0; }
     else { st.on = true; st.vel = 1.0; }
@@ -57,9 +48,22 @@ function renderGrid(){ grid.update(getStep); }
 function paintPlayhead(i){ grid.paint(i); }
 
 // ===== UI wiring =====
+async function handleSampleFile(file){
+  if (!file) return;
+  const ab = await file.arrayBuffer();
+  const buffer = await ctx.decodeAudioData(ab);
+  const t = currentTrack();
+  t.sample = { buffer, name: file.name || 'sample' };
+  // gently clamp sampler end to 1 and ensure start <= end
+  const p = t.params.sampler;
+  p.start = Math.max(0, Math.min(1, p.start ?? 0));
+  p.end   = Math.max(p.start, Math.min(1, p.end ?? 1));
+  renderParamsPanel(); // refresh to show filename
+}
+
 function renderParamsPanel(){
   const binder = renderParams(paramsEl, currentTrack(), makeField);
-  binder({ applyMixer: () => applyMixer(tracks), t: currentTrack() });
+  binder({ applyMixer: () => applyMixer(tracks), t: currentTrack(), onSampleFile: handleSampleFile });
 }
 
 function refreshAndSelect(i = selectedTrackIndex){
@@ -91,6 +95,7 @@ document.getElementById('play').onclick = async () => {
   await ctx.resume();
   const bpmRaw = Number(tempoInput?.value ?? 120);
   const bpm = Math.min(300, Math.max(40, Number.isFinite(bpmRaw) ? bpmRaw : 120));
+
   startTransport(bpm, (stepIdx) => {
     paintPlayhead(stepIdx);
     applyMixer(tracks);
@@ -111,5 +116,8 @@ document.getElementById('stop').onclick = () => {
 // ===== Boot =====
 tracks.push(createTrack('Track 1', 'kick808'));
 tracks.push(createTrack('Track 2', 'synth'));
+// Optional: add a sampler track quickly
+// tracks.push(createTrack('Track 3', 'sampler'));
+
 selectedTrackIndex = 0;
 refreshAndSelect(selectedTrackIndex);
