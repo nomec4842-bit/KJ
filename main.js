@@ -17,6 +17,14 @@ const tracks = [];
 let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
 
+// ---- Helper: sync new track to selected track (length + phase) ----
+function syncTrackToSelected(t) {
+  const baseLen = currentTrack()?.length ?? 16;
+  resizeTrackSteps(t, baseLen);
+  const selPos = currentTrack()?.pos ?? -1;
+  t.pos = selPos >= 0 ? (selPos % t.length) : -1;
+}
+
 // ----- Grid (single visible track) -----
 const OFF_THRESHOLD = 0.15;
 const grid = createGrid(
@@ -92,7 +100,10 @@ trackSel.addEventListener('change', (e) => {
 
 addTrackBtn.addEventListener('click', () => {
   const n = tracks.length + 1;
-  tracks.push(createTrack(`Track ${n}`, 'synth', 16));
+  // create with default, then sync to selected
+  const t = createTrack(`Track ${n}`, 'synth', 16);
+  if (tracks.length > 0) syncTrackToSelected(t);
+  tracks.push(t);
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
 });
