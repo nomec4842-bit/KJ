@@ -44,9 +44,7 @@ main{
 .cell.on{ background:var(--on) }
 .cell.playhead{ outline:2px solid var(--play) }
 
-#params{
-  display:grid; gap:10px;
-}
+#params{ display:grid; gap:12px; }
 .field{
   display:grid; grid-template-columns:120px 1fr; gap:10px; align-items:center;
 }
@@ -54,7 +52,15 @@ main{
   width:100%; background:#0f1422; border:1px solid var(--border); color:var(--text);
   padding:6px; border-radius:8px;
 }
+.inline{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .hint{ color:var(--muted); font-size:12px; }
+
+.badge{ font-size:12px; color:var(--muted); }
+.toggle{
+  padding:6px 10px; border-radius:999px; border:1px solid var(--border);
+  background:#0f1422; cursor:pointer;
+}
+.toggle.active{ background:#264a3a; border-color:#2f855a }
 
 @media (max-width:900px){
   #sequencer{ grid-template-columns:repeat(8,42px) }
