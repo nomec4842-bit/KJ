@@ -18,19 +18,32 @@ let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
 
 // ===== Sequencer Grid =====
+const OFF_THRESHOLD = 0.15;
+
 const grid = createGrid(
   seqEl,
-  // onToggle
+  // onToggle: cycle OFF → 1.0 → 0.6 → 0.3 → OFF
   (i) => {
     const st = currentTrack().steps[i];
-    if (!st.on) { st.on = true; st.vel = 1.0; }
-    else { st.vel = st.vel > 0.95 ? 0.6 : (st.vel > 0.55 ? 0.3 : 1.0); }
+    if (!st.on) {
+      st.on = true; st.vel = 1.0;
+    } else if (st.vel > 0.95) {
+      st.vel = 0.6;
+    } else if (st.vel > 0.55) {
+      st.vel = 0.3;
+    } else {
+      st.on = false; st.vel = 0; // OFF
+    }
     renderGrid();
   },
-  // onSetVel
+  // onSetVel: drag below threshold turns step OFF
   (i, v) => {
     const st = currentTrack().steps[i];
-    st.on = true; st.vel = v;
+    if (v < OFF_THRESHOLD) {
+      st.on = false; st.vel = 0;
+    } else {
+      st.on = true; st.vel = v;
+    }
     renderGrid();
   }
 );
