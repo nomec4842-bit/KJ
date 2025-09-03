@@ -1,72 +1,141 @@
-// --- Audio setup ---
+// ===== Audio core =====
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
 const master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
 
-// --- UI + Sequencer ---
-const engineSel = document.getElementById('engine');
-const tempoInput = document.getElementById('tempo');
-const seqEl = document.getElementById('sequencer');
+// ===== UI refs =====
+const tempoInput  = document.getElementById('tempo');
+const trackSel    = document.getElementById('trackSelect');
+const addTrackBtn = document.getElementById('addTrack');
+const engineSel   = document.getElementById('engine');
+const seqEl       = document.getElementById('sequencer');
 
-const steps = [];
+// ===== Sequencer/grid =====
 const NUM_STEPS = 16;
-
+const gridCells = [];
 for (let i = 0; i < NUM_STEPS; i++) {
   const cell = document.createElement('div');
   cell.className = 'cell';
   cell.dataset.index = i;
-  cell.addEventListener('click', () => cell.classList.toggle('on'));
-
-  // long-press opens future per-step inspector; for now, just toggle
-  let t; cell.addEventListener('touchstart', ()=>{ t=setTimeout(()=>cell.classList.toggle('on'), 350); });
-  cell.addEventListener('touchend', ()=> clearTimeout(t));
+  cell.addEventListener('click', () => {
+    const t = currentTrack();
+    t.steps[i] = !t.steps[i];
+    renderGrid(); // repaint the selected track
+  });
+  // Mobile long-press (future step inspector hook)
+  let tmr; cell.addEventListener('touchstart', ()=>{ tmr=setTimeout(()=>cell.click(), 350); });
+  cell.addEventListener('touchend', ()=> clearTimeout(tmr));
 
   seqEl.appendChild(cell);
-  steps.push(cell);
+  gridCells.push(cell);
 }
 
-// --- Transport ---
+// ===== Track model =====
+function createTrack(name, engine='synth'){
+  return {
+    name,
+    engine,            // 'synth' | 'kick808' | 'snare808' | 'hat808' | 'clap909'
+    steps: Array.from({length:NUM_STEPS}, () => false)
+  };
+}
+
+const tracks = [];
+let selectedTrackIndex = 0;
+
+// Seed a couple of tracks to demo layering
+tracks.push(createTrack('Track 1', 'kick808'));
+tracks.push(createTrack('Track 2', 'synth'));
+refreshTrackSelect();
+selectTrack(0);
+
+// ===== Transport =====
 let isPlaying = false;
 let stepIdx = 0;
-let timer = null;
+let loopTimer = null;
 
-function scheduleIntervalMs(bpm){ return ((60 / bpm) / 4) * 1000; } // 16ths
+function intervalMs(bpm){ return ((60 / bpm) / 4) * 1000; } // 16th notes
 
 function start() {
   if (isPlaying) return;
   isPlaying = true;
   stepIdx = 0;
 
-  const bpm = clampInt(+(tempoInput.value || 120), 40, 300);
-  const interval = scheduleIntervalMs(bpm);
+  const bpm = clampInt(+tempoInput.value || 120, 40, 300);
+  const stepInterval = intervalMs(bpm);
 
-  timer = setInterval(() => {
+  loopTimer = setInterval(() => {
+    // Visual playhead only on visible grid (selected track)
     paintPlayhead(stepIdx);
 
-    if (steps[stepIdx].classList.contains('on')) {
-      triggerEngine(engineSel.value);
+    // Trigger ALL tracks at this step if their step is active
+    for (const t of tracks) {
+      if (t.steps[stepIdx]) triggerEngine(t.engine);
     }
 
-    stepIdx = (stepIdx + 1) % steps.length;
-  }, interval);
+    stepIdx = (stepIdx + 1) % NUM_STEPS;
+  }, stepInterval);
 }
 
 function stop() {
   isPlaying = false;
-  clearInterval(timer);
-  steps.forEach(c => c.classList.remove('playhead'));
+  clearInterval(loopTimer);
+  gridCells.forEach(c => c.classList.remove('playhead'));
 }
 
 document.getElementById('play').onclick = async () => { await ctx.resume(); start(); };
 document.getElementById('stop').onclick = stop;
 
-// --- Visuals ---
+// ===== Track UI =====
+function refreshTrackSelect(){
+  trackSel.innerHTML = '';
+  tracks.forEach((t, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = `${i+1}. ${t.name} (${t.engine})`;
+    trackSel.appendChild(opt);
+  });
+  trackSel.value = String(selectedTrackIndex);
+}
+
+function selectTrack(i){
+  selectedTrackIndex = clampInt(i, 0, tracks.length-1);
+  trackSel.value = String(selectedTrackIndex);
+  // reflect selected track props in header controls
+  engineSel.value = currentTrack().engine;
+  renderGrid();
+}
+
+function currentTrack(){ return tracks[selectedTrackIndex]; }
+
+trackSel.addEventListener('change', (e) => selectTrack(+e.target.value));
+
+addTrackBtn.addEventListener('click', () => {
+  const n = tracks.length + 1;
+  tracks.push(createTrack(`Track ${n}`, 'synth'));
+  refreshTrackSelect();
+  selectTrack(tracks.length - 1);
+});
+
+engineSel.addEventListener('change', (e) => {
+  const t = currentTrack();
+  t.engine = e.target.value;
+  refreshTrackSelect(); // update labels like "(synth)"
+});
+
+// ===== Grid paint =====
+function renderGrid(){
+  const t = currentTrack();
+  for (let i=0;i<NUM_STEPS;i++){
+    gridCells[i].classList.toggle('on', !!t.steps[i]);
+  }
+}
+
 function paintPlayhead(i){
-  steps.forEach(c => c.classList.remove('playhead'));
-  const cell = steps[i];
+  gridCells.forEach(c => c.classList.remove('playhead'));
+  const cell = gridCells[i];
   if (cell) cell.classList.add('playhead');
 }
 
-// --- Engines ---
+// ===== Engines =====
 function triggerEngine(name){
   switch(name){
     case 'synth':    synthBlip(); break;
@@ -79,24 +148,23 @@ function triggerEngine(name){
 }
 
 function synthBlip(){
+  const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const lpf = ctx.createBiquadFilter();
   const vca = ctx.createGain();
 
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(220, ctx.currentTime);
+  osc.frequency.setValueAtTime(220, now);
 
   lpf.type = 'lowpass'; lpf.frequency.value = 2000; lpf.Q.value = 1;
   vca.gain.value = 0;
 
   osc.connect(lpf).connect(vca).connect(master);
 
-  // simple ADSR-ish
-  const now = ctx.currentTime;
   vca.gain.setValueAtTime(0, now);
-  vca.gain.linearRampToValueAtTime(0.25, now + 0.01);   // A
-  vca.gain.linearRampToValueAtTime(0.15, now + 0.18);   // D
-  vca.gain.setTargetAtTime(0.0001, now + 0.22, 0.12);   // R
+  vca.gain.linearRampToValueAtTime(0.25, now + 0.01);
+  vca.gain.linearRampToValueAtTime(0.15, now + 0.18);
+  vca.gain.setTargetAtTime(0.0001, now + 0.22, 0.12);
 
   osc.start(now);
   osc.stop(now + 0.5);
@@ -130,17 +198,14 @@ function kick808(){
 function snare808(){
   const now = ctx.currentTime;
 
-  // tonal body
   const tone = ctx.createOscillator();
   const tGain = ctx.createGain();
-  tone.type = 'triangle';
-  tone.frequency.value = 180;
+  tone.type = 'triangle'; tone.frequency.value = 180;
   tGain.gain.value = 0.3;
   tone.connect(tGain).connect(master);
   tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
   tone.start(now); tone.stop(now + 0.3);
 
-  // noise
   const dur = 0.22;
   const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
   const ch = buf.getChannelData(0);
@@ -193,5 +258,5 @@ function clap909(){
   }
 }
 
-// --- tiny helpers ---
+// ===== Tiny helpers =====
 function clampInt(v, lo, hi){ v = Math.floor(v); return Math.max(lo, Math.min(hi, v)); }
