@@ -1,38 +1,33 @@
 // core.js
 export const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
 export const master = ctx.createGain();
 master.gain.value = 0.9;
 master.connect(ctx.destination);
 
-// ===== Utilities =====
+// ---------- Utilities ----------
 export function clampInt(v, lo, hi) {
-  v = Math.floor(v);
-  return Math.max(lo, Math.min(hi, v));
+  const n = Math.floor(Number(v));
+  return Math.max(lo, Math.min(hi, Number.isFinite(n) ? n : lo));
 }
 
-export const NUM_STEPS = 16;
-
-// ===== Transport =====
-let isPlaying = false, stepIdx = 0, loopTimer = null;
+// ---------- Transport (16th-note tick) ----------
+let _isPlaying = false;
+let _timer = null;
 
 function intervalMs(bpm) {
-  return ((60 / bpm) / 4) * 1000; // 16th notes
+  return ((60 / bpm) / 4) * 1000; // 16ths
 }
 
-export function startTransport(bpm, onStep) {
-  if (isPlaying) return;
-  isPlaying = true;
-  stepIdx = 0;
-
-  const stepInterval = intervalMs(bpm);
-
-  loopTimer = setInterval(() => {
-    onStep(stepIdx);
-    stepIdx = (stepIdx + 1) % NUM_STEPS;
-  }, stepInterval);
+export function startTransport(bpm, onTick) {
+  if (_isPlaying) return;
+  _isPlaying = true;
+  const ms = intervalMs(bpm);
+  _timer = setInterval(() => { try { onTick(); } catch(e) { console.error(e); } }, ms);
 }
 
 export function stopTransport() {
-  isPlaying = false;
-  clearInterval(loopTimer);
+  _isPlaying = false;
+  if (_timer) clearInterval(_timer);
+  _timer = null;
 }
