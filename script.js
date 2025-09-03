@@ -8,6 +8,7 @@ const trackSel    = document.getElementById('trackSelect');
 const addTrackBtn = document.getElementById('addTrack');
 const engineSel   = document.getElementById('engine');
 const seqEl       = document.getElementById('sequencer');
+const paramsEl    = document.getElementById('params');
 
 // ===== Sequencer/grid =====
 const NUM_STEPS = 16;
@@ -19,29 +20,44 @@ for (let i = 0; i < NUM_STEPS; i++) {
   cell.addEventListener('click', () => {
     const t = currentTrack();
     t.steps[i] = !t.steps[i];
-    renderGrid(); // repaint the selected track
+    renderGrid();
   });
-  // Mobile long-press (future step inspector hook)
   let tmr; cell.addEventListener('touchstart', ()=>{ tmr=setTimeout(()=>cell.click(), 350); });
   cell.addEventListener('touchend', ()=> clearTimeout(tmr));
-
   seqEl.appendChild(cell);
   gridCells.push(cell);
 }
 
-// ===== Track model =====
+// ===== Track model + defaults =====
+const defaults = {
+  synth: { cutoff:2000, q:1, a:0.01, d:0.2, s:0.6, r:0.2, baseFreq:220 },
+  kick808: { freq:55, pitchDecay:0.08, ampDecay:0.45, click:0.12 },
+  snare808:{ tone:180, noise:0.6, decay:0.22 },
+  hat808:  { decay:0.06, hpf:8000 },
+  clap909: { bursts:3, spread:0.02, decay:0.10 },
+};
+
+function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+
 function createTrack(name, engine='synth'){
   return {
     name,
-    engine,            // 'synth' | 'kick808' | 'snare808' | 'hat808' | 'clap909'
-    steps: Array.from({length:NUM_STEPS}, () => false)
+    engine,                 // 'synth' | 'kick808' | 'snare808' | 'hat808' | 'clap909'
+    steps: Array.from({length:NUM_STEPS}, () => false),
+    params: {
+      synth:   clone(defaults.synth),
+      kick808: clone(defaults.kick808),
+      snare808:clone(defaults.snare808),
+      hat808:  clone(defaults.hat808),
+      clap909: clone(defaults.clap909),
+    }
   };
 }
 
 const tracks = [];
 let selectedTrackIndex = 0;
 
-// Seed a couple of tracks to demo layering
+// Seed demo
 tracks.push(createTrack('Track 1', 'kick808'));
 tracks.push(createTrack('Track 2', 'synth'));
 refreshTrackSelect();
@@ -51,36 +67,26 @@ selectTrack(0);
 let isPlaying = false;
 let stepIdx = 0;
 let loopTimer = null;
-
 function intervalMs(bpm){ return ((60 / bpm) / 4) * 1000; } // 16th notes
 
 function start() {
   if (isPlaying) return;
   isPlaying = true;
   stepIdx = 0;
-
   const bpm = clampInt(+tempoInput.value || 120, 40, 300);
   const stepInterval = intervalMs(bpm);
 
   loopTimer = setInterval(() => {
-    // Visual playhead only on visible grid (selected track)
     paintPlayhead(stepIdx);
 
-    // Trigger ALL tracks at this step if their step is active
     for (const t of tracks) {
-      if (t.steps[stepIdx]) triggerEngine(t.engine);
+      if (t.steps[stepIdx]) triggerEngine(t.engine, t.params[t.engine]);
     }
 
     stepIdx = (stepIdx + 1) % NUM_STEPS;
   }, stepInterval);
 }
-
-function stop() {
-  isPlaying = false;
-  clearInterval(loopTimer);
-  gridCells.forEach(c => c.classList.remove('playhead'));
-}
-
+function stop(){ isPlaying=false; clearInterval(loopTimer); gridCells.forEach(c=>c.classList.remove('playhead')); }
 document.getElementById('play').onclick = async () => { await ctx.resume(); start(); };
 document.getElementById('stop').onclick = stop;
 
@@ -95,30 +101,26 @@ function refreshTrackSelect(){
   });
   trackSel.value = String(selectedTrackIndex);
 }
-
 function selectTrack(i){
   selectedTrackIndex = clampInt(i, 0, tracks.length-1);
   trackSel.value = String(selectedTrackIndex);
-  // reflect selected track props in header controls
   engineSel.value = currentTrack().engine;
   renderGrid();
+  renderParams();
 }
-
 function currentTrack(){ return tracks[selectedTrackIndex]; }
-
-trackSel.addEventListener('change', (e) => selectTrack(+e.target.value));
-
+trackSel.addEventListener('change', e => selectTrack(+e.target.value));
 addTrackBtn.addEventListener('click', () => {
   const n = tracks.length + 1;
   tracks.push(createTrack(`Track ${n}`, 'synth'));
   refreshTrackSelect();
   selectTrack(tracks.length - 1);
 });
-
-engineSel.addEventListener('change', (e) => {
+engineSel.addEventListener('change', e => {
   const t = currentTrack();
   t.engine = e.target.value;
-  refreshTrackSelect(); // update labels like "(synth)"
+  refreshTrackSelect();
+  renderParams();
 });
 
 // ===== Grid paint =====
@@ -128,107 +130,226 @@ function renderGrid(){
     gridCells[i].classList.toggle('on', !!t.steps[i]);
   }
 }
-
 function paintPlayhead(i){
   gridCells.forEach(c => c.classList.remove('playhead'));
   const cell = gridCells[i];
   if (cell) cell.classList.add('playhead');
 }
 
-// ===== Engines =====
-function triggerEngine(name){
-  switch(name){
-    case 'synth':    synthBlip(); break;
-    case 'kick808':  kick808();   break;
-    case 'snare808': snare808();  break;
-    case 'hat808':   hat808();    break;
-    case 'clap909':  clap909();   break;
-    default: synthBlip();
+// ===== Params UI (dynamic form per engine) =====
+function renderParams(){
+  const t = currentTrack();
+  const eng = t.engine;
+  const p = t.params[eng];
+
+  const field = (label, inputHtml, hint='') => `
+    <div class="field">
+      <label>${label}</label>
+      <div>${inputHtml}${hint?`<div class="hint">${hint}</div>`:''}</div>
+    </div>`;
+
+  let html = '';
+
+  if (eng === 'synth'){
+    html += field('Base Freq',
+      `<input id="p_base" type="number" min="50" max="2000" step="1" value="${p.baseFreq}">`, 'Hz');
+    html += field('Cutoff',
+      `<input id="p_cutoff" type="range" min="100" max="12000" step="1" value="${p.cutoff}">`, 'LPF Hz');
+    html += field('Q',
+      `<input id="p_q" type="range" min="0.1" max="20" step="0.1" value="${p.q}">`);
+    html += field('ADSR A/D/S/R',
+      `<input id="p_a" type="range" min="0" max="1" step="0.01" value="${p.a}">
+       <input id="p_d" type="range" min="0" max="1.5" step="0.01" value="${p.d}">
+       <input id="p_s" type="range" min="0" max="1" step="0.01" value="${p.s}">
+       <input id="p_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`);
+  }
+  if (eng === 'kick808'){
+    html += field('Pitch (Hz)', `<input id="k_freq" type="range" min="20" max="200" step="1" value="${p.freq}">`);
+    html += field('Pitch Decay', `<input id="k_pdec" type="range" min="0.005" max="1" step="0.005" value="${p.pitchDecay}">`, 'sec (sweep)');
+    html += field('Amp Decay', `<input id="k_adec" type="range" min="0.05" max="2" step="0.01" value="${p.ampDecay}">`, 'sec');
+    html += field('Click', `<input id="k_click" type="range" min="0" max="1" step="0.01" value="${p.click}">`);
+  }
+  if (eng === 'snare808'){
+    html += field('Tone (Hz)', `<input id="n_tone" type="range" min="100" max="400" step="1" value="${p.tone}">`);
+    html += field('Noise', `<input id="n_noise" type="range" min="0" max="1" step="0.01" value="${p.noise}">`);
+    html += field('Decay', `<input id="n_decay" type="range" min="0.05" max="1" step="0.01" value="${p.decay}">`, 'sec');
+  }
+  if (eng === 'hat808'){
+    html += field('Decay', `<input id="h_decay" type="range" min="0.01" max="1" step="0.01" value="${p.decay}">`, 'sec');
+    html += field('HPF', `<input id="h_hpf" type="range" min="2000" max="12000" step="50" value="${p.hpf}">`, 'Hz');
+  }
+  if (eng === 'clap909'){
+    html += field('Bursts', `<input id="c_bursts" type="number" min="2" max="5" step="1" value="${p.bursts}">`);
+    html += field('Spread', `<input id="c_spread" type="range" min="0.005" max="0.06" step="0.001" value="${p.spread}">`, 'seconds between bursts');
+    html += field('Decay', `<input id="c_decay" type="range" min="0.05" max="1.5" step="0.01" value="${p.decay}">`, 'sec');
+  }
+
+  paramsEl.innerHTML = html;
+  bindParamEvents();
+}
+
+function bindParamEvents(){
+  const t = currentTrack();
+  const eng = t.engine;
+  const p = t.params[eng];
+
+  const val = id => {
+    const el = document.getElementById(id);
+    return el?.type === 'number' ? +el.value : +el.value;
+  };
+
+  // wire by engine
+  if (eng === 'synth'){
+    ['p_base','p_cutoff','p_q','p_a','p_d','p_s','p_r'].forEach(id=>{
+      const el = document.getElementById(id);
+      el.oninput = () => {
+        p.baseFreq = +document.getElementById('p_base').value;
+        p.cutoff   = +document.getElementById('p_cutoff').value;
+        p.q        = +document.getElementById('p_q').value;
+        p.a        = +document.getElementById('p_a').value;
+        p.d        = +document.getElementById('p_d').value;
+        p.s        = +document.getElementById('p_s').value;
+        p.r        = +document.getElementById('p_r').value;
+      };
+    });
+  }
+  if (eng === 'kick808'){
+    ['k_freq','k_pdec','k_adec','k_click'].forEach(id=>{
+      const el = document.getElementById(id);
+      el.oninput = () => {
+        p.freq = +document.getElementById('k_freq').value;
+        p.pitchDecay = +document.getElementById('k_pdec').value;
+        p.ampDecay   = +document.getElementById('k_adec').value;
+        p.click      = +document.getElementById('k_click').value;
+      };
+    });
+  }
+  if (eng === 'snare808'){
+    ['n_tone','n_noise','n_decay'].forEach(id=>{
+      const el = document.getElementById(id);
+      el.oninput = () => {
+        p.tone  = +document.getElementById('n_tone').value;
+        p.noise = +document.getElementById('n_noise').value;
+        p.decay = +document.getElementById('n_decay').value;
+      };
+    });
+  }
+  if (eng === 'hat808'){
+    ['h_decay','h_hpf'].forEach(id=>{
+      const el = document.getElementById(id);
+      el.oninput = () => {
+        p.decay = +document.getElementById('h_decay').value;
+        p.hpf   = +document.getElementById('h_hpf').value;
+      };
+    });
+  }
+  if (eng === 'clap909'){
+    ['c_bursts','c_spread','c_decay'].forEach(id=>{
+      const el = document.getElementById(id);
+      el.oninput = () => {
+        p.bursts = clampInt(+document.getElementById('c_bursts').value, 2, 5);
+        p.spread = +document.getElementById('c_spread').value;
+        p.decay  = +document.getElementById('c_decay').value;
+      };
+    });
   }
 }
 
-function synthBlip(){
+// ===== Engines =====
+function triggerEngine(name, p){
+  switch(name){
+    case 'synth':    synthBlip(p); break;
+    case 'kick808':  kick808(p);   break;
+    case 'snare808': snare808(p);  break;
+    case 'hat808':   hat808(p);    break;
+    case 'clap909':  clap909(p);   break;
+    default: synthBlip(defaults.synth);
+  }
+}
+
+function synthBlip(p){
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const lpf = ctx.createBiquadFilter();
   const vca = ctx.createGain();
 
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(220, now);
+  osc.frequency.setValueAtTime(p.baseFreq, now);
 
-  lpf.type = 'lowpass'; lpf.frequency.value = 2000; lpf.Q.value = 1;
+  lpf.type = 'lowpass'; lpf.frequency.value = p.cutoff; lpf.Q.value = p.q;
   vca.gain.value = 0;
 
   osc.connect(lpf).connect(vca).connect(master);
 
   vca.gain.setValueAtTime(0, now);
-  vca.gain.linearRampToValueAtTime(0.25, now + 0.01);
-  vca.gain.linearRampToValueAtTime(0.15, now + 0.18);
-  vca.gain.setTargetAtTime(0.0001, now + 0.22, 0.12);
+  vca.gain.linearRampToValueAtTime(0.25, now + p.a);
+  vca.gain.linearRampToValueAtTime(0.25 * p.s, now + p.a + p.d);
+  vca.gain.setTargetAtTime(0.0001, now + 0.22, Math.max(0.01, p.r));
 
   osc.start(now);
-  osc.stop(now + 0.5);
+  osc.stop(now + 0.5 + p.r);
 }
 
-function kick808(){
+function kick808(p){
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const vca = ctx.createGain();
 
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(150, now);
-  osc.frequency.exponentialRampToValueAtTime(50, now + 0.45);
+  osc.frequency.setValueAtTime(Math.max(20, p.freq*3), now);
+  osc.frequency.exponentialRampToValueAtTime(p.freq, now + p.pitchDecay);
 
   vca.gain.setValueAtTime(1.0, now);
-  vca.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+  vca.gain.exponentialRampToValueAtTime(0.001, now + Math.max(0.05, p.ampDecay));
 
   osc.connect(vca).connect(master);
   osc.start(now);
-  osc.stop(now + 0.5);
+  osc.stop(now + Math.max(0.3, p.ampDecay + 0.1));
 
   // click
-  const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.01, ctx.sampleRate);
-  const ch = clickBuf.getChannelData(0);
-  for (let i=0;i<ch.length;i++) ch[i] = (Math.random()*2-1) * Math.exp(-i/ch.length);
-  const click = ctx.createBufferSource(); click.buffer = clickBuf;
-  const g = ctx.createGain(); g.gain.value = 0.12;
-  click.connect(g).connect(master); click.start(now);
+  if (p.click > 0){
+    const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.01, ctx.sampleRate);
+    const ch = clickBuf.getChannelData(0);
+    for (let i=0;i<ch.length;i++) ch[i] = (Math.random()*2-1) * Math.exp(-i/ch.length);
+    const click = ctx.createBufferSource(); click.buffer = clickBuf;
+    const g = ctx.createGain(); g.gain.value = p.click;
+    click.connect(g).connect(master); click.start(now);
+  }
 }
 
-function snare808(){
+function snare808(p){
   const now = ctx.currentTime;
 
   const tone = ctx.createOscillator();
   const tGain = ctx.createGain();
-  tone.type = 'triangle'; tone.frequency.value = 180;
+  tone.type = 'triangle'; tone.frequency.value = p.tone;
   tGain.gain.value = 0.3;
   tone.connect(tGain).connect(master);
-  tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-  tone.start(now); tone.stop(now + 0.3);
+  tGain.gain.exponentialRampToValueAtTime(0.001, now + p.decay);
+  tone.start(now); tone.stop(now + p.decay + 0.1);
 
-  const dur = 0.22;
-  const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
-  const ch = buf.getChannelData(0);
-  for (let i=0;i<ch.length;i++) ch[i] = Math.random()*2-1;
+  const bufDur = Math.max(0.05, p.decay);
+  const buf = ctx.createBuffer(1, ctx.sampleRate*bufDur, ctx.sampleRate);
+  const ch = buf.getChannelData(0); for (let i=0;i<ch.length;i++) ch[i] = Math.random()*2-1;
 
   const src = ctx.createBufferSource(); src.buffer = buf;
   const hpf = ctx.createBiquadFilter(); hpf.type='highpass'; hpf.frequency.value = 1200;
-  const nGain = ctx.createGain(); nGain.gain.value = 0.6;
+  const nGain = ctx.createGain(); nGain.gain.value = p.noise;
 
   src.connect(hpf).connect(nGain).connect(master);
-  nGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-  src.start(now); src.stop(now + dur);
+  nGain.gain.exponentialRampToValueAtTime(0.001, now + bufDur);
+  src.start(now); src.stop(now + bufDur);
 }
 
-function hat808(){
+function hat808(p){
   const now = ctx.currentTime;
-  const dur = 0.06;
+  const dur = Math.max(0.01, p.decay);
 
   const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
   const ch = buf.getChannelData(0); for (let i=0;i<ch.length;i++) ch[i] = Math.random()*2-1;
 
   const src = ctx.createBufferSource(); src.buffer = buf;
-  const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value = 8000;
+  const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value = p.hpf;
   const vca = ctx.createGain(); vca.gain.value = 0.25;
 
   src.connect(hp).connect(vca).connect(master);
@@ -236,16 +357,15 @@ function hat808(){
   src.start(now); src.stop(now + dur);
 }
 
-function clap909(){
+function clap909(p){
   const now = ctx.currentTime;
-  const bursts = 3;
-  const spread = 0.02;
+  const bursts = clampInt(p.bursts, 2, 5);
+  const spread = Math.max(0.005, p.spread);
+  const tail = Math.max(0.05, p.decay);
 
   for(let i=0;i<bursts;i++){
     const t = now + i*spread;
-    const dur = 0.1;
-
-    const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
+    const buf = ctx.createBuffer(1, ctx.sampleRate*tail, ctx.sampleRate);
     const ch = buf.getChannelData(0); for (let j=0;j<ch.length;j++) ch[j] = Math.random()*2-1;
 
     const src = ctx.createBufferSource(); src.buffer = buf;
@@ -253,10 +373,10 @@ function clap909(){
     const vca = ctx.createGain(); vca.gain.value = 0.3;
 
     src.connect(bp).connect(vca).connect(master);
-    vca.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.start(t); src.stop(t + dur);
+    vca.gain.exponentialRampToValueAtTime(0.001, t + tail);
+    src.start(t); src.stop(t + tail);
   }
 }
 
-// ===== Tiny helpers =====
+// ===== helpers =====
 function clampInt(v, lo, hi){ v = Math.floor(v); return Math.max(lo, Math.min(hi, v)); }
