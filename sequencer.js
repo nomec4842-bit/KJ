@@ -4,12 +4,14 @@ import { NUM_STEPS } from './core.js';
 /**
  * Build the 16-step grid UI.
  * @param {HTMLElement} seqEl - container element
- * @param {(i:number)=>void} onToggle - toggle handler for a step index
- * @param {(i:number, vel:number)=>void} onSetVel - set velocity (0.1..1.0) for a step index
+ * @param {(i:number)=>void} onToggle - single tap/click handler (cycle)
+ * @param {(i:number, vel:number)=>void} onSetVel - drag velocity handler
+ * @param {(i:number)=>void} onDoubleToggle - double tap/click handler (place/remove)
  * @returns {{gridCells:HTMLElement[], update:(getStep:(i:number)=>{on:boolean,vel:number})=>void, paint:(i:number)=>void}}
  */
-export function createGrid(seqEl, onToggle, onSetVel) {
+export function createGrid(seqEl, onToggle, onSetVel, onDoubleToggle) {
   const gridCells = [];
+  const DOUBLE_MS = 280;
 
   for (let i = 0; i < NUM_STEPS; i++) {
     const cell = document.createElement('div');
@@ -21,10 +23,35 @@ export function createGrid(seqEl, onToggle, onSetVel) {
     velBar.className = 'vel';
     cell.appendChild(velBar);
 
-    // Click: delegate to onToggle (now supports OFF in main.js)
-    cell.addEventListener('click', () => onToggle(i));
+    // --- Double-tap/click detection (suppresses single on double) ---
+    let lastTap = 0;
+    let singleTimer = null;
 
-    // Drag: set velocity continuously (main.js implements OFF threshold)
+    const handleSingle = () => onToggle(i);
+    const handleDouble = () => {
+      if (singleTimer) { clearTimeout(singleTimer); singleTimer = null; }
+      if (onDoubleToggle) onDoubleToggle(i);
+    };
+
+    // Desktop dblclick support
+    cell.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      handleDouble();
+    });
+
+    // Unified click path with manual double detection (works for touch-generated clicks too)
+    cell.addEventListener('click', () => {
+      const now = performance.now();
+      if (now - lastTap < DOUBLE_MS) {
+        handleDouble();
+        lastTap = 0;
+      } else {
+        lastTap = now;
+        singleTimer = setTimeout(() => { handleSingle(); singleTimer = null; }, DOUBLE_MS);
+      }
+    });
+
+    // Drag: set velocity continuously (main.js enforces OFF threshold)
     let dragging = false, startY = 0;
     const setFromY = (y) => {
       const dy = (startY - y); // up = louder
