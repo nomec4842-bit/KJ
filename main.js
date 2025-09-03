@@ -22,7 +22,7 @@ const OFF_THRESHOLD = 0.15;
 
 const grid = createGrid(
   seqEl,
-  // onToggle: cycle OFF → 1.0 → 0.6 → 0.3 → OFF
+  // onToggle (single tap): cycle OFF → 100 → 60 → 30 → OFF
   (i) => {
     const st = currentTrack().steps[i];
     if (!st.on) {
@@ -32,18 +32,22 @@ const grid = createGrid(
     } else if (st.vel > 0.55) {
       st.vel = 0.3;
     } else {
-      st.on = false; st.vel = 0; // OFF
+      st.on = false; st.vel = 0;
     }
     renderGrid();
   },
-  // onSetVel: drag below threshold turns step OFF
+  // onSetVel (drag): drag below threshold turns OFF
   (i, v) => {
     const st = currentTrack().steps[i];
-    if (v < OFF_THRESHOLD) {
-      st.on = false; st.vel = 0;
-    } else {
-      st.on = true; st.vel = v;
-    }
+    if (v < OFF_THRESHOLD) { st.on = false; st.vel = 0; }
+    else { st.on = true; st.vel = v; }
+    renderGrid();
+  },
+  // onDoubleToggle (double tap/click): quick place/remove
+  (i) => {
+    const st = currentTrack().steps[i];
+    if (st.on) { st.on = false; st.vel = 0; }
+    else { st.on = true; st.vel = 1.0; }
     renderGrid();
   }
 );
@@ -87,7 +91,6 @@ document.getElementById('play').onclick = async () => {
   await ctx.resume();
   const bpmRaw = Number(tempoInput?.value ?? 120);
   const bpm = Math.min(300, Math.max(40, Number.isFinite(bpmRaw) ? bpmRaw : 120));
-
   startTransport(bpm, (stepIdx) => {
     paintPlayhead(stepIdx);
     applyMixer(tracks);
@@ -101,12 +104,11 @@ document.getElementById('play').onclick = async () => {
 
 document.getElementById('stop').onclick = () => {
   stopTransport();
-  // clear playhead highlight
   for (let i = 0; i < NUM_STEPS; i++) paintPlayhead(-1);
   renderGrid();
 };
 
-// ===== Boot: seed demo tracks and paint =====
+// ===== Boot =====
 tracks.push(createTrack('Track 1', 'kick808'));
 tracks.push(createTrack('Track 2', 'synth'));
 selectedTrackIndex = 0;
