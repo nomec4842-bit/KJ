@@ -1,1 +1,41 @@
 
+/* Basic page styling */
+body {
+  font-family: sans-serif;
+  background: #111;
+  color: #eee;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+/* Sequencer grid layout */
+#sequencer {
+  display: grid;
+  grid-template-columns: repeat(16, 40px); /* 16 steps */
+  grid-template-rows: repeat(1, 40px);     /* 1 track for now */
+  gap: 4px;
+  margin: 20px 0;
+}
+
+/* Step button styling */
+.step {
+  width: 40px;
+  height: 40px;
+  background: #333;
+  border: 1px solid #555;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.step.active {
+  background: #0f0; /* Green = active step */
+}
+
+/* Transport buttons */
+#controls button {
+  margin: 5px;
+  padding: 10px 20px;
+  font-size: 16px;
+}
