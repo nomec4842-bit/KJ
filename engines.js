@@ -11,7 +11,7 @@ export function synthBlip(p, dest, vel = 1) {
   const vca = ctx.createGain();
 
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(p.baseFreq || 220, now);
+  osc.frequency.setValueAtTime((p.baseFreq ?? 220), now);
 
   lpf.type = 'lowpass';
   lpf.frequency.value = p.cutoff ?? 2000;
@@ -196,6 +196,6 @@ export function samplerPlay(p, dest, vel = 1, sample) {
 
   src.connect(vca).connect(dest);
 
-  // One-shot duration equals the trimmed region; loop ignores third arg but it's okay
+  // One-shot duration equals the trimmed region; loop ignores third arg (ok)
   src.start(now, startSec, Math.max(0.005, endSec - startSec));
 }
