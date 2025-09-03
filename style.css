@@ -38,11 +38,20 @@ main{
   display:grid; grid-template-columns:repeat(16,42px); gap:6px;
 }
 .cell{
+  position:relative;
   width:42px; height:42px; border:1px solid var(--border);
-  background:var(--off); border-radius:8px; cursor:pointer;
+  background:var(--off); border-radius:8px; cursor:pointer; overflow:hidden;
 }
 .cell.on{ background:var(--on) }
 .cell.playhead{ outline:2px solid var(--play) }
+
+/* velocity bar */
+.cell .vel{
+  position:absolute; left:3px; right:3px; bottom:3px;
+  height:0; border-radius:4px;
+  background:var(--play); /* gold */
+  opacity:.9; transition:height .08s ease;
+}
 
 #params{ display:grid; gap:12px; }
 .field{
