@@ -1,41 +1,41 @@
-
-/* Basic page styling */
-body {
-  font-family: sans-serif;
-  background: #111;
-  color: #eee;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px;
+:root{
+  --bg:#111; --panel:#222; --text:#eee; --muted:#9aa3b2;
+  --on:#2f855a; --off:#333; --border:#555; --play:#ffda66;
 }
 
-/* Sequencer grid layout */
-#sequencer {
-  display: grid;
-  grid-template-columns: repeat(16, 40px); /* 16 steps */
-  grid-template-rows: repeat(1, 40px);     /* 1 track for now */
-  gap: 4px;
-  margin: 20px 0;
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:14px/1.4 system-ui, Segoe UI, Roboto, Helvetica, Arial;
 }
 
-/* Step button styling */
-.step {
-  width: 40px;
-  height: 40px;
-  background: #333;
-  border: 1px solid #555;
-  cursor: pointer;
-  transition: background 0.2s;
+header{
+  display:flex; gap:10px; align-items:center; padding:10px 12px;
+  background:var(--panel); border-bottom:1px solid var(--border);
 }
 
-.step.active {
-  background: #0f0; /* Green = active step */
+.ctrl{display:flex; align-items:center; gap:6px}
+.primary{background:#6dd3ff; color:#06212d; font-weight:700}
+button{
+  border:1px solid var(--border); background:#1b1f2e; color:var(--text);
+  padding:8px 10px; border-radius:10px; cursor:pointer;
+}
+button.ghost{background:transparent}
+
+main{padding:16px}
+
+#sequencer{
+  display:grid; grid-template-columns:repeat(16,42px); gap:6px;
 }
 
-/* Transport buttons */
-#controls button {
-  margin: 5px;
-  padding: 10px 20px;
-  font-size: 16px;
+.cell{
+  width:42px; height:42px; border:1px solid var(--border);
+  background:var(--off); border-radius:8px; cursor:pointer;
+}
+.cell.on{ background:var(--on) }
+.cell.playhead{ outline:2px solid var(--play) }
+
+@media (max-width:700px){
+  #sequencer{ grid-template-columns:repeat(8,42px) }
 }
