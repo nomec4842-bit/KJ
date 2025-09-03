@@ -1,4 +1,5 @@
 // ui.js
+import { STEP_CHOICES } from './tracks.js';
 
 export function refreshTrackSelect(selectEl, tracks, selectedIndex) {
   selectEl.innerHTML = '';
@@ -18,6 +19,8 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const field = (label, inputHtml, hint='') => makeFieldHtml(label, inputHtml, hint);
 
   let html = '';
+
+  // Mixer
   html += `<div class="badge">Mixer</div>`;
   html += field('Volume', `<input id="mx_gain" type="range" min="0" max="1" step="0.01" value="${t.gain}">`);
   html += field('Pan',    `<input id="mx_pan"  type="range" min="-1" max="1" step="0.01" value="${t.pan}">`);
@@ -25,6 +28,11 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     `<button id="mx_mute" class="toggle ${t.mute?'active':''}">Mute</button>
      <button id="mx_solo" class="toggle ${t.solo?'active':''}">Solo</button>`);
 
+  // Steps per track
+  const opts = STEP_CHOICES.map(n => `<option value="${n}" ${n===t.length?'selected':''}>${n}</option>`).join('');
+  html += field('Steps', `<select id="trk_steps">${opts}</select>`, 'per-track length');
+
+  // Instrument block
   html += `<div class="badge">Instrument • ${eng}</div>`;
 
   if (eng === 'synth') {
@@ -63,7 +71,6 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     html += field('Decay',  `<input id="c_decay"  type="range" min="0.05" max="1.5" step="0.01" value="${p.decay}">`, 'sec');
   }
 
-  // NEW: Sampler UI
   if (eng === 'sampler') {
     const fileName = t.sample?.name ? `<span class="hint">${t.sample.name}</span>` : '<span class="hint">(no file)</span>';
     html += field('Sample', `<input id="sam_file" type="file" accept="audio/*"> ${fileName}`);
@@ -76,13 +83,21 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
   containerEl.innerHTML = html;
 
-  // Binder now accepts an optional onSampleFile callback provided by main.js
-  return function bindParamEvents({ applyMixer, t, onSampleFile }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile }) {
+    // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
     const mb=document.getElementById('mx_mute'); if (mb) mb.onclick = () => { t.mute = !t.mute; mb.classList.toggle('active', t.mute); applyMixer(); };
     const sb=document.getElementById('mx_solo'); if (sb) sb.onclick = () => { t.solo = !t.solo; sb.classList.toggle('active', t.solo); applyMixer(); };
 
+    // Steps
+    const sSel = document.getElementById('trk_steps');
+    if (sSel) sSel.onchange = e => {
+      const v = parseInt(e.target.value, 10);
+      onStepsChange && onStepsChange(v);
+    };
+
+    // Engine params
     if (eng === 'synth') {
       ['p_base','p_cutoff','p_q','p_a','p_d','p_s','p_r'].forEach(id=>{
         const el=document.getElementById(id);
@@ -147,7 +162,6 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       });
     }
 
-    // Sampler bindings
     if (eng === 'sampler') {
       const p = t.params.sampler;
       const f   = document.getElementById('sam_file');
@@ -158,7 +172,6 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       const lBtn= document.getElementById('sam_loop');
 
       if (f && onSampleFile) f.onchange = (ev) => onSampleFile(ev.target.files?.[0] || null);
-
       if (sIn) sIn.oninput = e => { p.start = +e.target.value; };
       if (eIn) eIn.oninput = e => { p.end   = +e.target.value; };
       if (semi)semi.oninput= e => { p.semis = +e.target.value; };
