@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>KJ – Per-Track Engines</title>
+  <title>KJ – Per-Track Engines + Params</title>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -16,14 +16,12 @@
       <input id="tempo" type="number" value="120" min="40" max="300" step="1">
     </label>
 
-    <!-- NEW: pick which track you're editing -->
     <label class="ctrl">
       Track
       <select id="trackSelect"></select>
     </label>
     <button id="addTrack">+ Track</button>
 
-    <!-- Engine now edits the SELECTED track -->
     <label class="ctrl">
       Engine
       <select id="engine">
@@ -37,7 +35,15 @@
   </header>
 
   <main>
-    <div id="sequencer"></div>
+    <section class="panel">
+      <h3>Sequencer</h3>
+      <div id="sequencer"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Params (per selected track)</h3>
+      <div id="params"></div>
+    </section>
   </main>
 
   <script src="script.js"></script>
