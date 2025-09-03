@@ -28,7 +28,7 @@ for (let i = 0; i < NUM_STEPS; i++) {
   gridCells.push(cell);
 }
 
-// ===== Track model + defaults =====
+// ===== Track defaults & model =====
 const defaults = {
   synth: { cutoff:2000, q:1, a:0.01, d:0.2, s:0.6, r:0.2, baseFreq:220 },
   kick808: { freq:55, pitchDecay:0.08, ampDecay:0.45, click:0.12 },
@@ -36,14 +36,28 @@ const defaults = {
   hat808:  { decay:0.06, hpf:8000 },
   clap909: { bursts:3, spread:0.02, decay:0.10 },
 };
-
-function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+const clone = (o)=> JSON.parse(JSON.stringify(o));
 
 function createTrack(name, engine='synth'){
+  // per-track bus: gain -> pan -> master
+  const gain = ctx.createGain(); gain.gain.value = 0.9;
+  const pan  = ctx.createStereoPanner(); pan.pan.value = 0;
+  gain.connect(pan).connect(master);
+
   return {
     name,
-    engine,                 // 'synth' | 'kick808' | 'snare808' | 'hat808' | 'clap909'
+    engine,                // 'synth' | 'kick808' | 'snare808' | 'hat808' | 'clap909'
     steps: Array.from({length:NUM_STEPS}, () => false),
+
+    // mixer state
+    gainNode: gain,
+    panNode: pan,
+    gain: 0.9,            // 0..1
+    pan: 0,               // -1..1
+    mute: false,
+    solo: false,
+
+    // instrument params
     params: {
       synth:   clone(defaults.synth),
       kick808: clone(defaults.kick808),
@@ -57,7 +71,7 @@ function createTrack(name, engine='synth'){
 const tracks = [];
 let selectedTrackIndex = 0;
 
-// Seed demo
+// Seed demo tracks
 tracks.push(createTrack('Track 1', 'kick808'));
 tracks.push(createTrack('Track 2', 'synth'));
 refreshTrackSelect();
@@ -67,7 +81,7 @@ selectTrack(0);
 let isPlaying = false;
 let stepIdx = 0;
 let loopTimer = null;
-function intervalMs(bpm){ return ((60 / bpm) / 4) * 1000; } // 16th notes
+const intervalMs = (bpm)=> ((60 / bpm) / 4) * 1000; // 16th notes
 
 function start() {
   if (isPlaying) return;
@@ -79,8 +93,13 @@ function start() {
   loopTimer = setInterval(() => {
     paintPlayhead(stepIdx);
 
+    // Apply mixer (mute/solo) each tick
+    applyMixer();
+
+    // Trigger audible tracks
     for (const t of tracks) {
-      if (t.steps[stepIdx]) triggerEngine(t.engine, t.params[t.engine]);
+      if (!t._effectiveAudible) continue;
+      if (t.steps[stepIdx]) triggerEngine(t.engine, t.params[t.engine], t.gainNode);
     }
 
     stepIdx = (stepIdx + 1) % NUM_STEPS;
@@ -108,14 +127,17 @@ function selectTrack(i){
   renderGrid();
   renderParams();
 }
-function currentTrack(){ return tracks[selectedTrackIndex]; }
+const currentTrack = ()=> tracks[selectedTrackIndex];
+
 trackSel.addEventListener('change', e => selectTrack(+e.target.value));
+
 addTrackBtn.addEventListener('click', () => {
   const n = tracks.length + 1;
   tracks.push(createTrack(`Track ${n}`, 'synth'));
   refreshTrackSelect();
   selectTrack(tracks.length - 1);
 });
+
 engineSel.addEventListener('change', e => {
   const t = currentTrack();
   t.engine = e.target.value;
@@ -136,7 +158,18 @@ function paintPlayhead(i){
   if (cell) cell.classList.add('playhead');
 }
 
-// ===== Params UI (dynamic form per engine) =====
+// ===== Mixer =====
+function applyMixer(){
+  const anySolo = tracks.some(t => t.solo);
+  for (const t of tracks){
+    const audible = !t.mute && (!anySolo || t.solo);
+    t._effectiveAudible = audible;
+    t.gainNode.gain.value = audible ? t.gain : 0;
+    t.panNode.pan.value = t.pan;
+  }
+}
+
+// ===== Params UI (Mixer + Engine params) =====
 function renderParams(){
   const t = currentTrack();
   const eng = t.engine;
@@ -145,10 +178,21 @@ function renderParams(){
   const field = (label, inputHtml, hint='') => `
     <div class="field">
       <label>${label}</label>
-      <div>${inputHtml}${hint?`<div class="hint">${hint}</div>`:''}</div>
+      <div class="inline">${inputHtml}${hint?`<span class="hint">${hint}</span>`:''}</div>
     </div>`;
 
   let html = '';
+
+  // Mixer section
+  html += `<div class="badge">Mixer</div>`;
+  html += field('Volume', `<input id="mx_gain" type="range" min="0" max="1" step="0.01" value="${t.gain}">`);
+  html += field('Pan', `<input id="mx_pan" type="range" min="-1" max="1" step="0.01" value="${t.pan}">`);
+  html += field('Mute / Solo',
+    `<button id="mx_mute" class="toggle ${t.mute?'active':''}">Mute</button>
+     <button id="mx_solo" class="toggle ${t.solo?'active':''}">Solo</button>`);
+
+  // Engine params
+  html += `<div class="badge">Instrument • ${eng}</div>`;
 
   if (eng === 'synth'){
     html += field('Base Freq',
@@ -157,15 +201,16 @@ function renderParams(){
       `<input id="p_cutoff" type="range" min="100" max="12000" step="1" value="${p.cutoff}">`, 'LPF Hz');
     html += field('Q',
       `<input id="p_q" type="range" min="0.1" max="20" step="0.1" value="${p.q}">`);
-    html += field('ADSR A/D/S/R',
+    html += field('ADSR',
       `<input id="p_a" type="range" min="0" max="1" step="0.01" value="${p.a}">
        <input id="p_d" type="range" min="0" max="1.5" step="0.01" value="${p.d}">
        <input id="p_s" type="range" min="0" max="1" step="0.01" value="${p.s}">
-       <input id="p_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`);
+       <input id="p_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`,
+       'A / D / S / R');
   }
   if (eng === 'kick808'){
     html += field('Pitch (Hz)', `<input id="k_freq" type="range" min="20" max="200" step="1" value="${p.freq}">`);
-    html += field('Pitch Decay', `<input id="k_pdec" type="range" min="0.005" max="1" step="0.005" value="${p.pitchDecay}">`, 'sec (sweep)');
+    html += field('Pitch Decay', `<input id="k_pdec" type="range" min="0.005" max="1" step="0.005" value="${p.pitchDecay}">`, 'sec');
     html += field('Amp Decay', `<input id="k_adec" type="range" min="0.05" max="2" step="0.01" value="${p.ampDecay}">`, 'sec');
     html += field('Click', `<input id="k_click" type="range" min="0" max="1" step="0.01" value="${p.click}">`);
   }
@@ -180,7 +225,7 @@ function renderParams(){
   }
   if (eng === 'clap909'){
     html += field('Bursts', `<input id="c_bursts" type="number" min="2" max="5" step="1" value="${p.bursts}">`);
-    html += field('Spread', `<input id="c_spread" type="range" min="0.005" max="0.06" step="0.001" value="${p.spread}">`, 'seconds between bursts');
+    html += field('Spread', `<input id="c_spread" type="range" min="0.005" max="0.06" step="0.001" value="${p.spread}">`, 'sec');
     html += field('Decay', `<input id="c_decay" type="range" min="0.05" max="1.5" step="0.01" value="${p.decay}">`, 'sec');
   }
 
@@ -193,12 +238,21 @@ function bindParamEvents(){
   const eng = t.engine;
   const p = t.params[eng];
 
-  const val = id => {
-    const el = document.getElementById(id);
-    return el?.type === 'number' ? +el.value : +el.value;
+  // Mixer controls
+  document.getElementById('mx_gain').oninput = (e)=>{
+    t.gain = +e.target.value;
+    applyMixer();
   };
+  document.getElementById('mx_pan').oninput = (e)=>{
+    t.pan = +e.target.value;
+    applyMixer();
+  };
+  const muteBtn = document.getElementById('mx_mute');
+  const soloBtn = document.getElementById('mx_solo');
+  muteBtn.onclick = ()=>{ t.mute = !t.mute; muteBtn.classList.toggle('active', t.mute); applyMixer(); };
+  soloBtn.onclick = ()=>{ t.solo = !t.solo; soloBtn.classList.toggle('active', t.solo); applyMixer(); };
 
-  // wire by engine
+  // Engine params
   if (eng === 'synth'){
     ['p_base','p_cutoff','p_q','p_a','p_d','p_s','p_r'].forEach(id=>{
       const el = document.getElementById(id);
@@ -215,8 +269,7 @@ function bindParamEvents(){
   }
   if (eng === 'kick808'){
     ['k_freq','k_pdec','k_adec','k_click'].forEach(id=>{
-      const el = document.getElementById(id);
-      el.oninput = () => {
+      document.getElementById(id).oninput = ()=>{
         p.freq = +document.getElementById('k_freq').value;
         p.pitchDecay = +document.getElementById('k_pdec').value;
         p.ampDecay   = +document.getElementById('k_adec').value;
@@ -226,8 +279,7 @@ function bindParamEvents(){
   }
   if (eng === 'snare808'){
     ['n_tone','n_noise','n_decay'].forEach(id=>{
-      const el = document.getElementById(id);
-      el.oninput = () => {
+      document.getElementById(id).oninput = ()=>{
         p.tone  = +document.getElementById('n_tone').value;
         p.noise = +document.getElementById('n_noise').value;
         p.decay = +document.getElementById('n_decay').value;
@@ -236,8 +288,7 @@ function bindParamEvents(){
   }
   if (eng === 'hat808'){
     ['h_decay','h_hpf'].forEach(id=>{
-      const el = document.getElementById(id);
-      el.oninput = () => {
+      document.getElementById(id).oninput = ()=>{
         p.decay = +document.getElementById('h_decay').value;
         p.hpf   = +document.getElementById('h_hpf').value;
       };
@@ -245,8 +296,7 @@ function bindParamEvents(){
   }
   if (eng === 'clap909'){
     ['c_bursts','c_spread','c_decay'].forEach(id=>{
-      const el = document.getElementById(id);
-      el.oninput = () => {
+      document.getElementById(id).oninput = ()=>{
         p.bursts = clampInt(+document.getElementById('c_bursts').value, 2, 5);
         p.spread = +document.getElementById('c_spread').value;
         p.decay  = +document.getElementById('c_decay').value;
@@ -255,19 +305,19 @@ function bindParamEvents(){
   }
 }
 
-// ===== Engines =====
-function triggerEngine(name, p){
+// ===== Engines (send to per-track bus) =====
+function triggerEngine(name, p, dest){
   switch(name){
-    case 'synth':    synthBlip(p); break;
-    case 'kick808':  kick808(p);   break;
-    case 'snare808': snare808(p);  break;
-    case 'hat808':   hat808(p);    break;
-    case 'clap909':  clap909(p);   break;
-    default: synthBlip(defaults.synth);
+    case 'synth':    synthBlip(p, dest); break;
+    case 'kick808':  kick808(p, dest);   break;
+    case 'snare808': snare808(p, dest);  break;
+    case 'hat808':   hat808(p, dest);    break;
+    case 'clap909':  clap909(p, dest);   break;
+    default: synthBlip(defaults.synth, dest);
   }
 }
 
-function synthBlip(p){
+function synthBlip(p, dest){
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const lpf = ctx.createBiquadFilter();
@@ -279,7 +329,7 @@ function synthBlip(p){
   lpf.type = 'lowpass'; lpf.frequency.value = p.cutoff; lpf.Q.value = p.q;
   vca.gain.value = 0;
 
-  osc.connect(lpf).connect(vca).connect(master);
+  osc.connect(lpf).connect(vca).connect(dest);
 
   vca.gain.setValueAtTime(0, now);
   vca.gain.linearRampToValueAtTime(0.25, now + p.a);
@@ -290,7 +340,7 @@ function synthBlip(p){
   osc.stop(now + 0.5 + p.r);
 }
 
-function kick808(p){
+function kick808(p, dest){
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const vca = ctx.createGain();
@@ -302,29 +352,28 @@ function kick808(p){
   vca.gain.setValueAtTime(1.0, now);
   vca.gain.exponentialRampToValueAtTime(0.001, now + Math.max(0.05, p.ampDecay));
 
-  osc.connect(vca).connect(master);
+  osc.connect(vca).connect(dest);
   osc.start(now);
   osc.stop(now + Math.max(0.3, p.ampDecay + 0.1));
 
-  // click
   if (p.click > 0){
     const clickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.01, ctx.sampleRate);
     const ch = clickBuf.getChannelData(0);
     for (let i=0;i<ch.length;i++) ch[i] = (Math.random()*2-1) * Math.exp(-i/ch.length);
     const click = ctx.createBufferSource(); click.buffer = clickBuf;
     const g = ctx.createGain(); g.gain.value = p.click;
-    click.connect(g).connect(master); click.start(now);
+    click.connect(g).connect(dest); click.start(now);
   }
 }
 
-function snare808(p){
+function snare808(p, dest){
   const now = ctx.currentTime;
 
   const tone = ctx.createOscillator();
   const tGain = ctx.createGain();
   tone.type = 'triangle'; tone.frequency.value = p.tone;
   tGain.gain.value = 0.3;
-  tone.connect(tGain).connect(master);
+  tone.connect(tGain).connect(dest);
   tGain.gain.exponentialRampToValueAtTime(0.001, now + p.decay);
   tone.start(now); tone.stop(now + p.decay + 0.1);
 
@@ -336,12 +385,12 @@ function snare808(p){
   const hpf = ctx.createBiquadFilter(); hpf.type='highpass'; hpf.frequency.value = 1200;
   const nGain = ctx.createGain(); nGain.gain.value = p.noise;
 
-  src.connect(hpf).connect(nGain).connect(master);
+  src.connect(hpf).connect(nGain).connect(dest);
   nGain.gain.exponentialRampToValueAtTime(0.001, now + bufDur);
   src.start(now); src.stop(now + bufDur);
 }
 
-function hat808(p){
+function hat808(p, dest){
   const now = ctx.currentTime;
   const dur = Math.max(0.01, p.decay);
 
@@ -352,12 +401,12 @@ function hat808(p){
   const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value = p.hpf;
   const vca = ctx.createGain(); vca.gain.value = 0.25;
 
-  src.connect(hp).connect(vca).connect(master);
+  src.connect(hp).connect(vca).connect(dest);
   vca.gain.exponentialRampToValueAtTime(0.001, now + dur);
   src.start(now); src.stop(now + dur);
 }
 
-function clap909(p){
+function clap909(p, dest){
   const now = ctx.currentTime;
   const bursts = clampInt(p.bursts, 2, 5);
   const spread = Math.max(0.005, p.spread);
@@ -372,7 +421,7 @@ function clap909(p){
     const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value = 2000; bp.Q.value = 0.7;
     const vca = ctx.createGain(); vca.gain.value = 0.3;
 
-    src.connect(bp).connect(vca).connect(master);
+    src.connect(bp).connect(vca).connect(dest);
     vca.gain.exponentialRampToValueAtTime(0.001, t + tail);
     src.start(t); src.stop(t + tail);
   }
