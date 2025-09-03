@@ -1,6 +1,6 @@
 :root{
-  --bg:#111; --panel:#222; --text:#eee; --muted:#9aa3b2;
-  --on:#2f855a; --off:#333; --border:#555; --play:#ffda66;
+  --bg:#111; --panel:#1b1f2e; --panel-2:#151a25; --text:#eee; --muted:#9aa3b2;
+  --on:#2f855a; --off:#333; --border:#2b3245; --play:#ffda66; --accent:#6dd3ff;
 }
 
 *{box-sizing:border-box}
@@ -14,21 +14,29 @@ header{
   display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 12px;
   background:var(--panel); border-bottom:1px solid var(--border);
 }
-
 .ctrl{display:flex; align-items:center; gap:6px}
-.primary{background:#6dd3ff; color:#06212d; font-weight:700}
+.primary{background:var(--accent); color:#06212d; font-weight:700}
 button{
-  border:1px solid var(--border); background:#1b1f2e; color:var(--text);
+  border:1px solid var(--border); background:#222a3c; color:var(--text);
   padding:8px 10px; border-radius:10px; cursor:pointer;
 }
 button.ghost{background:transparent}
 
-main{padding:16px}
+main{
+  display:grid; gap:12px; padding:12px;
+}
+.panel{
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  overflow:hidden;
+}
+.panel h3{
+  margin:0; padding:10px 12px; background:var(--panel-2); border-bottom:1px solid var(--border);
+}
+.panel > div{ padding:12px; }
 
 #sequencer{
   display:grid; grid-template-columns:repeat(16,42px); gap:6px;
 }
-
 .cell{
   width:42px; height:42px; border:1px solid var(--border);
   background:var(--off); border-radius:8px; cursor:pointer;
@@ -36,6 +44,18 @@ main{padding:16px}
 .cell.on{ background:var(--on) }
 .cell.playhead{ outline:2px solid var(--play) }
 
-@media (max-width:700px){
+#params{
+  display:grid; gap:10px;
+}
+.field{
+  display:grid; grid-template-columns:120px 1fr; gap:10px; align-items:center;
+}
+.field input[type="range"], .field input[type="number"], .field select{
+  width:100%; background:#0f1422; border:1px solid var(--border); color:var(--text);
+  padding:6px; border-radius:8px;
+}
+.hint{ color:var(--muted); font-size:12px; }
+
+@media (max-width:900px){
   #sequencer{ grid-template-columns:repeat(8,42px) }
 }
