@@ -1,101 +1,201 @@
 // engines.js
 import { ctx } from './core.js';
 
-// ===== Synth =====
-export function synthBlip(p, dest, vel=1){
+/* ===========================
+   Synth (mono blip)
+   =========================== */
+export function synthBlip(p, dest, vel = 1) {
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const lpf = ctx.createBiquadFilter();
   const vca = ctx.createGain();
 
-  osc.type='sawtooth'; osc.frequency.setValueAtTime(p.baseFreq, now);
-  lpf.type='lowpass'; lpf.frequency.value=p.cutoff; lpf.Q.value=p.q;
-  vca.gain.value=0;
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(p.baseFreq || 220, now);
+
+  lpf.type = 'lowpass';
+  lpf.frequency.value = p.cutoff ?? 2000;
+  lpf.Q.value = p.q ?? 1;
+
+  vca.gain.value = 0;
+
   osc.connect(lpf).connect(vca).connect(dest);
 
-  vca.gain.setValueAtTime(0, now);
-  vca.gain.linearRampToValueAtTime(0.25*vel, now + p.a);
-  vca.gain.linearRampToValueAtTime(0.25*p.s*vel, now + p.a + p.d);
-  vca.gain.setTargetAtTime(0.0001, now + 0.22, Math.max(0.01, p.r));
+  const A = Math.max(0, p.a ?? 0.01);
+  const D = Math.max(0, p.d ?? 0.2);
+  const S = Math.max(0, Math.min(1, p.s ?? 0.6));
+  const R = Math.max(0, p.r ?? 0.2);
 
-  osc.start(now); osc.stop(now + 0.5 + p.r);
+  vca.gain.setValueAtTime(0, now);
+  vca.gain.linearRampToValueAtTime(0.25 * vel, now + A);
+  vca.gain.linearRampToValueAtTime(0.25 * S * vel, now + A + D);
+  vca.gain.setTargetAtTime(0.0001, now + 0.22, Math.max(0.01, R));
+
+  osc.start(now);
+  osc.stop(now + 0.5 + R);
 }
 
-// ===== Kick =====
-export function kick808(p, dest, vel){
+/* ===========================
+   808 Kick
+   =========================== */
+export function kick808(p, dest, vel = 1) {
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const vca = ctx.createGain();
-  osc.type='sine';
-  osc.frequency.setValueAtTime(Math.max(20, p.freq*3), now);
-  osc.frequency.exponentialRampToValueAtTime(p.freq, now + p.pitchDecay);
-  vca.gain.setValueAtTime(1.0*vel, now);
-  vca.gain.exponentialRampToValueAtTime(0.001, now + Math.max(0.05, p.ampDecay));
-  osc.connect(vca).connect(dest);
-  osc.start(now); osc.stop(now + Math.max(0.3, p.ampDecay + 0.1));
 
-  if (p.click > 0){
-    const clickBuf = ctx.createBuffer(1, ctx.sampleRate*0.01, ctx.sampleRate);
-    const ch = clickBuf.getChannelData(0);
-    for (let i=0;i<ch.length;i++) ch[i] = (Math.random()*2-1) * Math.exp(-i/ch.length);
-    const click = ctx.createBufferSource(); click.buffer = clickBuf;
-    const g = ctx.createGain(); g.gain.value = p.click * vel;
-    click.connect(g).connect(dest); click.start(now);
+  const f = Math.max(20, p.freq ?? 55);
+  const pdec = Math.max(0.005, p.pitchDecay ?? 0.08);
+  const adec = Math.max(0.05, p.ampDecay ?? 0.45);
+  const clickAmt = Math.max(0, p.click ?? 0.12);
+
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(Math.max(20, f * 3), now);
+  osc.frequency.exponentialRampToValueAtTime(f, now + pdec);
+
+  vca.gain.setValueAtTime(1.0 * vel, now);
+  vca.gain.exponentialRampToValueAtTime(0.001, now + adec);
+
+  osc.connect(vca).connect(dest);
+  osc.start(now);
+  osc.stop(now + Math.max(0.3, adec + 0.1));
+
+  // click transient
+  if (clickAmt > 0) {
+    const len = Math.floor(ctx.sampleRate * 0.01);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / len);
+    const click = ctx.createBufferSource(); click.buffer = buf;
+    const g = ctx.createGain(); g.gain.value = clickAmt * vel;
+    click.connect(g).connect(dest);
+    click.start(now);
   }
 }
 
-// ===== Snare =====
-export function snare808(p, dest, vel){
+/* ===========================
+   808 Snare
+   =========================== */
+export function snare808(p, dest, vel = 1) {
   const now = ctx.currentTime;
+
+  // tonal body
+  const toneHz = Math.max(60, p.tone ?? 180);
   const tone = ctx.createOscillator();
   const tGain = ctx.createGain();
-  tone.type='triangle'; tone.frequency.value=p.tone;
-  tGain.gain.value=0.3 * vel;
+  tone.type = 'triangle';
+  tone.frequency.value = toneHz;
+  tGain.gain.value = 0.3 * vel;
   tone.connect(tGain).connect(dest);
-  tGain.gain.exponentialRampToValueAtTime(0.001, now + p.decay);
-  tone.start(now); tone.stop(now + p.decay + 0.1);
 
-  const bufDur = Math.max(0.05, p.decay);
-  const buf = ctx.createBuffer(1, ctx.sampleRate*bufDur, ctx.sampleRate);
-  const ch = buf.getChannelData(0); for (let i=0;i<ch.length;i++) ch[i] = Math.random()*2-1;
+  const dec = Math.max(0.05, p.decay ?? 0.22);
+  tGain.gain.exponentialRampToValueAtTime(0.001, now + dec);
+  tone.start(now);
+  tone.stop(now + dec + 0.1);
 
-  const src = ctx.createBufferSource(); src.buffer = buf;
-  const hpf = ctx.createBiquadFilter(); hpf.type='highpass'; hpf.frequency.value=1200;
-  const nGain = ctx.createGain(); nGain.gain.value = p.noise * vel;
+  // noise burst
+  const noiseAmt = Math.max(0, p.noise ?? 0.6);
+  const bufDur = dec;
+  const nlen = Math.max(1, Math.floor(ctx.sampleRate * bufDur));
+  const nbuf = ctx.createBuffer(1, nlen, ctx.sampleRate);
+  const nch = nbuf.getChannelData(0);
+  for (let i = 0; i < nlen; i++) nch[i] = Math.random() * 2 - 1;
+
+  const src = ctx.createBufferSource(); src.buffer = nbuf;
+  const hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 1200;
+  const nGain = ctx.createGain(); nGain.gain.value = noiseAmt * vel;
   src.connect(hpf).connect(nGain).connect(dest);
   nGain.gain.exponentialRampToValueAtTime(0.001, now + bufDur);
-  src.start(now); src.stop(now + bufDur);
+  src.start(now);
+  src.stop(now + bufDur);
 }
 
-// ===== Hat =====
-export function hat808(p, dest, vel){
+/* ===========================
+   808 Hat
+   =========================== */
+export function hat808(p, dest, vel = 1) {
   const now = ctx.currentTime;
-  const dur = Math.max(0.01, p.decay);
-  const buf = ctx.createBuffer(1, ctx.sampleRate*dur, ctx.sampleRate);
-  const ch = buf.getChannelData(0); for (let i=0;i<ch.length;i++) ch[i] = Math.random()*2-1;
+  const dur = Math.max(0.01, p.decay ?? 0.06);
+  const hpfHz = Math.max(1000, p.hpf ?? 8000);
+
+  const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+
   const src = ctx.createBufferSource(); src.buffer = buf;
-  const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=p.hpf;
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = hpfHz;
   const vca = ctx.createGain(); vca.gain.value = 0.25 * vel;
+
   src.connect(hp).connect(vca).connect(dest);
   vca.gain.exponentialRampToValueAtTime(0.001, now + dur);
-  src.start(now); src.stop(now + dur);
+  src.start(now);
+  src.stop(now + dur);
 }
 
-// ===== Clap =====
-export function clap909(p, dest, vel){
+/* ===========================
+   909 Clap (multi-burst noise)
+   =========================== */
+export function clap909(p, dest, vel = 1) {
   const now = ctx.currentTime;
-  const bursts = Math.max(2, Math.min(5, p.bursts));
-  const spread = Math.max(0.005, p.spread);
-  const tail = Math.max(0.05, p.decay);
-  for (let i=0;i<bursts;i++){
-    const t = now + i*spread;
-    const buf = ctx.createBuffer(1, ctx.sampleRate*tail, ctx.sampleRate);
-    const ch = buf.getChannelData(0); for (let j=0;j<ch.length;j++) ch[j] = Math.random()*2-1;
+  const bursts = Math.max(2, Math.min(5, p.bursts ?? 3));
+  const spread = Math.max(0.005, p.spread ?? 0.02);
+  const tail = Math.max(0.05, p.decay ?? 0.1);
+
+  for (let i = 0; i < bursts; i++) {
+    const t = now + i * spread;
+
+    const len = Math.max(1, Math.floor(ctx.sampleRate * tail));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let j = 0; j < len; j++) ch[j] = Math.random() * 2 - 1;
+
     const src = ctx.createBufferSource(); src.buffer = buf;
-    const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2000; bp.Q.value=0.7;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2000; bp.Q.value = 0.7;
     const vca = ctx.createGain(); vca.gain.value = 0.3 * vel;
+
     src.connect(bp).connect(vca).connect(dest);
     vca.gain.exponentialRampToValueAtTime(0.001, t + tail);
-    src.start(t); src.stop(t + tail);
+    src.start(t);
+    src.stop(t + tail);
   }
+}
+
+/* ===========================
+   Sampler (one-shot / loop)
+   params: { start:0..1, end:0..1, semis:int, gain:0..2, loop:boolean }
+   track.sample: { buffer: AudioBuffer, name: string }
+   =========================== */
+export function samplerPlay(p, dest, vel = 1, sample) {
+  if (!sample?.buffer) return;
+  const now = ctx.currentTime;
+
+  const src = ctx.createBufferSource();
+  src.buffer = sample.buffer;
+
+  // pitch (semitones → playbackRate)
+  const semis = (p.semis ?? 0);
+  const rate = Math.pow(2, semis / 12);
+  src.playbackRate.setValueAtTime(rate, now);
+
+  // region
+  const dur = sample.buffer.duration;
+  const startNorm = Math.max(0, Math.min(1, p.start ?? 0));
+  const endNorm = Math.max(startNorm, Math.min(1, p.end ?? 1));
+  const startSec = startNorm * dur;
+  const endSec = Math.max(startSec + 0.005, endNorm * dur);
+
+  src.loop = !!p.loop;
+  if (src.loop) {
+    src.loopStart = startSec;
+    src.loopEnd = endSec;
+  }
+
+  // gain
+  const vca = ctx.createGain();
+  vca.gain.value = (p.gain ?? 1) * vel;
+
+  src.connect(vca).connect(dest);
+
+  // One-shot duration equals the trimmed region; loop ignores third arg but it's okay
+  src.start(now, startSec, Math.max(0.005, endSec - startSec));
 }
