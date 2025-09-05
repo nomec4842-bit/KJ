@@ -9,7 +9,6 @@ export function clampInt(v, lo, hi) {
   return Math.max(lo, Math.min(hi, Number.isFinite(n) ? n : lo));
 }
 
-// 16th-note scheduler (simple interval; good enough for MVP)
 let _isPlaying = false;
 let _timer = null;
 function intervalMs(bpm) { return ((60 / bpm) / 4) * 1000; }
