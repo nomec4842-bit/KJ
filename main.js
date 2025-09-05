@@ -1,3 +1,4 @@
+// main.js
 import { ctx, startTransport, stopTransport } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
@@ -58,6 +59,16 @@ function saveCurrentPatternSnapshot() {
   const name = song.patterns[song.current]?.name || `P${song.current+1}`;
   const curLen = song.patterns[song.current]?.len16 || patTicksLeft || 16;
   song.patterns[song.current] = serializePattern(name, tracks, curLen);
+}
+
+// Longest-track guard so patterns don't loop early
+function longestTrackLen(){
+  return Math.max(1, ...tracks.map(t => t.length || 1));
+}
+function ensurePatternCoversTracks(){
+  const need = longestTrackLen();
+  const cur = song.patterns[song.current]?.len16 || 16;
+  if (cur < need) updateCurrentPatternLength(need);
 }
 
 // ----- Editors (step grid + piano roll) -----
@@ -128,6 +139,9 @@ function renderParamsPanel(){
     onStepsChange: (newLen) => {
       resizeTrackSteps(currentTrack(), newLen);
       showEditorForTrack();
+      paintPlayhead();
+      ensurePatternCoversTracks();     // keep pattern >= longest track
+      updateChainStatus();
     },
     onSampleFile: handleSampleFile,
   });
@@ -167,6 +181,7 @@ function switchToPattern(index) {
   patTicksLeft = len16;
   refreshAndSelect(selectedTrackIndex);
   refreshPatternSelect();
+  ensurePatternCoversTracks();          // guard after load
 }
 
 function addNewPattern() {
@@ -187,7 +202,9 @@ function duplicateCurrentPattern() {
 function updateCurrentPatternLength(newLen16) {
   const cur = song.patterns[song.current];
   if (!cur) return;
-  cur.len16 = Math.max(1, Math.floor(newLen16));
+  const minLen = longestTrackLen();                 // don’t allow shorter than longest track
+  const nextLen = Math.max(minLen, Math.floor(newLen16));
+  cur.len16 = nextLen;
   patLenInput.value = cur.len16;
   patTicksLeft = cur.len16;
 }
@@ -293,6 +310,7 @@ addTrackBtn.addEventListener('click', () => {
   tracks.push(t);
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
+  ensurePatternCoversTracks();          // guard after adding track
 });
 engineSel.addEventListener('change', (e) => {
   currentTrack().engine = e.target.value;
@@ -371,6 +389,7 @@ selectedTrackIndex = 0;
 song.patterns.push(serializePattern('P1', tracks, 16));
 song.current = 0;
 patTicksLeft = song.patterns[0].len16;
+ensurePatternCoversTracks(); // guard at boot
 
 refreshAndSelect(selectedTrackIndex);
 refreshPatternSelect();
