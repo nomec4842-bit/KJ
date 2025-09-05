@@ -1,17 +1,16 @@
-// pianoroll.js
-// Minimal 24-row (C2..B3) × N-steps grid piano roll with click + shift-drag length
 import { toggleNoteAt, stretchNoteEnding } from './tracks.js';
 
+// 24-row (C2..B3) piano roll; quantized to step grid
 export function createPianoRoll(container, getTrack, onChange){
-  let cols = 16, rows = 24; // C2..B3
+  let cols = 16, rows = 24; // pitch 0..23
   container.innerHTML = '';
   container.style.display = 'grid';
   container.style.gridTemplateColumns = `repeat(${cols}, minmax(22px,1fr))`;
   container.style.gap = '6px';
   const cells = [];
 
-  function pitchToRow(p){ return (rows-1) - (p - 0); } // p=0 at bottom
-  function rowToPitch(r){ return (rows-1) - r; }
+  const pitchToRow = (p) => (rows-1) - p;
+  const rowToPitch = (r) => (rows-1) - r;
 
   function rebuild(len){
     cols = len;
@@ -32,31 +31,27 @@ export function createPianoRoll(container, getTrack, onChange){
         velBar.style.height = '0%';
         cell.appendChild(velBar);
 
-        // interactions
-        let dragging = false, startCol = null, pitch = rowToPitch(r);
+        let dragging=false, startCol=null;
+        const pitch = rowToPitch(r);
 
         cell.addEventListener('pointerdown', (e)=>{
           dragging = true;
           startCol = c;
           cell.setPointerCapture(e.pointerId);
-          if (e.shiftKey){
-            // shift+down will stretch if note exists; else place and wait to stretch
-            toggleNoteAt(getTrack(), c, pitch, 1);
-          } else {
-            toggleNoteAt(getTrack(), c, pitch, 1);
-          }
+          // place or toggle
+          toggleNoteAt(getTrack(), c, pitch, 1);
           onChange();
         });
         cell.addEventListener('pointermove', (e)=>{
           if (!dragging) return;
-          if (!e.shiftKey) return; // only stretch with Shift
+          if (!e.shiftKey) return; // stretch only when Shift held
           const tr = getTrack();
           const endCol = Math.max(c, startCol);
           stretchNoteEnding(tr, startCol, pitch, endCol+1);
           onChange();
         });
         cell.addEventListener('pointerup', (e)=>{
-          dragging = false;
+          dragging=false;
           try{ cell.releasePointerCapture(e.pointerId);}catch{}
         });
 
@@ -73,12 +68,12 @@ export function createPianoRoll(container, getTrack, onChange){
       cell.classList.remove('on');
       const bar = cell.querySelector('.vel'); if (bar) bar.style.height = '0%';
     }
-    // draw notes as filled spans across their length
+    // draw notes
     for (const n of t.notes){
       const r = pitchToRow(n.pitch);
       for (let x=0; x<n.length; x++){
         const c = n.start + x;
-        if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
+        if (c<0 || c>=cols || r<0 || r>=rows) continue;
         const idx = r*cols + c;
         const cell = cells[idx];
         cell.classList.add('on');
@@ -88,11 +83,8 @@ export function createPianoRoll(container, getTrack, onChange){
     }
   }
 
-  function paintPlayhead(step){
-    // optional: highlight current column (cheap pass)
-    // remove any old borders
-    for (let i=0;i<cells.length;i++){
-      const cell = cells[i];
+  function paint(step){
+    for (const cell of cells){
       const col = Number(cell.dataset.col);
       cell.classList.toggle('playhead', col === step);
     }
@@ -100,9 +92,5 @@ export function createPianoRoll(container, getTrack, onChange){
 
   rebuild(cols);
 
-  return {
-    setLength: rebuild,
-    update,
-    paint: paintPlayhead
-  };
+  return { setLength: rebuild, update, paint };
 }
