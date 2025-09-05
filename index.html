@@ -33,6 +33,20 @@
         <option value="sampler">Sampler</option>
       </select>
     </label>
+
+    <!-- NEW: Pattern/Chain controls -->
+    <span style="flex:1"></span>
+    <label class="ctrl">
+      Pattern
+      <select id="patternSelect"></select>
+    </label>
+    <button id="addPattern">+ Pattern</button>
+    <button id="dupPattern">Duplicate</button>
+    <label class="ctrl">
+      Len (16ths)
+      <input id="patLen" type="number" value="16" min="4" max="512" step="1" style="width:72px">
+    </label>
+    <button id="chainAdd">Chain ⤴︎</button>
   </header>
 
   <main>
@@ -45,9 +59,19 @@
       <h3>Track Mixer & Params</h3>
       <div id="params"></div>
     </section>
+
+    <section class="panel">
+      <h3>Chain</h3>
+      <div id="chainView" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <button id="chainClear" class="ghost">Clear Chain</button>
+        <button id="chainPrev">◀ Prev</button>
+        <button id="chainNext">Next ▶</button>
+        <span id="chainStatus" class="hint"></span>
+      </div>
+    </section>
   </main>
 
-  <!-- Entry point: load main.js as an ES module -->
   <script type="module" src="main.js"></script>
 </body>
 </html>
