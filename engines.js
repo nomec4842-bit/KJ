@@ -1,24 +1,24 @@
-// engines.js
 import { ctx } from './core.js';
 
 /* ===========================
-   Synth (mono blip)
+   Synth (supports semitone offset)
    =========================== */
-export function synthBlip(p, dest, vel = 1) {
+export function synthBlip(p, dest, vel = 1, semis = 0) {
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const lpf = ctx.createBiquadFilter();
   const vca = ctx.createGain();
 
+  const base = Math.max(20, p.baseFreq ?? 220);
+  const freq = base * Math.pow(2, (semis || 0) / 12);
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime((p.baseFreq ?? 220), now);
+  osc.frequency.setValueAtTime(freq, now);
 
   lpf.type = 'lowpass';
   lpf.frequency.value = p.cutoff ?? 2000;
   lpf.Q.value = p.q ?? 1;
 
   vca.gain.value = 0;
-
   osc.connect(lpf).connect(vca).connect(dest);
 
   const A = Math.max(0, p.a ?? 0.01);
@@ -59,7 +59,6 @@ export function kick808(p, dest, vel = 1) {
   osc.start(now);
   osc.stop(now + Math.max(0.3, adec + 0.1));
 
-  // click transient
   if (clickAmt > 0) {
     const len = Math.floor(ctx.sampleRate * 0.01);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -78,7 +77,6 @@ export function kick808(p, dest, vel = 1) {
 export function snare808(p, dest, vel = 1) {
   const now = ctx.currentTime;
 
-  // tonal body
   const toneHz = Math.max(60, p.tone ?? 180);
   const tone = ctx.createOscillator();
   const tGain = ctx.createGain();
@@ -92,7 +90,6 @@ export function snare808(p, dest, vel = 1) {
   tone.start(now);
   tone.stop(now + dec + 0.1);
 
-  // noise burst
   const noiseAmt = Math.max(0, p.noise ?? 0.6);
   const bufDur = dec;
   const nlen = Math.max(1, Math.floor(ctx.sampleRate * bufDur));
@@ -133,7 +130,7 @@ export function hat808(p, dest, vel = 1) {
 }
 
 /* ===========================
-   909 Clap (multi-burst noise)
+   909 Clap
    =========================== */
 export function clap909(p, dest, vel = 1) {
   const now = ctx.currentTime;
@@ -161,23 +158,19 @@ export function clap909(p, dest, vel = 1) {
 }
 
 /* ===========================
-   Sampler (one-shot / loop)
-   params: { start:0..1, end:0..1, semis:int, gain:0..2, loop:boolean }
-   track.sample: { buffer: AudioBuffer, name: string }
+   Sampler (supports semitone offset)
    =========================== */
-export function samplerPlay(p, dest, vel = 1, sample) {
+export function samplerPlay(p, dest, vel = 1, sample, semis = 0) {
   if (!sample?.buffer) return;
   const now = ctx.currentTime;
 
   const src = ctx.createBufferSource();
   src.buffer = sample.buffer;
 
-  // pitch (semitones → playbackRate)
-  const semis = (p.semis ?? 0);
-  const rate = Math.pow(2, semis / 12);
+  const totalSemis = (p.semis ?? 0) + (semis || 0);
+  const rate = Math.pow(2, totalSemis / 12);
   src.playbackRate.setValueAtTime(rate, now);
 
-  // region
   const dur = sample.buffer.duration;
   const startNorm = Math.max(0, Math.min(1, p.start ?? 0));
   const endNorm = Math.max(startNorm, Math.min(1, p.end ?? 1));
@@ -190,12 +183,9 @@ export function samplerPlay(p, dest, vel = 1, sample) {
     src.loopEnd = endSec;
   }
 
-  // gain
   const vca = ctx.createGain();
   vca.gain.value = (p.gain ?? 1) * vel;
 
   src.connect(vca).connect(dest);
-
-  // One-shot duration equals the trimmed region; loop ignores third arg (ok)
   src.start(now, startSec, Math.max(0.005, endSec - startSec));
 }
