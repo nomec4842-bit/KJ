@@ -1,76 +1,26 @@
-:root{
-  --bg:#111; --panel:#1b1f2e; --panel-2:#151a25; --text:#eee; --muted:#9aa3b2;
-  --on:#2f855a; --off:#333; --border:#2b3245; --play:#ffda66; --accent:#6dd3ff;
-}
+:root { --bg:#0b0c0f; --fg:#e7e7ea; --muted:#9aa0a6; --accent:#5ac8fa; --border:#2a2d33; }
+* { box-sizing: border-box; }
+body { margin:0; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+header { display:flex; gap:10px; align-items:center; padding:12px; border-bottom:1px solid var(--border); position:sticky; top:0; background:rgba(11,12,15,.9); backdrop-filter:blur(6px); }
+main { display:grid; grid-template-columns: 1fr 320px; gap:12px; padding:12px; }
+.panel { background:#111319; border:1px solid var(--border); border-radius:12px; padding:12px; }
+h3 { margin:0 0 8px; font-weight:600; }
+.ctrl { display:flex; align-items:center; gap:6px; color:var(--muted); }
+.primary, .ghost, button { background:#191b22; color:var(--fg); border:1px solid var(--border); border-radius:10px; padding:6px 10px; cursor:pointer; }
+.primary { background:#1e2633; border-color:#2d3644; }
+.toggle.active { background:#243145; border-color:#35506e; }
+.hint { color:var(--muted); }
+.field { margin:10px 0; }
+.field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+.field .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0; background:var(--bg); color:var(--text);
-  font:14px/1.4 system-ui, Segoe UI, Roboto, Helvetica, Arial;
-}
+#sequencer { display:grid; grid-template-columns: repeat(16, minmax(22px,1fr)); gap:6px; }
+.cell { position:relative; height:28px; background:#171a21; border:1px solid var(--border); border-radius:8px; }
+.cell.on { background:#1d293c; }
+.cell.playhead { outline:2px solid var(--accent); }
+.vel { position:absolute; bottom:0; left:0; width:100%; background:#4aa3ff66; border-bottom-left-radius:8px; border-bottom-right-radius:8px; }
 
-header{
-  display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 12px;
-  background:var(--panel); border-bottom:1px solid var(--border);
-}
-.ctrl{display:flex; align-items:center; gap:6px}
-.primary{background:var(--accent); color:#06212d; font-weight:700}
-button{
-  border:1px solid var(--border); background:#222a3c; color:var(--text);
-  padding:8px 10px; border-radius:10px; cursor:pointer;
-}
-button.ghost{background:transparent}
-
-main{
-  display:grid; gap:12px; padding:12px;
-}
-.panel{
-  background:var(--panel); border:1px solid var(--border); border-radius:12px;
-  overflow:hidden;
-}
-.panel h3{
-  margin:0; padding:10px 12px; background:var(--panel-2); border-bottom:1px solid var(--border);
-}
-.panel > div{ padding:12px; }
-
-#sequencer{
-  display:grid; grid-template-columns:repeat(16,42px); gap:6px;
-}
-.cell{
-  position:relative;
-  width:42px; height:42px; border:1px solid var(--border);
-  background:var(--off); border-radius:8px; cursor:pointer; overflow:hidden;
-}
-.cell.on{ background:var(--on) }
-.cell.playhead{ outline:2px solid var(--play) }
-
-/* velocity bar */
-.cell .vel{
-  position:absolute; left:3px; right:3px; bottom:3px;
-  height:0; border-radius:4px;
-  background:var(--play); /* gold */
-  opacity:.9; transition:height .08s ease;
-}
-
-#params{ display:grid; gap:12px; }
-.field{
-  display:grid; grid-template-columns:120px 1fr; gap:10px; align-items:center;
-}
-.field input[type="range"], .field input[type="number"], .field select{
-  width:100%; background:#0f1422; border:1px solid var(--border); color:var(--text);
-  padding:6px; border-radius:8px;
-}
-.inline{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.hint{ color:var(--muted); font-size:12px; }
-
-.badge{ font-size:12px; color:var(--muted); }
-.toggle{
-  padding:6px 10px; border-radius:999px; border:1px solid var(--border);
-  background:#0f1422; cursor:pointer;
-}
-.toggle.active{ background:#264a3a; border-color:#2f855a }
-
-@media (max-width:900px){
-  #sequencer{ grid-template-columns:repeat(8,42px) }
+#chainView .toggle .rep{
+  display:inline-block; padding:1px 6px; border:1px solid var(--border);
+  border-radius:999px; font-weight:600; transform: translateY(-1px); font-size:12px; opacity:.85;
 }
