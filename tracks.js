@@ -1,4 +1,3 @@
-// tracks.js
 import { ctx, master, clampInt } from './core.js';
 import { synthBlip, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
 
@@ -15,6 +14,7 @@ export const defaults = {
 
 const clone = o => JSON.parse(JSON.stringify(o));
 const makeStep = () => ({ on:false, vel:1.0 });
+const makeNote = (start=0, length=1, pitch=0, vel=1) => ({ start, length, pitch, vel });
 
 function makeBus(){
   const gain = ctx.createGain();
@@ -27,9 +27,11 @@ export function createTrack(name, engine='synth', length=16){
   const bus = makeBus();
   return {
     name, engine,
-    length,              // per-track step count
-    pos: -1,             // per-track playhead (advanced each tick)
+    mode: 'steps',           // 'steps' | 'piano'
+    length,
+    pos: -1,
     steps: Array.from({length}, makeStep),
+    notes: [],               // for piano roll
 
     gainNode: bus.gain,
     panNode: bus.pan,
@@ -45,7 +47,7 @@ export function createTrack(name, engine='synth', length=16){
       sampler: clone(defaults.sampler),
     },
 
-    sample: { buffer:null, name:'' }, // for sampler
+    sample: { buffer:null, name:'' },
   };
 }
 
@@ -59,16 +61,22 @@ export function resizeTrackSteps(track, newLen){
   track.steps = next;
   track.length = newLen;
   track.pos = Math.min(Math.max(track.pos, -1), newLen-1);
+
+  // trim notes if needed
+  track.notes = track.notes
+    .map(n => ({...n, start: Math.max(0, Math.min(n.start, newLen-1)),
+                 length: Math.max(1, Math.min(n.length, newLen - n.start))}))
+    .filter(n => n.length > 0);
 }
 
-export function triggerEngine(track, vel=1){
+export function triggerEngine(track, vel=1, semis=0){
   switch(track.engine){
-    case 'synth':    return synthBlip(track.params.synth,    track.gainNode, vel);
+    case 'synth':    return synthBlip(track.params.synth,    track.gainNode, vel, semis);
     case 'kick808':  return kick808(track.params.kick808,    track.gainNode, vel);
     case 'snare808': return snare808(track.params.snare808,  track.gainNode, vel);
     case 'hat808':   return hat808(track.params.hat808,      track.gainNode, vel);
     case 'clap909':  return clap909(track.params.clap909,    track.gainNode, vel);
-    case 'sampler':  return samplerPlay(track.params.sampler,track.gainNode, vel, track.sample);
+    case 'sampler':  return samplerPlay(track.params.sampler,track.gainNode, vel, track.sample, semis);
   }
 }
 
@@ -80,4 +88,20 @@ export function applyMixer(tracks){
     t.gainNode.gain.value = audible ? t.gain : 0;
     if (t._hasPan && t.panNode){ try { t.panNode.pan.value = t.pan; } catch{} }
   }
+}
+
+/* ---------- Piano roll helpers ---------- */
+export function notesStartingAt(track, step){
+  return track.notes.filter(n => n.start === step);
+}
+export function toggleNoteAt(track, step, pitch, vel=1){
+  const idx = track.notes.findIndex(n => n.start===step && n.pitch===pitch);
+  if (idx>=0){ track.notes.splice(idx,1); return; }
+  track.notes.push(makeNote(step, 1, pitch, vel));
+}
+export function stretchNoteEnding(track, step, pitch, newEndStep){
+  const n = track.notes.find(n => n.start===step && n.pitch===pitch);
+  if (!n) return;
+  const end = Math.max(n.start+1, Math.min(newEndStep, track.length));
+  n.length = end - n.start;
 }
