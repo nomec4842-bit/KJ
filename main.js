@@ -13,7 +13,7 @@ const engineSel   = document.getElementById('engine');
 const seqEl       = document.getElementById('sequencer');
 const paramsEl    = document.getElementById('params');
 
-// NEW: pattern UI refs
+// Pattern/Chain UI refs
 const patternSel  = document.getElementById('patternSelect');
 const addPatternBtn = document.getElementById('addPattern');
 const dupPatternBtn = document.getElementById('dupPattern');
@@ -24,23 +24,23 @@ const chainClear  = document.getElementById('chainClear');
 const chainPrev   = document.getElementById('chainPrev');
 const chainNext   = document.getElementById('chainNext');
 const chainStatus = document.getElementById('chainStatus');
+const followChain = document.getElementById('followChain');
 
 // ----- App state -----
 const tracks = [];
 let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
 
-// Patterns / Chain
-const sampleCache = {}; // name -> AudioBuffer
+const sampleCache = {}; 
 const song = {
-  patterns: [],        // array of serialized patterns
-  current: 0,          // index into patterns
-  chain: [],           // array of pattern indices
-  chainPos: 0,         // position in chain
+  patterns: [],
+  current: 0,
+  chain: [],
+  chainPos: 0,
 };
-let patTicksLeft = 16;  // countdown in 16ths for current pattern
+let patTicksLeft = 16;
 
-// ---- Helper: sync new track to selected track (length + phase) ----
+// --- Helpers ---
 function syncTrackToSelected(t) {
   const baseLen = currentTrack()?.length ?? 16;
   resizeTrackSteps(t, baseLen);
@@ -48,11 +48,10 @@ function syncTrackToSelected(t) {
   t.pos = selPos >= 0 ? (selPos % t.length) : -1;
 }
 
-// ----- Grid (single visible track) -----
+// Sequencer grid
 const OFF_THRESHOLD = 0.15;
 const grid = createGrid(
   seqEl,
-  // onToggle: OFF → 100% → 60% → 30% → OFF
   (i) => {
     const st = currentTrack().steps[i];
     if (!st.on) { st.on = true; st.vel = 1.0; }
@@ -61,14 +60,12 @@ const grid = createGrid(
     else { st.on = false; st.vel = 0; }
     renderGrid();
   },
-  // onSetVel: drag below threshold clears
   (i, v) => {
     const st = currentTrack().steps[i];
     if (v < OFF_THRESHOLD) { st.on = false; st.vel = 0; }
     else { st.on = true; st.vel = v; }
     renderGrid();
   },
-  // onDoubleToggle: quick place/remove
   (i) => {
     const st = currentTrack().steps[i];
     if (st.on) { st.on = false; st.vel = 0; }
@@ -80,19 +77,16 @@ const grid = createGrid(
 function renderGrid(){ grid.update((i)=>currentTrack().steps[i]); }
 function paintForSelected(){ grid.paint(currentTrack().pos); }
 
-// ----- Params panel -----
+// Params
 async function handleSampleFile(file){
   if (!file) return;
   const ab = await file.arrayBuffer();
   const buffer = await ctx.decodeAudioData(ab);
   const name = file.name || 'sample';
-  sampleCache[name] = buffer; // store globally so other patterns can reuse
+  sampleCache[name] = buffer;
   const t = currentTrack();
   t.sample = { buffer, name };
-  const p = t.params.sampler;
-  p.start = Math.max(0, Math.min(1, p.start ?? 0));
-  p.end   = Math.max(p.start, Math.min(1, p.end ?? 1));
-  renderParamsPanel(); // refresh to show filename
+  renderParamsPanel();
 }
 
 function renderParamsPanel(){
@@ -117,7 +111,7 @@ function refreshAndSelect(i = selectedTrackIndex){
   renderParamsPanel();
 }
 
-// ----- Pattern / Chain helpers -----
+// Pattern & Chain
 function refreshPatternSelect() {
   patternSel.innerHTML = '';
   song.patterns.forEach((p, i) => {
@@ -127,7 +121,6 @@ function refreshPatternSelect() {
     patternSel.appendChild(opt);
   });
   patternSel.value = String(song.current);
-  // reflect len
   const cur = song.patterns[song.current];
   if (cur) patLenInput.value = cur.len16;
   updateChainStatus();
@@ -136,31 +129,20 @@ function refreshPatternSelect() {
 function switchToPattern(index) {
   index = Math.max(0, Math.min(index, song.patterns.length - 1));
   song.current = index;
-
-  // materialize runtime tracks from pattern
   const pat = song.patterns[index];
   const { tracks: newTracks, len16 } = instantiatePattern(pat, sampleCache);
-
-  // replace tracks array contents
   tracks.length = 0;
   for (const t of newTracks) tracks.push(t);
-
-  // reset positions to align starts
   for (const t of tracks) t.pos = -1;
-
-  // reset selected track safely
   selectedTrackIndex = Math.min(selectedTrackIndex, tracks.length - 1);
   patTicksLeft = len16;
-
   refreshAndSelect(selectedTrackIndex);
   refreshPatternSelect();
 }
 
-function addNewPattern(fromRuntime = true) {
+function addNewPattern() {
   const name = `P${song.patterns.length + 1}`;
-  const pat = fromRuntime
-    ? serializePattern(name, tracks, patTicksLeft || 16)
-    : { name, len16: 16, tracks: [] }; // not used here
+  const pat = serializePattern(name, tracks, patTicksLeft || 16);
   song.patterns.push(pat);
   song.current = song.patterns.length - 1;
   refreshPatternSelect();
@@ -180,7 +162,7 @@ function updateCurrentPatternLength(newLen16) {
   if (!cur) return;
   cur.len16 = Math.max(1, Math.floor(newLen16));
   patLenInput.value = cur.len16;
-  patTicksLeft = cur.len16; // apply immediately on next cycle
+  patTicksLeft = cur.len16;
 }
 
 function addCurrentToChain() {
@@ -209,7 +191,7 @@ function renderChainView() {
 }
 
 function advanceChain() {
-  if (song.chain.length === 0) return; // no chain → stay on current
+  if (song.chain.length === 0) return;
   song.chainPos = (song.chainPos + 1) % song.chain.length;
   const nextIdx = song.chain[song.chainPos];
   switchToPattern(nextIdx);
@@ -219,15 +201,15 @@ function advanceChain() {
 function updateChainStatus() {
   const curName = song.patterns[song.current]?.name || `P${song.current+1}`;
   const inChain = song.chain.indexOf(song.current);
-  chainStatus.textContent = `Now: ${curName} • Len ${song.patterns[song.current]?.len16 || 16} • Chain pos: ${song.chainPos+1}/${Math.max(1, song.chain.length)}${inChain>=0?' (in chain)':''}`;
+  const mode = followChain?.checked ? 'Follow Chain' : 'Loop Pattern';
+  chainStatus.textContent = `Now: ${curName} • Len ${song.patterns[song.current]?.len16 || 16} • Chain pos: ${song.chainPos+1}/${Math.max(1, song.chain.length)}${inChain>=0?' (in chain)':''} • Mode: ${mode}`;
 }
 
-// ----- UI wiring -----
+// --- UI Wiring ---
 trackSel.addEventListener('change', (e) => {
   selectedTrackIndex = Math.max(0, Math.min(+e.target.value, tracks.length - 1));
   refreshAndSelect(selectedTrackIndex);
 });
-
 addTrackBtn.addEventListener('click', () => {
   const n = tracks.length + 1;
   const t = createTrack(`Track ${n}`, 'synth', 16);
@@ -236,28 +218,14 @@ addTrackBtn.addEventListener('click', () => {
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
 });
-
 engineSel.addEventListener('change', (e) => {
   currentTrack().engine = e.target.value;
   refreshAndSelect(selectedTrackIndex);
 });
-
-// NEW: pattern listeners
-patternSel.addEventListener('change', (e) => {
-  switchToPattern(+e.target.value);
-});
-addPatternBtn.addEventListener('click', () => {
-  addNewPattern(true); // snapshot current runtime as new pattern
-  // also immediately switch into it (empty snapshot identical to current)
-  switchToPattern(song.current);
-});
-dupPatternBtn.addEventListener('click', () => {
-  duplicateCurrentPattern();
-  switchToPattern(song.current);
-});
-patLenInput.addEventListener('change', (e) => {
-  updateCurrentPatternLength(+e.target.value);
-});
+patternSel.addEventListener('change', (e) => { switchToPattern(+e.target.value); });
+addPatternBtn.addEventListener('click', () => { addNewPattern(); switchToPattern(song.current); });
+dupPatternBtn.addEventListener('click', () => { duplicateCurrentPattern(); switchToPattern(song.current); });
+patLenInput.addEventListener('change', (e) => { updateCurrentPatternLength(+e.target.value); });
 chainAddBtn.addEventListener('click', addCurrentToChain);
 chainClear.addEventListener('click', clearChain);
 chainPrev.addEventListener('click', () => {
@@ -272,8 +240,9 @@ chainNext.addEventListener('click', () => {
   switchToPattern(song.chain[song.chainPos]);
   renderChainView();
 });
+followChain.addEventListener('change', updateChainStatus);
 
-// ----- Transport (per-track polymeter ticks + pattern countdown) -----
+// Transport
 document.getElementById('play').onclick = async () => {
   await ctx.resume();
   const bpmRaw = Number(tempoInput?.value ?? 120);
@@ -281,29 +250,25 @@ document.getElementById('play').onclick = async () => {
 
   startTransport(bpm, () => {
     applyMixer(tracks);
-
-    // advance tracks
     for (const t of tracks){
       if (t.length <= 0) continue;
       t.pos = (t.pos + 1) % t.length;
       const st = t.steps[t.pos];
       if (t._effectiveAudible && st?.on) triggerEngine(t, st.vel);
     }
-
-    // pattern countdown
     patTicksLeft--;
     if (patTicksLeft <= 0) {
-      // reload current pattern length (in case user changed during playback)
       const curLen = song.patterns[song.current]?.len16 || 16;
-      patTicksLeft = curLen; // reset for next pattern
-      advanceChain();        // move along chain (no chain = stay put)
+      patTicksLeft = curLen;
+      if (followChain?.checked) {
+        advanceChain();
+      } else {
+        switchToPattern(song.current);
+      }
     }
-
-    // UI paint for selected track
     grid.paint(currentTrack().pos);
   });
 };
-
 document.getElementById('stop').onclick = () => {
   stopTransport();
   for (const t of tracks) t.pos = -1;
@@ -311,19 +276,14 @@ document.getElementById('stop').onclick = () => {
   renderGrid();
 };
 
-// ----- Boot -----
-// seed runtime tracks
+// Boot
 tracks.push(createTrack('Kick',  'kick808', 16));
 tracks.push(createTrack('Hat',   'hat808',  12));
 tracks.push(createTrack('Synth', 'synth',   16));
 selectedTrackIndex = 0;
-
-// create first pattern snapshot from current runtime state
 song.patterns.push(serializePattern('P1', tracks, 16));
 song.current = 0;
 patTicksLeft = song.patterns[0].len16;
-
-// Initial UI
 refreshAndSelect(selectedTrackIndex);
 refreshPatternSelect();
 renderChainView();
