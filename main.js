@@ -1,7 +1,10 @@
-// main.js
 import { ctx, startTransport, stopTransport } from './core.js';
-import { createTrack, triggerEngine, applyMixer, resizeTrackSteps } from './tracks.js';
+import {
+  createTrack, triggerEngine, applyMixer, resizeTrackSteps,
+  notesStartingAt
+} from './tracks.js';
 import { createGrid } from './sequencer.js';
+import { createPianoRoll } from './pianoroll.js';
 import { refreshTrackSelect, renderParams, makeField } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
 
@@ -13,7 +16,6 @@ const engineSel   = document.getElementById('engine');
 const seqEl       = document.getElementById('sequencer');
 const paramsEl    = document.getElementById('params');
 
-// Pattern/Chain UI refs
 const patternSel  = document.getElementById('patternSelect');
 const addPatternBtn = document.getElementById('addPattern');
 const dupPatternBtn = document.getElementById('dupPattern');
@@ -26,6 +28,8 @@ const chainNext   = document.getElementById('chainNext');
 const chainStatus = document.getElementById('chainStatus');
 const followChain = document.getElementById('followChain');
 
+const togglePiano = document.getElementById('togglePiano');
+
 // ----- App state -----
 const tracks = [];
 let selectedTrackIndex = 0;
@@ -35,9 +39,9 @@ const sampleCache = {};
 const song = {
   patterns: [],
   current: 0,
-  chain: [],            // [{ pattern: number, repeats: number }]
+  chain: [],           // [{ pattern, repeats }]
   chainPos: 0,
-  repeatsLeft: 0        // runtime, for current slot
+  repeatsLeft: 0
 };
 let patTicksLeft = 16;
 
@@ -56,9 +60,8 @@ function saveCurrentPatternSnapshot() {
   song.patterns[song.current] = serializePattern(name, tracks, curLen);
 }
 
-// ----- Grid -----
-const OFF_THRESHOLD = 0.15;
-const grid = createGrid(
+// ----- Editors (step grid + piano roll) -----
+const stepGrid = createGrid(
   seqEl,
   (i) => {
     const st = currentTrack().steps[i];
@@ -66,24 +69,47 @@ const grid = createGrid(
     else if (st.vel > 0.95) { st.vel = 0.6; }
     else if (st.vel > 0.55) { st.vel = 0.3; }
     else { st.on = false; st.vel = 0; }
-    renderGrid();
+    renderCurrentEditor();
   },
   (i, v) => {
     const st = currentTrack().steps[i];
-    if (v < OFF_THRESHOLD) { st.on = false; st.vel = 0; }
+    if (v < 0.15) { st.on = false; st.vel = 0; }
     else { st.on = true; st.vel = v; }
-    renderGrid();
+    renderCurrentEditor();
   },
   (i) => {
     const st = currentTrack().steps[i];
     if (st.on) { st.on = false; st.vel = 0; }
     else { st.on = true; st.vel = 1.0; }
-    renderGrid();
+    renderCurrentEditor();
   }
 );
-function renderGrid(){ grid.update((i)=>currentTrack().steps[i]); }
 
-// ----- Params -----
+const piano = createPianoRoll(
+  seqEl,
+  () => currentTrack(),
+  () => renderCurrentEditor()
+);
+
+function showEditorForTrack(){
+  const t = currentTrack();
+  if (t.mode === 'piano'){ piano.setLength(t.length); }
+  else { stepGrid.setLength(t.length); }
+  renderCurrentEditor();
+}
+function renderCurrentEditor(){
+  const t = currentTrack();
+  if (t.mode === 'piano'){ piano.update(); }
+  else { stepGrid.update((i)=>t.steps[i]); }
+}
+function paintPlayhead(){
+  const t = currentTrack();
+  if (t.mode === 'piano'){ piano.paint(t.pos); }
+  else { stepGrid.paint(t.pos); }
+}
+function syncToggleFromTrack(){ togglePiano.checked = currentTrack().mode === 'piano'; }
+
+// ----- Params (mixer + engine ui) -----
 async function handleSampleFile(file){
   if (!file) return;
   const ab = await file.arrayBuffer();
@@ -101,8 +127,7 @@ function renderParamsPanel(){
     t: currentTrack(),
     onStepsChange: (newLen) => {
       resizeTrackSteps(currentTrack(), newLen);
-      grid.setLength(newLen);
-      renderGrid();
+      showEditorForTrack();
     },
     onSampleFile: handleSampleFile,
   });
@@ -110,12 +135,12 @@ function renderParamsPanel(){
 function refreshAndSelect(i = selectedTrackIndex){
   refreshTrackSelect(trackSel, tracks, i);
   engineSel.value = currentTrack().engine;
-  grid.setLength(currentTrack().length);
-  renderGrid();
+  syncToggleFromTrack();
+  showEditorForTrack();
   renderParamsPanel();
 }
 
-// ----- Patterns & Chain -----
+// ----- Pattern & Chain (with repeats) -----
 function refreshPatternSelect() {
   patternSel.innerHTML = '';
   song.patterns.forEach((p, i) => {
@@ -167,28 +192,22 @@ function updateCurrentPatternLength(newLen16) {
   patTicksLeft = cur.len16;
 }
 
-// --- Chain model with repeats ---
+// chain model
 const REPEAT_CYCLE = [1,2,4,8,16];
+function clampRepeats(n){ n = Math.floor(Number(n)); if(!Number.isFinite(n)) n=1; return Math.max(1, Math.min(32, n)); }
 function pushToChain(patternIndex, repeats = 1) {
   song.chain.push({ pattern: patternIndex, repeats: clampRepeats(repeats) });
   renderChainView();
   updateChainStatus();
 }
-function clampRepeats(n){
-  n = Math.floor(Number(n));
-  if (!Number.isFinite(n)) n = 1;
-  return Math.max(1, Math.min(32, n));
-}
 function cycleRepeatsAt(idx, dir = +1){
   if (!song.chain[idx]) return;
   const cur = song.chain[idx].repeats;
   const pos = REPEAT_CYCLE.indexOf(cur);
-  if (pos === -1) {
-    song.chain[idx].repeats = 1;
-  } else {
-    let next = (pos + dir + REPEAT_CYCLE.length) % REPEAT_CYCLE.length;
-    song.chain[idx].repeats = REPEAT_CYCLE[next];
-  }
+  let nextVal = 1;
+  if (pos === -1) nextVal = 1;
+  else nextVal = REPEAT_CYCLE[(pos + dir + REPEAT_CYCLE.length)%REPEAT_CYCLE.length];
+  song.chain[idx].repeats = nextVal;
   if (idx === song.chainPos) song.repeatsLeft = song.chain[idx].repeats;
   renderChainView(); updateChainStatus();
 }
@@ -206,7 +225,6 @@ function enterChainSlot(i){
   switchToPattern(slot.pattern);
   renderChainView();
 }
-
 function addCurrentToChain() {
   if (!song.patterns.length) return;
   pushToChain(song.current, 1);
@@ -218,61 +236,41 @@ function clearChain() {
   renderChainView();
   updateChainStatus();
 }
-
 function renderChainView() {
   chainView.innerHTML = '';
   song.chain.forEach((slot, i) => {
     const btn = document.createElement('button');
     btn.className = 'toggle' + (i === song.chainPos ? ' active' : '');
-    // label
     const label = document.createElement('span');
     label.textContent = song.patterns[slot.pattern]?.name || `P${slot.pattern+1}`;
-    // repeats badge
     const rep = document.createElement('span');
     rep.className = 'rep';
     rep.textContent = `×${slot.repeats}`;
     rep.style.marginLeft = '6px';
     rep.style.opacity = 0.85;
     rep.style.fontSize = '12px';
-
     btn.appendChild(label);
     btn.appendChild(rep);
-
-    // click on badge: cycle repeats; shift = reverse; right-click = prompt
-    rep.addEventListener('click', (e) => {
-      e.stopPropagation();
-      cycleRepeatsAt(i, e.shiftKey ? -1 : +1);
-    });
+    rep.addEventListener('click', (e) => { e.stopPropagation(); cycleRepeatsAt(i, e.shiftKey ? -1 : +1); });
     rep.addEventListener('contextmenu', (e) => {
       e.preventDefault(); e.stopPropagation();
       const n = prompt('Repeats (1–32):', String(slot.repeats));
       if (n != null) setRepeatsAt(i, n);
     });
-
-    // click elsewhere: jump to slot/pattern
-    btn.addEventListener('click', () => {
-      saveCurrentPatternSnapshot();
-      enterChainSlot(i);
-    });
-
+    btn.addEventListener('click', () => { saveCurrentPatternSnapshot(); enterChainSlot(i); });
     chainView.appendChild(btn);
   });
 }
-
 function advanceChain() {
   if (song.chain.length === 0) return;
-  // repeats logic
   if (song.repeatsLeft > 1) {
     song.repeatsLeft--;
-    // stay on current slot, just loop its pattern window
     switchToPattern(song.chain[song.chainPos].pattern);
   } else {
-    // move to next slot and reset repeats
     const nextPos = (song.chainPos + 1) % song.chain.length;
     enterChainSlot(nextPos);
   }
 }
-
 function updateChainStatus() {
   const curName = song.patterns[song.current]?.name || `P${song.current+1}`;
   const mode = followChain?.checked ? 'Follow Chain' : 'Loop Pattern';
@@ -301,35 +299,22 @@ engineSel.addEventListener('change', (e) => {
   refreshAndSelect(selectedTrackIndex);
 });
 
-patternSel.addEventListener('change', (e) => {
-  saveCurrentPatternSnapshot();
-  switchToPattern(+e.target.value);
-});
-addPatternBtn.addEventListener('click', () => {
-  saveCurrentPatternSnapshot();
-  addNewPattern();
-  switchToPattern(song.current);
-});
-dupPatternBtn.addEventListener('click', () => {
-  saveCurrentPatternSnapshot();
-  duplicateCurrentPattern();
-  switchToPattern(song.current);
-});
-
+patternSel.addEventListener('change', (e) => { saveCurrentPatternSnapshot(); switchToPattern(+e.target.value); });
+addPatternBtn.addEventListener('click', () => { saveCurrentPatternSnapshot(); addNewPattern(); switchToPattern(song.current); });
+dupPatternBtn.addEventListener('click', () => { saveCurrentPatternSnapshot(); duplicateCurrentPattern(); switchToPattern(song.current); });
 patLenInput.addEventListener('change', (e) => { updateCurrentPatternLength(+e.target.value); });
+
 chainAddBtn.addEventListener('click', addCurrentToChain);
 chainClear.addEventListener('click', clearChain);
-chainPrev.addEventListener('click', () => {
-  if (!song.chain.length) return;
-  saveCurrentPatternSnapshot();
-  enterChainSlot(song.chainPos - 1);
-});
-chainNext.addEventListener('click', () => {
-  if (!song.chain.length) return;
-  saveCurrentPatternSnapshot();
-  enterChainSlot(song.chainPos + 1);
-});
+chainPrev.addEventListener('click', () => { if (!song.chain.length) return; saveCurrentPatternSnapshot(); enterChainSlot(song.chainPos - 1); });
+chainNext.addEventListener('click', () => { if (!song.chain.length) return; saveCurrentPatternSnapshot(); enterChainSlot(song.chainPos + 1); });
 followChain.addEventListener('change', updateChainStatus);
+
+togglePiano.addEventListener('change', () => {
+  const t = currentTrack();
+  t.mode = togglePiano.checked ? 'piano' : 'steps';
+  showEditorForTrack();
+});
 
 // ----- Transport -----
 document.getElementById('play').onclick = async () => {
@@ -344,34 +329,37 @@ document.getElementById('play').onclick = async () => {
     for (const t of tracks){
       if (t.length <= 0) continue;
       t.pos = (t.pos + 1) % t.length;
-      const st = t.steps[t.pos];
-      if (t._effectiveAudible && st?.on) triggerEngine(t, st.vel);
+
+      if (t._effectiveAudible) {
+        if (t.mode === 'piano') {
+          const notes = notesStartingAt(t, t.pos);
+          for (const n of notes) triggerEngine(t, n.vel ?? 1, n.pitch);
+        } else {
+          const st = t.steps[t.pos];
+          if (st?.on) triggerEngine(t, st.vel);
+        }
+      }
     }
 
-    // end-of-pattern window
+    // pattern window
     patTicksLeft--;
     if (patTicksLeft <= 0) {
       const curLen = song.patterns[song.current]?.len16 || 16;
       patTicksLeft = curLen;
       saveCurrentPatternSnapshot();
-
-      if (followChain?.checked) {
-        advanceChain();
-      } else {
-        // loop current pattern; repeats are ignored when not following chain
-        switchToPattern(song.current);
-      }
+      if (followChain?.checked) advanceChain();
+      else switchToPattern(song.current); // loop current
     }
 
-    grid.paint(currentTrack().pos);
+    paintPlayhead();
   });
 };
 
 document.getElementById('stop').onclick = () => {
   stopTransport();
   for (const t of tracks) t.pos = -1;
-  grid.paint(currentTrack().pos);
-  renderGrid();
+  paintPlayhead();
+  renderCurrentEditor();
 };
 
 // ----- Boot -----
