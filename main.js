@@ -47,6 +47,17 @@ const song = {
 let patTicksLeft = 16;
 
 // ----- Helpers -----
+function gcd(a, b){ return b ? gcd(b, a % b) : Math.abs(a||0); }
+function lcm(a, b){ if (!a || !b) return Math.max(a,b); return Math.abs(a*b) / gcd(a,b); }
+function lcmOfTrackLens(cap = 2048){
+  let val = 1;
+  for (const t of tracks){
+    val = lcm(val, Math.max(1, t.length||1));
+    if (val > cap) return cap; // prevent runaway lengths
+  }
+  return val;
+}
+
 function syncTrackToSelected(t) {
   const baseLen = currentTrack()?.length ?? 16;
   resizeTrackSteps(t, baseLen);
@@ -61,14 +72,15 @@ function saveCurrentPatternSnapshot() {
   song.patterns[song.current] = serializePattern(name, tracks, curLen);
 }
 
-// Longest-track guard so patterns don't loop early
-function longestTrackLen(){
-  return Math.max(1, ...tracks.map(t => t.length || 1));
-}
-function ensurePatternCoversTracks(){
-  const need = longestTrackLen();
-  const cur = song.patterns[song.current]?.len16 || 16;
-  if (cur < need) updateCurrentPatternLength(need);
+function ensurePatternCoversTracks(force = false){
+  const need = lcmOfTrackLens(); // always compute LCM
+  const curPat = song.patterns[song.current];
+  const curLen = curPat?.len16 || 16;
+  if (force || curLen !== need) {
+    updateCurrentPatternLength(need); // also sets patTicksLeft
+  } else {
+    patTicksLeft = Math.max(1, Math.min(patTicksLeft, curLen));
+  }
 }
 
 // ----- Editors (step grid + piano roll) -----
@@ -140,7 +152,7 @@ function renderParamsPanel(){
       resizeTrackSteps(currentTrack(), newLen);
       showEditorForTrack();
       paintPlayhead();
-      ensurePatternCoversTracks();     // keep pattern >= longest track
+      ensurePatternCoversTracks(true);
       updateChainStatus();
     },
     onSampleFile: handleSampleFile,
@@ -154,7 +166,7 @@ function refreshAndSelect(i = selectedTrackIndex){
   renderParamsPanel();
 }
 
-// ----- Pattern & Chain (with repeats) -----
+// ----- Pattern & Chain -----
 function refreshPatternSelect() {
   patternSel.innerHTML = '';
   song.patterns.forEach((p, i) => {
@@ -181,7 +193,7 @@ function switchToPattern(index) {
   patTicksLeft = len16;
   refreshAndSelect(selectedTrackIndex);
   refreshPatternSelect();
-  ensurePatternCoversTracks();          // guard after load
+  ensurePatternCoversTracks(true);
 }
 
 function addNewPattern() {
@@ -202,14 +214,14 @@ function duplicateCurrentPattern() {
 function updateCurrentPatternLength(newLen16) {
   const cur = song.patterns[song.current];
   if (!cur) return;
-  const minLen = longestTrackLen();                 // don’t allow shorter than longest track
-  const nextLen = Math.max(minLen, Math.floor(newLen16));
+  const need = lcmOfTrackLens();
+  const nextLen = Math.max(need, Math.floor(newLen16));
   cur.len16 = nextLen;
   patLenInput.value = cur.len16;
   patTicksLeft = cur.len16;
 }
 
-// chain model
+// ----- Chain model -----
 const REPEAT_CYCLE = [1,2,4,8,16];
 function clampRepeats(n){ n = Math.floor(Number(n)); if(!Number.isFinite(n)) n=1; return Math.max(1, Math.min(32, n)); }
 function pushToChain(patternIndex, repeats = 1) {
@@ -310,7 +322,7 @@ addTrackBtn.addEventListener('click', () => {
   tracks.push(t);
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
-  ensurePatternCoversTracks();          // guard after adding track
+  ensurePatternCoversTracks(true);
 });
 engineSel.addEventListener('change', (e) => {
   currentTrack().engine = e.target.value;
@@ -360,13 +372,14 @@ document.getElementById('play').onclick = async () => {
     }
 
     // pattern window
+    ensurePatternCoversTracks(); // recheck mid-play in case lengths changed
     patTicksLeft--;
     if (patTicksLeft <= 0) {
       const curLen = song.patterns[song.current]?.len16 || 16;
       patTicksLeft = curLen;
       saveCurrentPatternSnapshot();
       if (followChain?.checked) advanceChain();
-      else switchToPattern(song.current); // loop current
+      else switchToPattern(song.current);
     }
 
     paintPlayhead();
@@ -389,7 +402,7 @@ selectedTrackIndex = 0;
 song.patterns.push(serializePattern('P1', tracks, 16));
 song.current = 0;
 patTicksLeft = song.patterns[0].len16;
-ensurePatternCoversTracks(); // guard at boot
+ensurePatternCoversTracks(true);
 
 refreshAndSelect(selectedTrackIndex);
 refreshPatternSelect();
