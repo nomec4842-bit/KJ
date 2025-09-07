@@ -49,24 +49,6 @@ const song = {
 let patternPos = 0;
 
 // ----- Helpers -----
-function gcd(a, b){ return b ? gcd(b, a % b) : Math.abs(a||0); }
-function lcm(a, b){ if (!a || !b) return Math.max(a,b); return Math.abs(a*b) / gcd(a,b); }
-function lcmOfTrackLens(cap = 2048){
-  let val = 1;
-  for (const t of tracks){
-    val = lcm(val, Math.max(1, t.length||1));
-    if (val > cap) return cap; // prevent runaway lengths
-  }
-  return val;
-}
-
-function syncTrackToSelected(t) {
-  const baseLen = currentTrack()?.length ?? 16;
-  resizeTrackSteps(t, baseLen);
-  const selPos = currentTrack()?.pos ?? -1;
-  t.pos = selPos >= 0 ? (selPos % t.length) : -1;
-}
-
 function saveCurrentPatternSnapshot() {
   if (!song.patterns.length) return;
   const name = song.patterns[song.current]?.name || `P${song.current+1}`;
@@ -74,7 +56,7 @@ function saveCurrentPatternSnapshot() {
   song.patterns[song.current] = serializePattern(name, tracks, curLen);
 }
 
-// ----- Editors (step grid + piano roll) -----
+// ----- Editors -----
 const stepGrid = createGrid(
   seqEl,
   (i) => {
@@ -209,91 +191,41 @@ function updateCurrentPatternLength(newLen16) {
 }
 
 // ----- Chain model -----
-const REPEAT_CYCLE = [1,2,4,8,16];
-function clampRepeats(n){ n = Math.floor(Number(n)); if(!Number.isFinite(n)) n=1; return Math.max(1, Math.min(32, n)); }
-function pushToChain(patternIndex, repeats = 1) {
-  song.chain.push({ pattern: patternIndex, repeats: clampRepeats(repeats) });
-  renderChainView();
-  updateChainStatus();
-}
-function cycleRepeatsAt(idx, dir = +1){
-  if (!song.chain[idx]) return;
-  const cur = song.chain[idx].repeats;
-  const pos = REPEAT_CYCLE.indexOf(cur);
-  let nextVal = 1;
-  if (pos === -1) nextVal = 1;
-  else nextVal = REPEAT_CYCLE[(pos + dir + REPEAT_CYCLE.length)%REPEAT_CYCLE.length];
-  song.chain[idx].repeats = nextVal;
-  if (idx === song.chainPos) song.repeatsLeft = song.chain[idx].repeats;
-  renderChainView(); updateChainStatus();
-}
-function setRepeatsAt(idx, n){
-  if (!song.chain[idx]) return;
-  song.chain[idx].repeats = clampRepeats(n);
-  if (idx === song.chainPos) song.repeatsLeft = song.chain[idx].repeats;
-  renderChainView(); updateChainStatus();
-}
 function enterChainSlot(i){
   if (!song.chain.length) return;
   song.chainPos = ((i % song.chain.length) + song.chain.length) % song.chain.length;
   const slot = song.chain[song.chainPos];
   song.repeatsLeft = slot.repeats;
   switchToPattern(slot.pattern);
+  patternPos = 0;
   renderChainView();
 }
-function addCurrentToChain() {
-  if (!song.patterns.length) return;
-  pushToChain(song.current, 1);
-}
-function clearChain() {
-  song.chain = [];
-  song.chainPos = 0;
-  song.repeatsLeft = 0;
-  renderChainView();
-  updateChainStatus();
+function advanceChain() {
+  if (song.chain.length === 0) return;
+  if (song.repeatsLeft > 1) {
+    song.repeatsLeft--;
+    patternPos = 0;
+  } else {
+    const nextPos = (song.chainPos + 1) % song.chain.length;
+    enterChainSlot(nextPos);
+    patternPos = 0;
+  }
 }
 function renderChainView() {
   chainView.innerHTML = '';
   song.chain.forEach((slot, i) => {
     const btn = document.createElement('button');
     btn.className = 'toggle' + (i === song.chainPos ? ' active' : '');
-    const label = document.createElement('span');
-    label.textContent = song.patterns[slot.pattern]?.name || `P${slot.pattern+1}`;
-    const rep = document.createElement('span');
-    rep.className = 'rep';
-    rep.textContent = `×${slot.repeats}`;
-    rep.style.marginLeft = '6px';
-    rep.style.opacity = 0.85;
-    rep.style.fontSize = '12px';
-    btn.appendChild(label);
-    btn.appendChild(rep);
-    rep.addEventListener('click', (e) => { e.stopPropagation(); cycleRepeatsAt(i, e.shiftKey ? -1 : +1); });
-    rep.addEventListener('contextmenu', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const n = prompt('Repeats (1–32):', String(slot.repeats));
-      if (n != null) setRepeatsAt(i, n);
-    });
+    btn.textContent = `${song.patterns[slot.pattern]?.name || `P${slot.pattern+1}`} ×${slot.repeats}`;
     btn.addEventListener('click', () => { saveCurrentPatternSnapshot(); enterChainSlot(i); });
     chainView.appendChild(btn);
   });
 }
-function advanceChain() {
-  if (song.chain.length === 0) return;
-
-  if (song.repeatsLeft > 1) {
-    song.repeatsLeft--;
-    patternPos = 0; // start same pattern again
-  } else {
-    const nextPos = (song.chainPos + 1) % song.chain.length;
-    enterChainSlot(nextPos);
-    patternPos = 0; // reset for new pattern
-  }
-}
 function updateChainStatus() {
   const curName = song.patterns[song.current]?.name || `P${song.current+1}`;
-  const mode = followChain?.checked ? 'Follow Chain' : 'Loop Pattern';
   const slot = song.chain[song.chainPos];
   const repInfo = slot ? `• Repeats left: ${song.repeatsLeft}/${slot.repeats}` : '';
+  const mode = followChain?.checked ? 'Follow Chain' : 'Loop Pattern';
   chainStatus.textContent =
     `Now: ${curName} • Len ${song.patterns[song.current]?.len16 || 16} • ` +
     `Chain pos: ${song.chain.length ? (song.chainPos+1) : 0}/${Math.max(1, song.chain.length)} ${repInfo} • Mode: ${mode}`;
@@ -307,7 +239,6 @@ trackSel.addEventListener('change', (e) => {
 addTrackBtn.addEventListener('click', () => {
   const n = tracks.length + 1;
   const t = createTrack(`Track ${n}`, 'synth', 16);
-  if (tracks.length > 0) syncTrackToSelected(t);
   tracks.push(t);
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
@@ -322,8 +253,8 @@ addPatternBtn.addEventListener('click', () => { saveCurrentPatternSnapshot(); ad
 dupPatternBtn.addEventListener('click', () => { saveCurrentPatternSnapshot(); duplicateCurrentPattern(); switchToPattern(song.current); });
 patLenInput.addEventListener('change', (e) => { updateCurrentPatternLength(+e.target.value); });
 
-chainAddBtn.addEventListener('click', addCurrentToChain);
-chainClear.addEventListener('click', clearChain);
+chainAddBtn.addEventListener('click', () => { if (song.patterns.length) song.chain.push({ pattern: song.current, repeats: 1 }); renderChainView(); updateChainStatus(); });
+chainClear.addEventListener('click', () => { song.chain = []; song.chainPos = 0; song.repeatsLeft = 0; renderChainView(); updateChainStatus(); });
 chainPrev.addEventListener('click', () => { if (!song.chain.length) return; saveCurrentPatternSnapshot(); enterChainSlot(song.chainPos - 1); });
 chainNext.addEventListener('click', () => { if (!song.chain.length) return; saveCurrentPatternSnapshot(); enterChainSlot(song.chainPos + 1); });
 followChain.addEventListener('change', updateChainStatus);
@@ -361,7 +292,8 @@ document.getElementById('play').onclick = async () => {
 
     // pattern position
     patternPos++;
-    const curLen = song.patterns[song.current]?.len16 || 16;
+    const curPattern = song.patterns[song.current];
+    const curLen = curPattern?.len16 || 16;
 
     if (patternPos >= curLen) {
       saveCurrentPatternSnapshot();
@@ -375,7 +307,7 @@ document.getElementById('play').onclick = async () => {
           patternPos = 0;
         }
       } else {
-        patternPos = 0; // loop same pattern
+        patternPos = 0;
       }
     }
 
