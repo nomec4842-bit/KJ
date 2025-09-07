@@ -23,9 +23,8 @@ const dupPatternBtn  = document.getElementById('dupPattern');
 const patLenInput    = document.getElementById('patLen');
 
 const togglePiano  = document.getElementById('togglePiano');
-
-const playBtn = document.getElementById('play');
-const stopBtn = document.getElementById('stop');
+const playBtn      = document.getElementById('play');
+const stopBtn      = document.getElementById('stop');
 
 /* Per-track chain UI mount (create if missing) */
 let trackChainView = document.getElementById('trackChainView');
@@ -52,24 +51,20 @@ function normalizeTrack(t) {
   if (!t) return t;
   t.name   = t.name   ?? 'Track';
   t.mode   = t.mode   ?? 'steps';               // 'steps' | 'piano'
-  t.length = Math.max(1, (t.length ?? 16)|0);   // never 0/NaN
+  t.length = Math.max(1, (t.length ?? 16) | 0); // never 0/NaN
   t.pos    = Number.isInteger(t.pos) ? t.pos : -1;
 
-  // steps array for step mode
   if (!Array.isArray(t.steps) || t.steps.length !== t.length) {
     t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
   }
-
-  // playback flag (some UIs set this later)
   if (typeof t._effectiveAudible !== 'boolean') t._effectiveAudible = true;
 
-  // per-track chain defaults
   if (!Array.isArray(t.chain) || t.chain.length === 0) {
     t.chain = [{ pattern: song.current ?? 0, repeats: 1 }];
   }
   t.chainPos    = Number.isInteger(t.chainPos) ? t.chainPos : 0;
-  const slotRep = t.chain[t.chainPos]?.repeats;
-  t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? (slotRep ?? 1))|0);
+  const slotRep = t.chain[t.chainPos]?.repeats ?? 1;
+  t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? slotRep) | 0);
   return t;
 }
 
@@ -179,7 +174,8 @@ function switchToPattern(index) {
   index = Math.max(0, Math.min(index, song.patterns.length - 1));
   song.current = index;
   const pat = song.patterns[index];
-  const { tracks: newTracks } = instantiatePattern(pat, sampleCache) || { tracks: [] };
+  const inst = instantiatePattern(pat, sampleCache) || { tracks: [] };
+  const newTracks = inst.tracks || [];
 
   // Merge musical data; keep per-track chain state/name/engine
   const byName = Object.create(null);
@@ -189,13 +185,12 @@ function switchToPattern(index) {
     const t = tracks[i];
     const src = byName[t.name] ?? newTracks[i];
     if (src) {
-      const keep = { chain:t.chain, chainPos:t.chainPos, repeatsLeft:t.repeatsLeft, name:t.name, engine:t.engine };
+      const keep = { chain:t.chain, chainPos:t.chainPos, repeatsLeft:t.repeatsLeft, name:t.name, engine:t.engine, _effectiveAudible:t._effectiveAudible };
       Object.assign(t, src);
       Object.assign(t, keep);
       normalizeTrack(t);
       t.pos = -1;
     } else {
-      // No matching source; still normalize to avoid runtime errors
       normalizeTrack(t);
     }
   }
@@ -235,7 +230,7 @@ function ensureTrackChainInit(t){
     t.repeatsLeft = 1;
   } else {
     t.chainPos = Number.isInteger(t.chainPos) ? t.chainPos : 0;
-    t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? (t.chain[t.chainPos]?.repeats ?? 1))|0);
+    t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? (t.chain[t.chainPos]?.repeats ?? 1)) | 0);
   }
 }
 
@@ -243,15 +238,12 @@ function advanceTrackChain(t) {
   normalizeTrack(t);
   ensureTrackChainInit(t);
 
-  if (t.repeatsLeft > 1) {
-    t.repeatsLeft--;
-    return;
-  }
+  if (t.repeatsLeft > 1) { t.repeatsLeft--; return; }
 
   // Move to next slot
   t.chainPos = (t.chainPos + 1) % t.chain.length;
   const slot = t.chain[t.chainPos];
-  t.repeatsLeft = Math.max(1, (slot?.repeats ?? 1)|0);
+  t.repeatsLeft = Math.max(1, (slot?.repeats ?? 1) | 0);
 
   // Load pattern data for THIS track only
   const pat = song.patterns?.[slot?.pattern];
@@ -274,7 +266,7 @@ function advanceTrackChain(t) {
 /* ---------------- Per-Track Chain UI ---------------- */
 function renderTrackChains(){
   trackChainView.innerHTML = '';
-  tracks.forEach((t, ti) => {
+  tracks.forEach((t) => {
     normalizeTrack(t);
     ensureTrackChainInit(t);
 
@@ -352,6 +344,89 @@ function renderTrackChains(){
   });
 }
 
+/* ---------------- Transport (bulletproof) ---------------- */
+function safeNormalize(t) { return normalizeTrack(t); }
+
+// robust 16th-note scheduler fallback with drift correction
+function startScheduler(bpm, cb) {
+  const interval = 60000 / (bpm * 4);
+  let next = performance.now();
+  let alive = true;
+  function loop() {
+    if (!alive) return;
+    const now = performance.now();
+    if (now >= next) {
+      next += interval;
+      try { cb(); } catch (e) { console.error('[KJ] tick crashed:', e); }
+      while (now > next + interval) next += interval; // catch up if tab was asleep
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  return () => { alive = false; };
+}
+
+let stopHandle = null;
+
+playBtn && (playBtn.onclick = async () => {
+  await ctx.resume();
+
+  const bpmRaw = Number(tempoInput?.value ?? 120);
+  const bpm = Math.min(300, Math.max(40, Number.isFinite(bpmRaw) ? bpmRaw : 120));
+
+  const runner = (typeof startTransport === 'function' && typeof stopTransport === 'function')
+    ? (bpm, cb) => { startTransport(bpm, cb); return () => stopTransport(); }
+    : (bpm, cb) => startScheduler(bpm, cb);
+
+  stopHandle = runner(bpm, () => {
+    try {
+      applyMixer?.(tracks);
+
+      for (const _t of tracks) {
+        const t = safeNormalize(_t);
+
+        // advance local step
+        const L = Math.max(1, t.length | 0);
+        t.pos = ((t.pos | 0) + 1) % L;
+
+        // trigger audio
+        if ((t._effectiveAudible ?? true) === true) {
+          if (t.mode === 'piano') {
+            const notes = (typeof notesStartingAt === 'function' ? notesStartingAt(t, t.pos) : []) || [];
+            for (const n of notes) triggerEngine?.(t, n?.vel ?? 1, n?.pitch);
+          } else {
+            const st = Array.isArray(t.steps) ? t.steps[t.pos] : null;
+            if (st && st.on) triggerEngine?.(t, st.vel ?? 1);
+          }
+        }
+
+        // per-track chain: advance when THIS track wraps
+        if (t.pos === 0) {
+          try { advanceTrackChain(t); }
+          catch (e) { console.error('[KJ] advanceTrackChain error:', e); }
+        }
+      }
+
+      paintPlayhead?.();
+
+      // Throttle chain UI refresh to keep it light
+      window.__kj_ui_counter = (window.__kj_ui_counter || 0) + 1;
+      if ((window.__kj_ui_counter % 3) === 0) renderTrackChains?.();
+    } catch (err) {
+      console.error('[KJ] transport tick crashed (outer):', err);
+    }
+  });
+});
+
+stopBtn && (stopBtn.onclick = () => {
+  try { stopHandle && stopHandle(); } catch {}
+  stopHandle = null;
+  for (const t of tracks) t.pos = -1;
+  paintPlayhead?.();
+  renderCurrentEditor?.();
+  renderTrackChains?.();
+});
+
 /* ---------------- UI wiring ---------------- */
 trackSel?.addEventListener('change', (e) => {
   selectedTrackIndex = Math.max(0, Math.min(+e.target.value, tracks.length - 1));
@@ -359,8 +434,7 @@ trackSel?.addEventListener('change', (e) => {
 });
 addTrackBtn?.addEventListener('click', () => {
   const n = tracks.length + 1;
-  const t = createTrack(`Track ${n}`, 'synth', 16);
-  normalizeTrack(t);
+  const t = normalizeTrack(createTrack(`Track ${n}`, 'synth', 16));
   t.chain = [{ pattern: song.current, repeats: 1 }];
   t.chainPos = 0;
   t.repeatsLeft = 1;
@@ -368,8 +442,8 @@ addTrackBtn?.addEventListener('click', () => {
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
 });
-engineSel?.addEventListener('change', (e) => {
-  currentTrack().engine = e.target.value;
+engineSel?.addEventListener('change', () => {
+  currentTrack().engine = engineSel.value;
   normalizeTrack(currentTrack());
   refreshAndSelect(selectedTrackIndex);
 });
@@ -392,140 +466,6 @@ togglePiano?.addEventListener('change', () => {
   showEditorForTrack();
 });
 
-// ---------- Transport (bulletproof) ----------
-function safeNormalize(t) {
-  if (!t) return t;
-  t.mode = t.mode ?? 'steps';
-  t.length = Math.max(1, (t.length ?? 16) | 0);
-  t.pos = Number.isInteger(t.pos) ? t.pos : -1;
-  if (!Array.isArray(t.steps) || t.steps.length !== t.length) {
-    t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
-  }
-  if (typeof t._effectiveAudible !== 'boolean') t._effectiveAudible = true;
-  if (!Array.isArray(t.chain) || !t.chain.length) {
-    t.chain = [{ pattern: song.current ?? 0, repeats: 1 }];
-    t.chainPos = 0;
-    t.repeatsLeft = 1;
-  } else {
-    t.chainPos = Number.isInteger(t.chainPos) ? t.chainPos : 0;
-    const rep = t.chain[t.chainPos]?.repeats ?? 1;
-    t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? rep) | 0);
-  }
-  return t;
-}
-
-// Robust scheduler fallback (16th-note tick)
-function startScheduler(bpm, cb) {
-  const interval = 60000 / (bpm * 4); // 16ths
-  let next = performance.now();
-  let alive = true;
-
-  function loop() {
-    if (!alive) return;
-    const now = performance.now();
-    if (now >= next) {
-      next += interval;
-      cb();
-      // catch up if the tab was paused
-      while (now > next + interval) next += interval;
-    }
-    requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
-  return () => { alive = false; };
-}
-
-let stopHandle = null;
-
-const playBtn = document.getElementById('play');
-const stopBtn = document.getElementById('stop');
-
-if (playBtn) playBtn.onclick = async () => {
-  await ctx.resume();
-
-  const bpmRaw = Number(tempoInput?.value ?? 120);
-  const bpm = Math.min(300, Math.max(40, Number.isFinite(bpmRaw) ? bpmRaw : 120));
-
-  // choose scheduler: core.js if available, otherwise fallback
-  const runner = (typeof startTransport === 'function' && typeof stopTransport === 'function')
-    ? (bpm, cb) => {
-        startTransport(bpm, cb);
-        return () => stopTransport();
-      }
-    : (bpm, cb) => startScheduler(bpm, cb);
-
-  stopHandle = runner(bpm, () => {
-    try {
-      applyMixer?.(tracks);
-
-      for (const _t of tracks) {
-        const t = safeNormalize(_t);
-
-        // step advance
-        const L = Math.max(1, t.length | 0);
-        t.pos = ((t.pos | 0) + 1) % L;
-
-        // trigger audio
-        if ((t._effectiveAudible ?? true) === true) {
-          if (t.mode === 'piano') {
-            const notes = (typeof notesStartingAt === 'function' ? notesStartingAt(t, t.pos) : []) || [];
-            for (const n of notes) triggerEngine?.(t, n?.vel ?? 1, n?.pitch);
-          } else {
-            const st = Array.isArray(t.steps) ? t.steps[t.pos] : null;
-            if (st && st.on) triggerEngine?.(t, st.vel ?? 1);
-          }
-        }
-
-        // per-track chain: advance when this track wraps
-        if (t.pos === 0) {
-          try {
-            advanceTrackChain(t);
-          } catch (e) {
-            console.error('[KJ] advanceTrackChain error:', e);
-          }
-        }
-      }
-
-      paintPlayhead?.();
-
-      // light UI refresh
-      window.__kj_ui_counter = (window.__kj_ui_counter || 0) + 1;
-      if ((window.__kj_ui_counter % 3) === 0) renderTrackChains?.();
-    } catch (err) {
-      console.error('[KJ] transport tick crashed:', err);
-    }
-  });
-};
-
-if (stopBtn) stopBtn.onclick = () => {
-  try { stopHandle && stopHandle(); } catch {}
-  stopHandle = null;
-  for (const t of tracks) t.pos = -1;
-  paintPlayhead?.();
-  renderCurrentEditor?.();
-  renderTrackChains?.();
-};
-
-      // Per-track chain: advance when THIS track wraps
-      if (t.pos === 0) advanceTrackChain(t);
-    }
-
-    paintPlayhead?.();
-
-    // Throttle UI refresh to keep it light
-    window.__kj_ui_counter = (window.__kj_ui_counter || 0) + 1;
-    if ((window.__kj_ui_counter % 3) === 0) renderTrackChains?.();
-  });
-});
-
-stopBtn && (stopBtn.onclick = () => {
-  stopTransport();
-  for (const t of tracks) t.pos = -1;
-  paintPlayhead?.();
-  renderCurrentEditor?.();
-  renderTrackChains?.();
-});
-
 /* ---------------- Boot ---------------- */
 tracks.push(normalizeTrack(createTrack('Kick',  'kick808', 16)));
 tracks.push(normalizeTrack(createTrack('Hat',   'hat808',  12)));
@@ -546,7 +486,7 @@ refreshAndSelect(selectedTrackIndex);
 refreshPatternSelect();
 renderTrackChains();
 
-/* Optional: lightweight heartbeat logging (comment out if noisy)
+/* Optional: heartbeat log (comment out if noisy)
 if (!window.__kj_log) {
   window.__kj_log = 0;
   setInterval(() => {
