@@ -9,7 +9,7 @@ import { createPianoRoll } from './pianoroll.js';
 import { refreshTrackSelect, renderParams, makeField } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
 
-// ---------- DOM ----------
+/* ---------------- DOM ---------------- */
 const tempoInput   = document.getElementById('tempo');
 const trackSel     = document.getElementById('trackSelect');
 const addTrackBtn  = document.getElementById('addTrack');
@@ -24,16 +24,19 @@ const patLenInput    = document.getElementById('patLen');
 
 const togglePiano  = document.getElementById('togglePiano');
 
-// Create per-track chain UI container if missing
+const playBtn = document.getElementById('play');
+const stopBtn = document.getElementById('stop');
+
+/* Per-track chain UI mount (create if missing) */
 let trackChainView = document.getElementById('trackChainView');
 if (!trackChainView) {
   trackChainView = document.createElement('div');
   trackChainView.id = 'trackChainView';
   trackChainView.style.marginTop = '10px';
-  seqEl.parentElement?.appendChild(trackChainView);
+  (seqEl?.parentElement || document.body).appendChild(trackChainView);
 }
 
-// ---------- App State ----------
+/* ---------------- App State ---------------- */
 const tracks = [];
 let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
@@ -41,18 +44,44 @@ const currentTrack = () => tracks[selectedTrackIndex];
 const sampleCache = {};
 const song = {
   patterns: [],
-  current: 0, // selected pattern in the library
+  current: 0, // selected row in the pattern library
 };
 
-// ---------- Utils ----------
+/* ---------------- Safety / Normalization ---------------- */
+function normalizeTrack(t) {
+  if (!t) return t;
+  t.name   = t.name   ?? 'Track';
+  t.mode   = t.mode   ?? 'steps';               // 'steps' | 'piano'
+  t.length = Math.max(1, (t.length ?? 16)|0);   // never 0/NaN
+  t.pos    = Number.isInteger(t.pos) ? t.pos : -1;
+
+  // steps array for step mode
+  if (!Array.isArray(t.steps) || t.steps.length !== t.length) {
+    t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
+  }
+
+  // playback flag (some UIs set this later)
+  if (typeof t._effectiveAudible !== 'boolean') t._effectiveAudible = true;
+
+  // per-track chain defaults
+  if (!Array.isArray(t.chain) || t.chain.length === 0) {
+    t.chain = [{ pattern: song.current ?? 0, repeats: 1 }];
+  }
+  t.chainPos    = Number.isInteger(t.chainPos) ? t.chainPos : 0;
+  const slotRep = t.chain[t.chainPos]?.repeats;
+  t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? (slotRep ?? 1))|0);
+  return t;
+}
+
+/* ---------------- Save Pattern Snapshot ---------------- */
 function saveCurrentPatternSnapshot() {
   if (!song.patterns.length) return;
   const name = song.patterns[song.current]?.name || `P${song.current+1}`;
-  const curLen = song.patterns[song.current]?.len16 || 16;
+  const curLen = Math.max(1, song.patterns[song.current]?.len16 || 16);
   song.patterns[song.current] = serializePattern(name, tracks, curLen);
 }
 
-// ---------- Editors ----------
+/* ---------------- Editors ---------------- */
 const stepGrid = createGrid(
   seqEl,
   (i) => {
@@ -97,7 +126,7 @@ function paintPlayhead(){
 }
 function syncToggleFromTrack(){ togglePiano.checked = currentTrack().mode === 'piano'; }
 
-// ---------- Params ----------
+/* ---------------- Params ---------------- */
 async function handleSampleFile(file){
   if (!file) return;
   const ab = await file.arrayBuffer();
@@ -115,11 +144,10 @@ function renderParamsPanel(){
     t: currentTrack(),
     onStepsChange: (newLen) => {
       resizeTrackSteps(currentTrack(), newLen);
-      // Ensure t.pos always valid; chain is per-track and fires when pos wraps
-      currentTrack().pos = currentTrack().pos % Math.max(1, currentTrack().length);
+      normalizeTrack(currentTrack());
       showEditorForTrack();
       paintPlayhead();
-      renderTrackChains(); // refresh chain UI because length change may affect loops
+      renderTrackChains(); // length changes affect wrap cadence
     },
     onSampleFile: handleSampleFile,
   });
@@ -133,7 +161,7 @@ function refreshAndSelect(i = selectedTrackIndex){
   renderTrackChains();
 }
 
-// ---------- Pattern Library ----------
+/* ---------------- Pattern Library ---------------- */
 function refreshPatternSelect() {
   patternSel.innerHTML = '';
   song.patterns.forEach((p, i) => {
@@ -151,10 +179,9 @@ function switchToPattern(index) {
   index = Math.max(0, Math.min(index, song.patterns.length - 1));
   song.current = index;
   const pat = song.patterns[index];
-  const { tracks: newTracks } = instantiatePattern(pat, sampleCache);
+  const { tracks: newTracks } = instantiatePattern(pat, sampleCache) || { tracks: [] };
 
-  // Merge per-track musical data from pattern into existing runtime tracks,
-  // but keep per-track chain state (chain, chainPos, repeatsLeft, name).
+  // Merge musical data; keep per-track chain state/name/engine
   const byName = Object.create(null);
   newTracks.forEach(nt => { byName[nt.name] = nt; });
 
@@ -162,13 +189,14 @@ function switchToPattern(index) {
     const t = tracks[i];
     const src = byName[t.name] ?? newTracks[i];
     if (src) {
-      const { chain, chainPos, repeatsLeft, name } = t;
+      const keep = { chain:t.chain, chainPos:t.chainPos, repeatsLeft:t.repeatsLeft, name:t.name, engine:t.engine };
       Object.assign(t, src);
-      t.name = name;                // preserve runtime name
-      t.chain = chain;              // preserve chain lane
-      t.chainPos = chainPos ?? 0;
-      t.repeatsLeft = repeatsLeft ?? (t.chain?.[t.chainPos]?.repeats || 1);
+      Object.assign(t, keep);
+      normalizeTrack(t);
       t.pos = -1;
+    } else {
+      // No matching source; still normalize to avoid runtime errors
+      normalizeTrack(t);
     }
   }
 
@@ -177,20 +205,42 @@ function switchToPattern(index) {
   refreshPatternSelect();
 }
 
-// ---------- Per-Track Chaining ----------
+function addNewPattern() {
+  const name = `P${song.patterns.length + 1}`;
+  const pat = serializePattern(name, tracks, 16);
+  song.patterns.push(pat);
+  song.current = song.patterns.length - 1;
+  refreshPatternSelect();
+}
+function duplicateCurrentPattern() {
+  const src = song.patterns[song.current];
+  const copy = clonePatternData(src);
+  copy.name = `${src.name || 'P'}*`;
+  song.patterns.push(copy);
+  song.current = song.patterns.length - 1;
+  refreshPatternSelect();
+}
+function updateCurrentPatternLength(newLen16) {
+  const cur = song.patterns[song.current];
+  if (!cur) return;
+  cur.len16 = Math.max(1, Math.floor(Number(newLen16)||16));
+  patLenInput.value = cur.len16;
+}
+
+/* ---------------- Per-Track Chaining ---------------- */
 function ensureTrackChainInit(t){
   if (!t.chain || !t.chain.length) {
-    t.chain = [{ pattern: song.current, repeats: 1 }];
+    t.chain = [{ pattern: song.current ?? 0, repeats: 1 }];
     t.chainPos = 0;
     t.repeatsLeft = 1;
   } else {
-    t.chainPos = t.chainPos ?? 0;
-    t.repeatsLeft = t.repeatsLeft ?? (t.chain[t.chainPos]?.repeats || 1);
+    t.chainPos = Number.isInteger(t.chainPos) ? t.chainPos : 0;
+    t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? (t.chain[t.chainPos]?.repeats ?? 1))|0);
   }
 }
 
-// Advance JUST this track’s chain when its step counter wraps to 0
 function advanceTrackChain(t) {
+  normalizeTrack(t);
   ensureTrackChainInit(t);
 
   if (t.repeatsLeft > 1) {
@@ -201,34 +251,31 @@ function advanceTrackChain(t) {
   // Move to next slot
   t.chainPos = (t.chainPos + 1) % t.chain.length;
   const slot = t.chain[t.chainPos];
-  t.repeatsLeft = slot.repeats;
+  t.repeatsLeft = Math.max(1, (slot?.repeats ?? 1)|0);
 
-  // Load pattern content for THIS track only
-  const pat = song.patterns[slot.pattern];
-  if (pat) {
-    const { tracks: patTracks } = instantiatePattern(pat, sampleCache);
-    // Prefer name match; fallback to same index
-    const nt = patTracks.find(x => x.name === t.name) ?? patTracks[tracks.indexOf(t)];
-    if (nt) {
-      const keep = { chain: t.chain, chainPos: t.chainPos, repeatsLeft: t.repeatsLeft, name: t.name, engine: t.engine };
-      Object.assign(t, nt);
-      // restore persistent fields
-      t.name = keep.name;
-      t.engine = keep.engine;
-      t.chain = keep.chain;
-      t.chainPos = keep.chainPos;
-      t.repeatsLeft = keep.repeatsLeft;
-    }
+  // Load pattern data for THIS track only
+  const pat = song.patterns?.[slot?.pattern];
+  if (!pat) { t.pos = -1; return; }
+
+  const res = instantiatePattern(pat, sampleCache);
+  const patTracks = (res && Array.isArray(res.tracks)) ? res.tracks : [];
+  const nt = patTracks.find(x => x.name === t.name) ?? patTracks[tracks.indexOf(t)] ?? null;
+
+  if (nt) {
+    const keep = { chain:t.chain, chainPos:t.chainPos, repeatsLeft:t.repeatsLeft, name:t.name, engine:t.engine, _effectiveAudible:t._effectiveAudible };
+    Object.assign(t, nt);
+    Object.assign(t, keep);
+    normalizeTrack(t);
   }
 
-  // Reset its local step playhead
-  t.pos = -1;
+  t.pos = -1; // start fresh on next tick
 }
 
-// ---------- Per-Track Chain UI ----------
+/* ---------------- Per-Track Chain UI ---------------- */
 function renderTrackChains(){
   trackChainView.innerHTML = '';
   tracks.forEach((t, ti) => {
+    normalizeTrack(t);
     ensureTrackChainInit(t);
 
     const row = document.createElement('div');
@@ -244,7 +291,6 @@ function renderTrackChains(){
     label.style.opacity = '0.85';
     row.appendChild(label);
 
-    // Render chain slots
     t.chain.forEach((slot, si) => {
       const btn = document.createElement('button');
       btn.className = 'chain-slot' + (si === t.chainPos ? ' active' : '');
@@ -253,6 +299,7 @@ function renderTrackChains(){
       btn.style.borderRadius = '6px';
       btn.style.border = '1px solid var(--border,#333)';
       btn.style.background = si === t.chainPos ? 'var(--accent,#444)' : 'transparent';
+
       btn.onclick = () => {
         t.chainPos = si;
         t.repeatsLeft = slot.repeats;
@@ -269,10 +316,10 @@ function renderTrackChains(){
           renderTrackChains();
         }
       };
+
       row.appendChild(btn);
     });
 
-    // Add slot (+)
     const addBtn = document.createElement('button');
     addBtn.textContent = '+';
     addBtn.title = 'Add chain slot (uses current pattern)';
@@ -283,7 +330,6 @@ function renderTrackChains(){
     };
     row.appendChild(addBtn);
 
-    // Clear chain
     const clrBtn = document.createElement('button');
     clrBtn.textContent = 'Clear';
     clrBtn.title = 'Clear chain';
@@ -296,7 +342,6 @@ function renderTrackChains(){
     };
     row.appendChild(clrBtn);
 
-    // Live status
     const stat = document.createElement('div');
     stat.style.marginLeft = 'auto';
     const slot = t.chain[t.chainPos];
@@ -307,14 +352,15 @@ function renderTrackChains(){
   });
 }
 
-// ---------- UI wiring ----------
-trackSel.addEventListener('change', (e) => {
+/* ---------------- UI wiring ---------------- */
+trackSel?.addEventListener('change', (e) => {
   selectedTrackIndex = Math.max(0, Math.min(+e.target.value, tracks.length - 1));
   refreshAndSelect(selectedTrackIndex);
 });
-addTrackBtn.addEventListener('click', () => {
+addTrackBtn?.addEventListener('click', () => {
   const n = tracks.length + 1;
   const t = createTrack(`Track ${n}`, 'synth', 16);
+  normalizeTrack(t);
   t.chain = [{ pattern: song.current, repeats: 1 }];
   t.chainPos = 0;
   t.repeatsLeft = 1;
@@ -322,15 +368,16 @@ addTrackBtn.addEventListener('click', () => {
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
 });
-engineSel.addEventListener('change', (e) => {
+engineSel?.addEventListener('change', (e) => {
   currentTrack().engine = e.target.value;
+  normalizeTrack(currentTrack());
   refreshAndSelect(selectedTrackIndex);
 });
 
-patternSel.addEventListener('change', (e) => { saveCurrentPatternSnapshot(); switchToPattern(+e.target.value); });
-addPatternBtn.addEventListener('click', () => { saveCurrentPatternSnapshot(); const name=`P${song.patterns.length+1}`; const pat=serializePattern(name, tracks, 16); song.patterns.push(pat); song.current=song.patterns.length-1; refreshPatternSelect(); });
-dupPatternBtn.addEventListener('click', () => { saveCurrentPatternSnapshot(); const src=song.patterns[song.current]; const copy=clonePatternData(src); copy.name=`${src.name||'P'}*`; song.patterns.push(copy); song.current=song.patterns.length-1; refreshPatternSelect(); });
-patLenInput.addEventListener('change', (e) => {
+patternSel?.addEventListener('change', (e) => { saveCurrentPatternSnapshot(); switchToPattern(+e.target.value); });
+addPatternBtn?.addEventListener('click', () => { saveCurrentPatternSnapshot(); addNewPattern(); switchToPattern(song.current); });
+dupPatternBtn?.addEventListener('click', () => { saveCurrentPatternSnapshot(); duplicateCurrentPattern(); switchToPattern(song.current); });
+patLenInput?.addEventListener('change', (e) => {
   const cur = song.patterns[song.current];
   if (cur) {
     cur.len16 = Math.max(1, Math.floor(Number(e.target.value)||16));
@@ -338,14 +385,15 @@ patLenInput.addEventListener('change', (e) => {
   }
 });
 
-togglePiano.addEventListener('change', () => {
+togglePiano?.addEventListener('change', () => {
   const t = currentTrack();
   t.mode = togglePiano.checked ? 'piano' : 'steps';
+  normalizeTrack(t);
   showEditorForTrack();
 });
 
-// ---------- Transport ----------
-document.getElementById('play').onclick = async () => {
+/* ---------------- Transport ---------------- */
+playBtn && (playBtn.onclick = async () => {
   await ctx.resume();
   const bpmRaw = Number(tempoInput?.value ?? 120);
   const bpm = Math.min(300, Math.max(40, Number.isFinite(bpmRaw) ? bpmRaw : 120));
@@ -354,48 +402,51 @@ document.getElementById('play').onclick = async () => {
     applyMixer(tracks);
 
     for (const t of tracks) {
-      if (!Number.isFinite(t.length) || t.length <= 0) continue;
+      normalizeTrack(t);
 
-      // advance this track's local step
-      t.pos = (t.pos + 1) % t.length;
+      const L = Math.max(1, t.length|0);
+      t.pos = ((t.pos|0) + 1) % L;
 
-      // trigger playback for this track
-      if (t._effectiveAudible) {
+      if ((t._effectiveAudible ?? true) === true) {
         if (t.mode === 'piano') {
-          const notes = notesStartingAt(t, t.pos);
-          for (const n of notes) triggerEngine(t, n.vel ?? 1, n.pitch);
+          const notes = (typeof notesStartingAt === 'function' ? notesStartingAt(t, t.pos) : []) || [];
+          for (const n of notes) triggerEngine?.(t, n?.vel ?? 1, n?.pitch);
         } else {
-          const st = t.steps[t.pos];
-          if (st?.on) triggerEngine(t, st.vel);
+          const st = Array.isArray(t.steps) ? t.steps[t.pos] : null;
+          if (st && st.on) triggerEngine?.(t, st.vel ?? 1);
         }
       }
 
-      // when this track wraps to 0, consume a repeat / advance its chain
+      // Per-track chain: advance when THIS track wraps
       if (t.pos === 0) advanceTrackChain(t);
     }
 
-    paintPlayhead();
-    // Light-weight refresh (not every tick necessary; okay for now)
-    renderTrackChains();
-  });
-};
+    paintPlayhead?.();
 
-document.getElementById('stop').onclick = () => {
+    // Throttle UI refresh to keep it light
+    window.__kj_ui_counter = (window.__kj_ui_counter || 0) + 1;
+    if ((window.__kj_ui_counter % 3) === 0) renderTrackChains?.();
+  });
+});
+
+stopBtn && (stopBtn.onclick = () => {
   stopTransport();
   for (const t of tracks) t.pos = -1;
-  paintPlayhead();
-  renderCurrentEditor();
-  renderTrackChains();
-};
+  paintPlayhead?.();
+  renderCurrentEditor?.();
+  renderTrackChains?.();
+});
 
-// ---------- Boot ----------
-tracks.push(createTrack('Kick',  'kick808', 16));
-tracks.push(createTrack('Hat',   'hat808',  12));
-tracks.push(createTrack('Synth', 'synth',   16));
+/* ---------------- Boot ---------------- */
+tracks.push(normalizeTrack(createTrack('Kick',  'kick808', 16)));
+tracks.push(normalizeTrack(createTrack('Hat',   'hat808',  12)));
+tracks.push(normalizeTrack(createTrack('Synth', 'synth',   16)));
+
 for (const t of tracks) {
   t.chain = [{ pattern: 0, repeats: 1 }];
   t.chainPos = 0;
   t.repeatsLeft = 1;
+  normalizeTrack(t);
 }
 selectedTrackIndex = 0;
 
@@ -405,3 +456,14 @@ song.current = 0;
 refreshAndSelect(selectedTrackIndex);
 refreshPatternSelect();
 renderTrackChains();
+
+/* Optional: lightweight heartbeat logging (comment out if noisy)
+if (!window.__kj_log) {
+  window.__kj_log = 0;
+  setInterval(() => {
+    console.log('[KJ] tick',
+      tracks.map(tr => `${tr.name}:${tr.pos}/${tr.length} r${tr.repeatsLeft}`).join(' | ')
+    );
+  }, 600);
+}
+*/
