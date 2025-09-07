@@ -292,10 +292,12 @@ function renderChainView() {
 }
 function advanceChain() {
   if (song.chain.length === 0) return;
+
   if (song.repeatsLeft > 1) {
+    // Just count down — don’t reload the same pattern
     song.repeatsLeft--;
-    switchToPattern(song.chain[song.chainPos].pattern);
   } else {
+    // Move to next slot
     const nextPos = (song.chainPos + 1) % song.chain.length;
     enterChainSlot(nextPos);
   }
@@ -372,13 +374,13 @@ document.getElementById('play').onclick = async () => {
     }
 
     // pattern window
-    ensurePatternCoversTracks(); // recheck mid-play in case lengths changed
+    ensurePatternCoversTracks();
     patTicksLeft--;
     if (patTicksLeft <= 0) {
       const curLen = song.patterns[song.current]?.len16 || 16;
       patTicksLeft = curLen;
       saveCurrentPatternSnapshot();
-      if (followChain?.checked) advanceChain();
+      if (followChain?.checked && song.chain.length) advanceChain();
       else switchToPattern(song.current);
     }
 
