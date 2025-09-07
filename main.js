@@ -392,30 +392,119 @@ togglePiano?.addEventListener('change', () => {
   showEditorForTrack();
 });
 
-/* ---------------- Transport ---------------- */
-playBtn && (playBtn.onclick = async () => {
+// ---------- Transport (bulletproof) ----------
+function safeNormalize(t) {
+  if (!t) return t;
+  t.mode = t.mode ?? 'steps';
+  t.length = Math.max(1, (t.length ?? 16) | 0);
+  t.pos = Number.isInteger(t.pos) ? t.pos : -1;
+  if (!Array.isArray(t.steps) || t.steps.length !== t.length) {
+    t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
+  }
+  if (typeof t._effectiveAudible !== 'boolean') t._effectiveAudible = true;
+  if (!Array.isArray(t.chain) || !t.chain.length) {
+    t.chain = [{ pattern: song.current ?? 0, repeats: 1 }];
+    t.chainPos = 0;
+    t.repeatsLeft = 1;
+  } else {
+    t.chainPos = Number.isInteger(t.chainPos) ? t.chainPos : 0;
+    const rep = t.chain[t.chainPos]?.repeats ?? 1;
+    t.repeatsLeft = Math.max(1, (t.repeatsLeft ?? rep) | 0);
+  }
+  return t;
+}
+
+// Robust scheduler fallback (16th-note tick)
+function startScheduler(bpm, cb) {
+  const interval = 60000 / (bpm * 4); // 16ths
+  let next = performance.now();
+  let alive = true;
+
+  function loop() {
+    if (!alive) return;
+    const now = performance.now();
+    if (now >= next) {
+      next += interval;
+      cb();
+      // catch up if the tab was paused
+      while (now > next + interval) next += interval;
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  return () => { alive = false; };
+}
+
+let stopHandle = null;
+
+const playBtn = document.getElementById('play');
+const stopBtn = document.getElementById('stop');
+
+if (playBtn) playBtn.onclick = async () => {
   await ctx.resume();
+
   const bpmRaw = Number(tempoInput?.value ?? 120);
   const bpm = Math.min(300, Math.max(40, Number.isFinite(bpmRaw) ? bpmRaw : 120));
 
-  startTransport(bpm, () => {
-    applyMixer(tracks);
+  // choose scheduler: core.js if available, otherwise fallback
+  const runner = (typeof startTransport === 'function' && typeof stopTransport === 'function')
+    ? (bpm, cb) => {
+        startTransport(bpm, cb);
+        return () => stopTransport();
+      }
+    : (bpm, cb) => startScheduler(bpm, cb);
 
-    for (const t of tracks) {
-      normalizeTrack(t);
+  stopHandle = runner(bpm, () => {
+    try {
+      applyMixer?.(tracks);
 
-      const L = Math.max(1, t.length|0);
-      t.pos = ((t.pos|0) + 1) % L;
+      for (const _t of tracks) {
+        const t = safeNormalize(_t);
 
-      if ((t._effectiveAudible ?? true) === true) {
-        if (t.mode === 'piano') {
-          const notes = (typeof notesStartingAt === 'function' ? notesStartingAt(t, t.pos) : []) || [];
-          for (const n of notes) triggerEngine?.(t, n?.vel ?? 1, n?.pitch);
-        } else {
-          const st = Array.isArray(t.steps) ? t.steps[t.pos] : null;
-          if (st && st.on) triggerEngine?.(t, st.vel ?? 1);
+        // step advance
+        const L = Math.max(1, t.length | 0);
+        t.pos = ((t.pos | 0) + 1) % L;
+
+        // trigger audio
+        if ((t._effectiveAudible ?? true) === true) {
+          if (t.mode === 'piano') {
+            const notes = (typeof notesStartingAt === 'function' ? notesStartingAt(t, t.pos) : []) || [];
+            for (const n of notes) triggerEngine?.(t, n?.vel ?? 1, n?.pitch);
+          } else {
+            const st = Array.isArray(t.steps) ? t.steps[t.pos] : null;
+            if (st && st.on) triggerEngine?.(t, st.vel ?? 1);
+          }
+        }
+
+        // per-track chain: advance when this track wraps
+        if (t.pos === 0) {
+          try {
+            advanceTrackChain(t);
+          } catch (e) {
+            console.error('[KJ] advanceTrackChain error:', e);
+          }
         }
       }
+
+      paintPlayhead?.();
+
+      // light UI refresh
+      window.__kj_ui_counter = (window.__kj_ui_counter || 0) + 1;
+      if ((window.__kj_ui_counter % 3) === 0) renderTrackChains?.();
+    } catch (err) {
+      console.error('[KJ] transport tick crashed:', err);
+    }
+  });
+};
+
+if (stopBtn) stopBtn.onclick = () => {
+  try { stopHandle && stopHandle(); } catch {}
+  stopHandle = null;
+  for (const t of tracks) t.pos = -1;
+  paintPlayhead?.();
+  renderCurrentEditor?.();
+  renderTrackChains?.();
+};
 
       // Per-track chain: advance when THIS track wraps
       if (t.pos === 0) advanceTrackChain(t);
