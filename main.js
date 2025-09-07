@@ -45,9 +45,8 @@ const song = {
   repeatsLeft: 0
 };
 
-// Pattern window for this cycle (frozen until boundary)
-let patWindowLen = 16;
-let patTicksLeft = 16;
+// new: pattern position counter
+let patternPos = 0;
 
 // ----- Helpers -----
 function gcd(a, b){ return b ? gcd(b, a % b) : Math.abs(a||0); }
@@ -61,19 +60,6 @@ function lcmOfTrackLens(cap = 2048){
   return val;
 }
 
-// Recompute the pattern window (LCM of all track lengths) and reset tick countdown.
-// Also writes it to the current pattern's len16 so UI reflects truth.
-function resetPatternWindow() {
-  const need = lcmOfTrackLens();
-  const cur = song.patterns[song.current];
-  if (cur) {
-    cur.len16 = need;
-    patLenInput.value = cur.len16;
-  }
-  patWindowLen = need;
-  patTicksLeft = need;
-}
-
 function syncTrackToSelected(t) {
   const baseLen = currentTrack()?.length ?? 16;
   resizeTrackSteps(t, baseLen);
@@ -84,7 +70,7 @@ function syncTrackToSelected(t) {
 function saveCurrentPatternSnapshot() {
   if (!song.patterns.length) return;
   const name = song.patterns[song.current]?.name || `P${song.current+1}`;
-  const curLen = song.patterns[song.current]?.len16 || patWindowLen || 16;
+  const curLen = song.patterns[song.current]?.len16 || 16;
   song.patterns[song.current] = serializePattern(name, tracks, curLen);
 }
 
@@ -157,7 +143,6 @@ function renderParamsPanel(){
       resizeTrackSteps(currentTrack(), newLen);
       showEditorForTrack();
       paintPlayhead();
-      resetPatternWindow();    // edits take effect immediately (but frozen until next boundary)
       updateChainStatus();
     },
     onSampleFile: handleSampleFile,
@@ -198,12 +183,12 @@ function switchToPattern(index) {
 
   refreshAndSelect(selectedTrackIndex);
   refreshPatternSelect();
-  resetPatternWindow(); // set patWindowLen & patTicksLeft for this pattern cycle
+  patternPos = 0; // reset playhead for new pattern
 }
 
 function addNewPattern() {
   const name = `P${song.patterns.length + 1}`;
-  const pat = serializePattern(name, tracks, patWindowLen || 16);
+  const pat = serializePattern(name, tracks, 16);
   song.patterns.push(pat);
   song.current = song.patterns.length - 1;
   refreshPatternSelect();
@@ -217,12 +202,10 @@ function duplicateCurrentPattern() {
   refreshPatternSelect();
 }
 function updateCurrentPatternLength(newLen16) {
-  // Keep this wired so manual edits in the numeric box don't lie,
-  // but immediately re-freeze the window from LCM to stay consistent.
   const cur = song.patterns[song.current];
   if (!cur) return;
   cur.len16 = Math.max(1, Math.floor(newLen16));
-  resetPatternWindow();
+  patLenInput.value = cur.len16;
 }
 
 // ----- Chain model -----
@@ -255,7 +238,7 @@ function enterChainSlot(i){
   song.chainPos = ((i % song.chain.length) + song.chain.length) % song.chain.length;
   const slot = song.chain[song.chainPos];
   song.repeatsLeft = slot.repeats;
-  switchToPattern(slot.pattern); // calls resetPatternWindow()
+  switchToPattern(slot.pattern);
   renderChainView();
 }
 function addCurrentToChain() {
@@ -298,11 +281,12 @@ function advanceChain() {
   if (song.chain.length === 0) return;
 
   if (song.repeatsLeft > 1) {
-    song.repeatsLeft--;               // stay on current pattern; no reload
-    resetPatternWindow();             // start next repeat fresh
+    song.repeatsLeft--;
+    patternPos = 0; // start same pattern again
   } else {
     const nextPos = (song.chainPos + 1) % song.chain.length;
-    enterChainSlot(nextPos);          // loads pattern & resets window/ticks
+    enterChainSlot(nextPos);
+    patternPos = 0; // reset for new pattern
   }
 }
 function updateChainStatus() {
@@ -311,7 +295,7 @@ function updateChainStatus() {
   const slot = song.chain[song.chainPos];
   const repInfo = slot ? `• Repeats left: ${song.repeatsLeft}/${slot.repeats}` : '';
   chainStatus.textContent =
-    `Now: ${curName} • Len ${song.patterns[song.current]?.len16 || patWindowLen} • ` +
+    `Now: ${curName} • Len ${song.patterns[song.current]?.len16 || 16} • ` +
     `Chain pos: ${song.chain.length ? (song.chainPos+1) : 0}/${Math.max(1, song.chain.length)} ${repInfo} • Mode: ${mode}`;
 }
 
@@ -327,7 +311,6 @@ addTrackBtn.addEventListener('click', () => {
   tracks.push(t);
   selectedTrackIndex = tracks.length - 1;
   refreshAndSelect(selectedTrackIndex);
-  resetPatternWindow();
 });
 engineSel.addEventListener('change', (e) => {
   currentTrack().engine = e.target.value;
@@ -376,15 +359,23 @@ document.getElementById('play').onclick = async () => {
       }
     }
 
-    // pattern window (FROZEN for this cycle)
-    patTicksLeft--;
-    if (patTicksLeft <= 0) {
+    // pattern position
+    patternPos++;
+    const curLen = song.patterns[song.current]?.len16 || 16;
+
+    if (patternPos >= curLen) {
       saveCurrentPatternSnapshot();
 
       if (followChain?.checked && song.chain.length) {
-        advanceChain(); // handles repeats & slot hop, and resets window as needed
+        if (song.repeatsLeft > 1) {
+          song.repeatsLeft--;
+          patternPos = 0;
+        } else {
+          advanceChain();
+          patternPos = 0;
+        }
       } else {
-        resetPatternWindow(); // loop same pattern: new cycle, reset window
+        patternPos = 0; // loop same pattern
       }
     }
 
@@ -398,6 +389,7 @@ document.getElementById('stop').onclick = () => {
   for (const t of tracks) t.pos = -1;
   paintPlayhead();
   renderCurrentEditor();
+  patternPos = 0;
 };
 
 // ----- Boot -----
@@ -408,7 +400,7 @@ selectedTrackIndex = 0;
 
 song.patterns.push(serializePattern('P1', tracks, 16));
 song.current = 0;
-resetPatternWindow();
+patternPos = 0;
 
 refreshAndSelect(selectedTrackIndex);
 refreshPatternSelect();
