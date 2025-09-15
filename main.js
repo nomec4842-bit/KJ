@@ -119,6 +119,15 @@ trackSel.onchange = () => {
   refreshAndSelect(selectedTrackIndex);
 };
 
+addTrackBtn.onclick = () => {
+  const eng = engineSel.value || 'synth';
+  const name = `Track ${tracks.length + 1}`;
+  tracks.push(normalizeTrack(createTrack(name, eng, 16)));
+  selectedTrackIndex = tracks.length - 1;
+  applyMixer(tracks);
+  refreshAndSelect(selectedTrackIndex);
+};
+
 /* ---------- Patterns ---------- */
 function refreshPatternSelect() {
   patternSel.innerHTML = '';
