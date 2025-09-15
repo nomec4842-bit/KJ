@@ -114,6 +114,11 @@ function refreshAndSelect(i = selectedTrackIndex){
   renderParamsPanel();
 }
 
+trackSel.onchange = () => {
+  selectedTrackIndex = parseInt(trackSel.value, 10);
+  refreshAndSelect(selectedTrackIndex);
+};
+
 /* ---------- Patterns ---------- */
 function refreshPatternSelect() {
   patternSel.innerHTML = '';
