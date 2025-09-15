@@ -23,7 +23,7 @@ export function createGrid(seqEl, onToggle, onSetVel, onDoubleToggle) {
       cell.appendChild(velBar);
 
       // --- Double-click/tap handling ---
-      let lastTap = 0, tmr = null;
+      let lastTap = 0;
       const DOUBLE_MS = 280;
 
       // Native dblclick (desktop)
@@ -34,14 +34,18 @@ export function createGrid(seqEl, onToggle, onSetVel, onDoubleToggle) {
 
       // Manual double detection for taps/clicks
       cell.addEventListener('click', () => {
+        if (!onDoubleToggle) {
+          onToggle(i);
+          return;
+        }
+
         const now = performance.now();
         if (now - lastTap < DOUBLE_MS) {
-          if (tmr) { clearTimeout(tmr); tmr = null; }
-          if (onDoubleToggle) onDoubleToggle(i);
+          onDoubleToggle(i);
           lastTap = 0;
         } else {
           lastTap = now;
-          tmr = setTimeout(() => { onToggle(i); tmr = null; }, DOUBLE_MS);
+          onToggle(i);
         }
       });
 
