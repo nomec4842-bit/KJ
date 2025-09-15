@@ -64,12 +64,6 @@ const stepGrid = createGrid(
     st.on = !st.on;
     st.vel = st.on ? 1 : 0;
     renderCurrentEditor();
-  },
-  (i, v) => { // drag for velocity
-    const st = currentTrack().steps[i];
-    if (v < 0.15) { st.on = false; st.vel = 0; }
-    else { st.on = true; st.vel = v; }
-    renderCurrentEditor();
   }
 );
 

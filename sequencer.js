@@ -4,7 +4,7 @@
  * Build the step grid UI for ONE visible track.
  * You can change its length later via setLength().
  */
-export function createGrid(seqEl, onToggle, onSetVel, onDoubleToggle) {
+export function createGrid(seqEl, onToggle, onDoubleToggle) {
   let gridCells = [];
   let currentLen = 16;
 
@@ -17,10 +17,6 @@ export function createGrid(seqEl, onToggle, onSetVel, onDoubleToggle) {
       const cell = document.createElement('div');
       cell.className = 'cell';
       cell.dataset.index = i;
-
-      const velBar = document.createElement('div');
-      velBar.className = 'vel';
-      cell.appendChild(velBar);
 
       // --- Double-click/tap handling ---
       let lastTap = 0;
@@ -48,18 +44,6 @@ export function createGrid(seqEl, onToggle, onSetVel, onDoubleToggle) {
           onToggle(i);
         }
       });
-
-      // Drag velocity
-      let dragging=false, startY=0;
-      const setFromY = (y)=>{
-        const dy = (startY - y); // up = louder
-        const v = Math.max(0.0, Math.min(1.0, 0.5 + dy/120));
-        onSetVel(i, v);
-      };
-      cell.addEventListener('pointerdown', (e)=>{ dragging=true; startY=e.clientY; cell.setPointerCapture(e.pointerId); });
-      cell.addEventListener('pointermove', (e)=>{ if(dragging) setFromY(e.clientY); });
-      cell.addEventListener('pointerup',   (e)=>{ dragging=false; try{ cell.releasePointerCapture(e.pointerId);}catch{} });
-
       seqEl.appendChild(cell);
       gridCells.push(cell);
     }
@@ -70,8 +54,6 @@ export function createGrid(seqEl, onToggle, onSetVel, onDoubleToggle) {
       const st = getStep(i);
       const cell = gridCells[i];
       cell.classList.toggle('on', !!st?.on);
-      const bar = cell.querySelector('.vel');
-      if (bar) bar.style.height = st?.on ? Math.round((st.vel || 0)*100)+'%' : '0';
     }
   }
 
