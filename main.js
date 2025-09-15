@@ -110,6 +110,7 @@ function refreshAndSelect(i = selectedTrackIndex){
   normalizeTrack(currentTrack());
   refreshTrackSelect(trackSel, tracks, i);
   engineSel.value = currentTrack().engine;
+  togglePiano.checked = currentTrack().mode === 'piano';
   showEditorForTrack();
   renderParamsPanel();
 }
@@ -117,6 +118,12 @@ function refreshAndSelect(i = selectedTrackIndex){
 trackSel.onchange = () => {
   selectedTrackIndex = parseInt(trackSel.value, 10);
   refreshAndSelect(selectedTrackIndex);
+};
+
+togglePiano.onchange = () => {
+  currentTrack().mode = togglePiano.checked ? 'piano' : 'steps';
+  showEditorForTrack();
+  paintPlayhead();
 };
 
 addTrackBtn.onclick = () => {
