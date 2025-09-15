@@ -17,10 +17,18 @@ const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
 const paramsEl     = document.getElementById('params');
 
-const patternSel     = document.getElementById('patternSelect');
-const addPatternBtn  = document.getElementById('addPattern');
-const dupPatternBtn  = document.getElementById('dupPattern');
-const patLenInput    = document.getElementById('patLen');
+const patternSel       = document.getElementById('patternSelect');
+const addPatternBtn    = document.getElementById('addPattern');
+const dupPatternBtn    = document.getElementById('dupPattern');
+const patLenInput      = document.getElementById('patLen');
+
+const chainAddBtn      = document.getElementById('chainAdd');
+const chainClearBtn    = document.getElementById('chainClear');
+const chainPrevBtn     = document.getElementById('chainPrev');
+const chainNextBtn     = document.getElementById('chainNext');
+const followChainToggle = document.getElementById('followChain');
+const chainView        = document.getElementById('chainView');
+const chainStatus      = document.getElementById('chainStatus');
 
 const togglePiano  = document.getElementById('togglePiano');
 const playBtn      = document.getElementById('play');
@@ -32,7 +40,13 @@ let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
 
 const sampleCache = {};
-const song = { patterns: [], current: 0 };
+const song = {
+  patterns: [],
+  current: 0,
+  chain: [{ pattern: 0, repeats: 1 }],
+  chainPos: 0,
+  followChain: false
+};
 
 /* ---------- Track Normalization ---------- */
 function normalizeTrack(t) {
@@ -135,6 +149,103 @@ addTrackBtn.onclick = () => {
 };
 
 /* ---------- Patterns ---------- */
+function clampPatternIndex(idx) {
+  if (!song.patterns.length) return 0;
+  const parsed = Number.parseInt(idx, 10);
+  if (Number.isNaN(parsed)) return 0;
+  return Math.max(0, Math.min(song.patterns.length - 1, parsed));
+}
+
+function ensureChainPosition() {
+  if (!Array.isArray(song.chain)) song.chain = [];
+  if (!song.chain.length) {
+    song.chainPos = 0;
+    return;
+  }
+  const max = song.chain.length - 1;
+  if (song.chainPos > max) song.chainPos = max;
+  if (song.chainPos < 0) song.chainPos = 0;
+}
+
+function renderChain() {
+  ensureChainPosition();
+
+  if (!chainView) return;
+  chainView.innerHTML = '';
+
+  const total = song.chain.length;
+  if (!total) {
+    if (chainStatus) chainStatus.textContent = 'Chain empty';
+    if (chainPrevBtn) chainPrevBtn.disabled = true;
+    if (chainNextBtn) chainNextBtn.disabled = true;
+    if (chainClearBtn) chainClearBtn.disabled = true;
+    if (followChainToggle) followChainToggle.checked = !!song.followChain;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  song.chain.forEach((slot, index) => {
+    if (!slot || typeof slot !== 'object') {
+      slot = song.chain[index] = { pattern: clampPatternIndex(0), repeats: 1 };
+    }
+
+    const patIndex = clampPatternIndex(slot.pattern ?? 0);
+    song.chain[index].pattern = patIndex;
+    const repeats = Math.max(1, slot.repeats ?? 1);
+    song.chain[index].repeats = repeats;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toggle' + (index === song.chainPos ? ' active' : '');
+
+    const label = document.createElement('span');
+    const pat = song.patterns[patIndex];
+    const displayName = pat?.name ? `${patIndex + 1}. ${pat.name}` : `${patIndex + 1}. Pattern`;
+    label.textContent = displayName;
+
+    const rep = document.createElement('span');
+    rep.className = 'rep';
+    rep.textContent = `×${repeats}`;
+
+    btn.appendChild(label);
+    btn.appendChild(rep);
+    btn.onclick = () => gotoChainSlot(index);
+    frag.appendChild(btn);
+  });
+
+  chainView.appendChild(frag);
+
+  if (chainPrevBtn) chainPrevBtn.disabled = song.chainPos <= 0;
+  if (chainNextBtn) chainNextBtn.disabled = song.chainPos >= total - 1;
+  if (chainClearBtn) chainClearBtn.disabled = false;
+  if (followChainToggle) followChainToggle.checked = !!song.followChain;
+
+  const statusParts = [`Slot ${song.chainPos + 1}/${total}`];
+  if (song.followChain) statusParts.push('Auto');
+  if (chainStatus) chainStatus.textContent = statusParts.join(' • ');
+}
+
+function gotoChainSlot(slotIndex) {
+  if (!Array.isArray(song.chain) || !song.chain.length) {
+    ensureChainPosition();
+    renderChain();
+    return;
+  }
+
+  const clamped = Math.max(0, Math.min(song.chain.length - 1, slotIndex|0));
+  if (!song.patterns.length) {
+    song.chainPos = clamped;
+    renderChain();
+    return;
+  }
+
+  song.chainPos = clamped;
+  const slot = song.chain[clamped];
+  const patIndex = clampPatternIndex(slot?.pattern ?? 0);
+  song.current = patIndex;
+  refreshPatternSelect();
+}
+
 function refreshPatternSelect() {
   patternSel.innerHTML = '';
   song.patterns.forEach((p, i) => {
@@ -143,8 +254,49 @@ function refreshPatternSelect() {
     opt.textContent = `${i+1}. ${p.name || 'Pattern'}`;
     patternSel.appendChild(opt);
   });
-  patternSel.value = String(song.current);
+  if (song.patterns.length) {
+    const current = clampPatternIndex(song.current);
+    song.current = current;
+    patternSel.value = String(current);
+  } else {
+    song.current = 0;
+    patternSel.value = '';
+  }
+  renderChain();
 }
+
+if (chainAddBtn) chainAddBtn.onclick = () => {
+  if (!song.patterns.length) return;
+  const selected = Number.parseInt(patternSel?.value ?? '', 10);
+  const target = Number.isNaN(selected) ? song.current : selected;
+  const patIndex = clampPatternIndex(target);
+  song.chain.push({ pattern: patIndex, repeats: 1 });
+  renderChain();
+};
+
+if (chainClearBtn) chainClearBtn.onclick = () => {
+  if (!song.chain.length) return;
+  song.chain.length = 0;
+  song.chainPos = 0;
+  renderChain();
+};
+
+if (chainPrevBtn) chainPrevBtn.onclick = () => {
+  if (!song.chain.length) return;
+  gotoChainSlot(song.chainPos - 1);
+};
+
+if (chainNextBtn) chainNextBtn.onclick = () => {
+  if (!song.chain.length) return;
+  gotoChainSlot(song.chainPos + 1);
+};
+
+if (followChainToggle) followChainToggle.onchange = () => {
+  song.followChain = followChainToggle.checked;
+  renderChain();
+};
+
+renderChain();
 
 /* ---------- Transport ---------- */
 function startScheduler(bpm, cb) {
