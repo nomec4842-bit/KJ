@@ -1,5 +1,12 @@
 import { createTrack, resizeTrackSteps } from './tracks.js';
 
+// structuredClone is not universally supported in all browsers, so fall back to
+// JSON serialization when it's unavailable. This ensures pattern cloning works
+// across environments without throwing a ReferenceError.
+const clone = globalThis.structuredClone
+  ? (obj) => globalThis.structuredClone(obj)
+  : (obj) => JSON.parse(JSON.stringify(obj));
+
 export function serializePattern(name, tracks, patternLen16 = 16) {
   return {
     name,
@@ -17,7 +24,7 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
         vel: n.vel ?? 1
       })),
       gain: t.gain, pan: t.pan, mute: t.mute, solo: t.solo,
-      params: structuredClone(t.params),
+      params: clone(t.params),
       sampleName: t.sample?.name || ''
     }))
   };
@@ -41,7 +48,7 @@ export function instantiatePattern(pat, sampleCache = {}) {
       vel: n.vel ?? 1
     })) : [];
     t.gain = td.gain; t.pan = td.pan; t.mute = td.mute; t.solo = td.solo;
-    t.params = structuredClone(td.params);
+    t.params = clone(td.params);
     if (td.engine === 'sampler' && td.sampleName && sampleCache[td.sampleName]) {
       t.sample = { buffer: sampleCache[td.sampleName], name: td.sampleName };
     }
@@ -51,5 +58,5 @@ export function instantiatePattern(pat, sampleCache = {}) {
 }
 
 export function clonePatternData(p) {
-  return structuredClone(p);
+  return clone(p);
 }
