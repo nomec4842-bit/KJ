@@ -120,6 +120,58 @@ function paintPlayhead(){
 }
 
 /* ---------- Params ---------- */
+async function onSampleFile(file) {
+  if (!file) return;
+
+  const track = currentTrack();
+  if (!track) return;
+
+  let arrayBuffer;
+  try {
+    arrayBuffer = await file.arrayBuffer();
+  } catch (err) {
+    console.error('Failed to read sample file', err);
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Failed to read the selected audio file.');
+    }
+    return;
+  }
+
+  let buffer;
+  try {
+    buffer = await new Promise((resolve, reject) => {
+      let settled = false;
+      const done = (result) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+      const maybePromise = ctx.decodeAudioData(arrayBuffer, done, fail);
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(done, fail);
+      }
+    });
+  } catch (err) {
+    console.error('Failed to decode audio data', err);
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Unable to decode the selected audio file.');
+    }
+    return;
+  }
+
+  track.sample = { buffer, name: file.name };
+  sampleCache[file.name] = buffer;
+
+  if (track === currentTrack()) {
+    renderParamsPanel();
+  }
+}
+
 function renderParamsPanel(){
   const binder = renderParams(paramsEl, currentTrack(), makeField);
   binder({
@@ -130,7 +182,8 @@ function renderParamsPanel(){
       normalizeTrack(currentTrack());
       showEditorForTrack();
       paintPlayhead();
-    }
+    },
+    onSampleFile,
   });
 }
 function refreshAndSelect(i = selectedTrackIndex){
