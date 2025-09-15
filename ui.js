@@ -1,5 +1,68 @@
 // ui.js
-import { STEP_CHOICES } from './tracks.js';
+import { STEP_CHOICES, createModulator, removeModulator } from './tracks.js';
+
+const MOD_SOURCES = [
+  { value: 'lfo', label: 'LFO' },
+];
+
+const TARGETS_BY_ENGINE = {
+  synth: [
+    { value: 'synth.baseFreq', label: 'Base Freq' },
+    { value: 'synth.cutoff', label: 'Filter Cutoff' },
+    { value: 'synth.q', label: 'Filter Q' },
+    { value: 'synth.a', label: 'Env Attack' },
+    { value: 'synth.d', label: 'Env Decay' },
+    { value: 'synth.s', label: 'Env Sustain' },
+    { value: 'synth.r', label: 'Env Release' },
+  ],
+  kick808: [
+    { value: 'kick808.freq', label: 'Pitch' },
+    { value: 'kick808.pitchDecay', label: 'Pitch Decay' },
+    { value: 'kick808.ampDecay', label: 'Amp Decay' },
+    { value: 'kick808.click', label: 'Click' },
+  ],
+  snare808: [
+    { value: 'snare808.tone', label: 'Tone' },
+    { value: 'snare808.noise', label: 'Noise' },
+    { value: 'snare808.decay', label: 'Decay' },
+  ],
+  hat808: [
+    { value: 'hat808.decay', label: 'Decay' },
+    { value: 'hat808.hpf', label: 'HPF' },
+  ],
+  clap909: [
+    { value: 'clap909.bursts', label: 'Bursts' },
+    { value: 'clap909.spread', label: 'Spread' },
+    { value: 'clap909.decay', label: 'Decay' },
+  ],
+  sampler: [
+    { value: 'sampler.start', label: 'Start' },
+    { value: 'sampler.end', label: 'End' },
+    { value: 'sampler.semis', label: 'Semitones' },
+    { value: 'sampler.gain', label: 'Gain' },
+  ],
+};
+
+const FALLBACK_TARGETS = Object.freeze(
+  Object.values(TARGETS_BY_ENGINE).flat()
+);
+
+function getTargetOptionsForTrack(track) {
+  if (track?.engine && TARGETS_BY_ENGINE[track.engine]) {
+    return TARGETS_BY_ENGINE[track.engine];
+  }
+  return FALLBACK_TARGETS;
+}
+
+function createModCell(labelText, controlEl) {
+  const wrap = document.createElement('div');
+  wrap.className = 'mod-cell';
+  const label = document.createElement('span');
+  label.textContent = labelText;
+  wrap.appendChild(label);
+  wrap.appendChild(controlEl);
+  return wrap;
+}
 
 export function refreshTrackSelect(selectEl, tracks, selectedIndex) {
   selectEl.innerHTML = '';
@@ -81,7 +144,13 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     html += field('Loop',   `<button id="sam_loop" class="toggle ${p.loop?'active':''}">${p.loop ? 'On' : 'Off'}</button>`);
   }
 
+  html += `<div class="badge">Modulation</div>`;
+  html += `<div id="modRack" class="mod-rack"></div>`;
+
   containerEl.innerHTML = html;
+
+  const modRackEl = containerEl.querySelector('#modRack');
+  renderModulationRack(modRackEl, track);
 
   return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile }) {
     // Mixer
@@ -179,6 +248,143 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       if (lBtn)lBtn.onclick= () => { p.loop = !p.loop; lBtn.classList.toggle('active', p.loop); lBtn.textContent = p.loop ? 'On' : 'Off'; };
     }
   };
+}
+
+export function renderModulationRack(rootEl, track) {
+  if (!rootEl) return;
+
+  rootEl.innerHTML = '';
+
+  if (!track) {
+    const msg = document.createElement('div');
+    msg.className = 'mod-empty';
+    msg.textContent = 'No track selected.';
+    rootEl.appendChild(msg);
+    return;
+  }
+
+  if (!Array.isArray(track.mods)) track.mods = [];
+
+  const mods = track.mods;
+  const rerender = () => renderModulationRack(rootEl, track);
+
+  if (!mods.length) {
+    const empty = document.createElement('div');
+    empty.className = 'mod-empty';
+    empty.textContent = 'No modulation sources.';
+    rootEl.appendChild(empty);
+  }
+
+  mods.forEach((mod) => {
+    if (!mod || typeof mod !== 'object') return;
+
+    if (!mod.options || typeof mod.options !== 'object') mod.options = {};
+
+    const row = document.createElement('div');
+    row.className = 'mod-row';
+    row.dataset.modId = mod.id || '';
+
+    const sourceSelect = document.createElement('select');
+    const sourceOptions = [...MOD_SOURCES];
+    if (mod.source && !sourceOptions.some(opt => opt.value === mod.source)) {
+      sourceOptions.push({ value: mod.source, label: mod.source });
+    }
+    sourceOptions.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      sourceSelect.appendChild(option);
+    });
+    sourceSelect.value = mod.source || 'lfo';
+    sourceSelect.onchange = (ev) => {
+      const value = ev.target.value || 'lfo';
+      mod.source = value;
+    };
+    row.appendChild(createModCell('Source', sourceSelect));
+
+    const rateInput = document.createElement('input');
+    rateInput.type = 'number';
+    rateInput.min = '0';
+    rateInput.step = '0.01';
+    const rateVal = Number(mod.options.rate);
+    rateInput.value = Number.isFinite(rateVal) ? `${rateVal}` : '1';
+    rateInput.oninput = (ev) => {
+      const value = Number.parseFloat(ev.target.value);
+      if (!Number.isFinite(value)) return;
+      mod.options.rate = value;
+    };
+    row.appendChild(createModCell('Rate', rateInput));
+
+    const depthInput = document.createElement('input');
+    depthInput.type = 'number';
+    depthInput.step = '0.01';
+    const depthVal = Number(mod.amount);
+    depthInput.value = Number.isFinite(depthVal) ? `${depthVal}` : '0';
+    depthInput.oninput = (ev) => {
+      const value = Number.parseFloat(ev.target.value);
+      mod.amount = Number.isFinite(value) ? value : 0;
+    };
+    row.appendChild(createModCell('Depth', depthInput));
+
+    const targetSelect = document.createElement('select');
+    const baseOptions = [...getTargetOptionsForTrack(track)];
+    const currentTarget = Array.isArray(mod.target)
+      ? mod.target.join('.')
+      : (mod.target || '');
+    if (currentTarget && !baseOptions.some(opt => opt.value === currentTarget)) {
+      baseOptions.push({ value: currentTarget, label: currentTarget });
+    }
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Choose target';
+    targetSelect.appendChild(placeholder);
+    baseOptions.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      targetSelect.appendChild(option);
+    });
+    targetSelect.value = currentTarget || '';
+    targetSelect.onchange = (ev) => {
+      const value = ev.target.value;
+      mod.target = value || '';
+    };
+    row.appendChild(createModCell('Target', targetSelect));
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'ghost';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = () => {
+      removeModulator(track, mod);
+      rerender();
+    };
+    row.appendChild(removeBtn);
+
+    rootEl.appendChild(row);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'mod-actions';
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'ghost';
+  addBtn.textContent = '+ Add Modulation';
+  addBtn.onclick = () => {
+    const options = getTargetOptionsForTrack(track);
+    const defaultTarget = options?.[0]?.value || '';
+    const mod = createModulator(track, {
+      source: 'lfo',
+      amount: 0,
+      target: defaultTarget,
+      options: { rate: 1 },
+    });
+    if (!mod.options || typeof mod.options !== 'object') mod.options = { rate: 1 };
+    if (mod.options.rate === undefined) mod.options.rate = 1;
+    rerender();
+  };
+  actions.appendChild(addBtn);
+  rootEl.appendChild(actions);
 }
 
 export function makeField(label, inputHtml, hint='') {
