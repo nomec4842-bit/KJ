@@ -120,6 +120,11 @@ trackSel.onchange = () => {
   refreshAndSelect(selectedTrackIndex);
 };
 
+engineSel.onchange = () => {
+  currentTrack().engine = engineSel.value;
+  refreshAndSelect(selectedTrackIndex);
+};
+
 togglePiano.onchange = () => {
   currentTrack().mode = togglePiano.checked ? 'piano' : 'steps';
   showEditorForTrack();
