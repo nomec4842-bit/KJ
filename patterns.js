@@ -1,4 +1,4 @@
-import { createTrack, resizeTrackSteps } from './tracks.js';
+import { createTrack, resizeTrackSteps, createModulator } from './tracks.js';
 
 // structuredClone is not universally supported in all browsers, so fall back to
 // JSON serialization when it's unavailable. This ensures pattern cloning works
@@ -25,7 +25,17 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
       })),
       gain: t.gain, pan: t.pan, mute: t.mute, solo: t.solo,
       params: clone(t.params),
-      sampleName: t.sample?.name || ''
+      sampleName: t.sample?.name || '',
+      mods: Array.isArray(t.mods) ? t.mods
+        .filter(mod => mod && typeof mod === 'object')
+        .map(mod => ({
+          id: mod.id,
+          source: mod.source,
+          amount: Number.isFinite(mod.amount) ? mod.amount : Number(mod.amount) || 0,
+          target: Array.isArray(mod.target) ? [...mod.target] : mod.target,
+          options: clone(mod.options || {}),
+          enabled: mod.enabled !== false,
+        })) : []
     }))
   };
 }
@@ -49,6 +59,20 @@ export function instantiatePattern(pat, sampleCache = {}) {
     })) : [];
     t.gain = td.gain; t.pan = td.pan; t.mute = td.mute; t.solo = td.solo;
     t.params = clone(td.params);
+    if (Array.isArray(td.mods)) {
+      for (const mod of td.mods) {
+        if (!mod || typeof mod !== 'object') continue;
+        const amount = Number(mod.amount);
+        createModulator(t, {
+          id: mod.id,
+          source: mod.source ?? 'lfo',
+          amount: Number.isFinite(amount) ? amount : 0,
+          target: Array.isArray(mod.target) ? [...mod.target] : mod.target,
+          options: clone(mod.options || {}),
+          enabled: mod.enabled !== false,
+        });
+      }
+    }
     if (td.engine === 'sampler' && td.sampleName && sampleCache[td.sampleName]) {
       t.sample = { buffer: sampleCache[td.sampleName], name: td.sampleName };
     }

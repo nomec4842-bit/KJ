@@ -32,6 +32,7 @@ export function createTrack(name, engine='synth', length=16){
     pos: -1,
     steps: Array.from({length}, makeStep),
     notes: [],               // for piano roll
+    mods: [],                // modulation definitions
 
     gainNode: bus.gain,
     panNode: bus.pan,
@@ -49,6 +50,57 @@ export function createTrack(name, engine='synth', length=16){
 
     sample: { buffer:null, name:'' },
   };
+}
+
+let _modId = 0;
+
+export function createModulator(track, def = {}){
+  if (!track) throw new Error('Track is required to create a modulator');
+  if (!Array.isArray(track.mods)) track.mods = [];
+
+  const {
+    source = 'lfo',
+    amount = 0,
+    target = '',
+    options = {},
+    enabled = true,
+    id,
+  } = def || {};
+
+  let modId = id;
+  if (typeof modId === 'number' && Number.isFinite(modId)) modId = `mod-${modId}`;
+  if (typeof modId === 'string') {
+    const match = /mod-(\d+)/i.exec(modId);
+    if (match) {
+      const parsed = Number.parseInt(match[1], 10);
+      if (Number.isFinite(parsed) && parsed > _modId) _modId = parsed;
+    }
+  } else {
+    modId = `mod-${++_modId}`;
+  }
+  if (!modId) modId = `mod-${++_modId}`;
+
+  const mod = {
+    id: modId,
+    source: typeof source === 'string' ? source : 'lfo',
+    amount: Number.isFinite(amount) ? amount : 0,
+    target: Array.isArray(target)
+      ? target.map(v => `${v}`.trim()).filter(Boolean)
+      : (typeof target === 'string' ? target.trim() : target),
+    options: { ...(options || {}) },
+    enabled: enabled !== false,
+  };
+
+  track.mods.push(mod);
+  return mod;
+}
+
+export function removeModulator(track, modOrId){
+  if (!track || !Array.isArray(track.mods) || !track.mods.length) return null;
+  const idx = track.mods.findIndex(m => m === modOrId || m?.id === modOrId);
+  if (idx < 0) return null;
+  const [removed] = track.mods.splice(idx, 1);
+  return removed;
 }
 
 export function resizeTrackSteps(track, newLen){

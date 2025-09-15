@@ -4,6 +4,7 @@ import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt
 } from './tracks.js';
+import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
 import { refreshTrackSelect, renderParams, makeField } from './ui.js';
@@ -59,6 +60,24 @@ function normalizeTrack(t) {
   // only initialize steps ONCE
   if (!Array.isArray(t.steps) || t.steps.length !== t.length) {
     t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
+  }
+
+  if (!Array.isArray(t.mods)) {
+    t.mods = [];
+  } else {
+    for (let i = t.mods.length - 1; i >= 0; i--) {
+      const mod = t.mods[i];
+      if (!mod || typeof mod !== 'object') { t.mods.splice(i, 1); continue; }
+      if (typeof mod.source !== 'string') mod.source = 'lfo';
+      else mod.source = mod.source.trim() || 'lfo';
+      const amt = Number(mod.amount);
+      mod.amount = Number.isFinite(amt) ? amt : 0;
+      if (typeof mod.target === 'string') mod.target = mod.target.trim();
+      else if (Array.isArray(mod.target)) mod.target = mod.target.map(v => `${v}`.trim()).filter(Boolean);
+      else mod.target = '';
+      if (!mod.options || typeof mod.options !== 'object') mod.options = {};
+      if (mod.enabled === undefined) mod.enabled = true;
+    }
   }
 
   if (!Array.isArray(t.chain) || !t.chain.length) {
@@ -299,6 +318,35 @@ if (followChainToggle) followChainToggle.onchange = () => {
 renderChain();
 
 /* ---------- Transport ---------- */
+function mergeParamOffsets(target, offsets) {
+  if (!target || !offsets) return null;
+  const history = [];
+
+  const visit = (obj, off) => {
+    if (!obj || !off) return;
+    for (const [key, value] of Object.entries(off)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        if (obj[key] && typeof obj[key] === 'object') visit(obj[key], value);
+        continue;
+      }
+      if (!Number.isFinite(value) || value === 0) continue;
+      if (typeof obj[key] !== 'number') continue;
+      history.push({ obj, key, prev: obj[key] });
+      obj[key] = obj[key] + value;
+    }
+  };
+
+  visit(target, offsets);
+  if (!history.length) return null;
+
+  return () => {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const { obj, key, prev } = history[i];
+      if (obj) obj[key] = prev;
+    }
+  };
+}
+
 function startScheduler(bpm, cb) {
   const interval = 60000 / (bpm * 4);
   let next = performance.now();
@@ -330,12 +378,19 @@ playBtn.onclick = async () => {
       const L = t.length;
       t.pos = ((t.pos|0) + 1) % L;
 
-      if (t.mode === 'piano') {
-        const notes = notesStartingAt?.(t, t.pos) || [];
-        for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch);
-      } else {
-        const st = t.steps[t.pos];
-        if (st?.on) triggerEngine?.(t, st.vel);
+      const offsets = applyMods?.(t);
+      const restoreParams = offsets ? mergeParamOffsets(t.params, offsets) : null;
+
+      try {
+        if (t.mode === 'piano') {
+          const notes = notesStartingAt?.(t, t.pos) || [];
+          for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch);
+        } else {
+          const st = t.steps[t.pos];
+          if (st?.on) triggerEngine?.(t, st.vel);
+        }
+      } finally {
+        if (typeof restoreParams === 'function') restoreParams();
       }
     }
     paintPlayhead();
