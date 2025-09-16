@@ -9,7 +9,7 @@ export const defaults = {
   snare808:{ tone:180, noise:0.6, decay:0.22 },
   hat808:  { decay:0.06, hpf:8000 },
   clap909: { bursts:3, spread:0.02, decay:0.10 },
-  sampler: { start:0, end:1, semis:0, gain:1, loop:false },
+  sampler: { start:0, end:1, semis:0, gain:1, loop:false, advanced:false },
 };
 
 const clone = o => JSON.parse(JSON.stringify(o));

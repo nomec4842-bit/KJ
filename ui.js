@@ -150,6 +150,12 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     html += field('Semitones', `<input id="sam_semi" type="number" min="-24" max="24" step="1" value="${p.semis}">`);
     html += field('Gain',   `<input id="sam_gain"  type="range" min="0" max="2" step="0.01" value="${p.gain}">`);
     html += field('Loop',   `<button id="sam_loop" class="toggle ${p.loop?'active':''}">${p.loop ? 'On' : 'Off'}</button>`);
+    html += field('Advanced controls',
+      `<label class="ctrl"><input id="sam_adv" type="checkbox" ${p.advanced ? 'checked' : ''}> Enable advanced sampler</label>`,
+      'Show experimental sampler tools');
+    html += `<div id="sam_advPanel" class="sampler-advanced ${p.advanced ? 'visible' : ''}">
+      <div class="hint">Advanced sampler features will appear here.</div>
+    </div>`;
   }
 
   html += `<div class="badge">Modulation</div>`;
@@ -247,6 +253,8 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       const semi= document.getElementById('sam_semi');
       const gIn = document.getElementById('sam_gain');
       const lBtn= document.getElementById('sam_loop');
+      const adv = document.getElementById('sam_adv');
+      const advPanel = document.getElementById('sam_advPanel');
 
       if (f && onSampleFile) f.onchange = (ev) => onSampleFile(ev.target.files?.[0] || null);
       if (sIn) sIn.oninput = e => { p.start = +e.target.value; };
@@ -254,6 +262,10 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       if (semi)semi.oninput= e => { p.semis = +e.target.value; };
       if (gIn) gIn.oninput = e => { p.gain  = +e.target.value; };
       if (lBtn)lBtn.onclick= () => { p.loop = !p.loop; lBtn.classList.toggle('active', p.loop); lBtn.textContent = p.loop ? 'On' : 'Off'; };
+      if (adv) adv.onchange = (e) => {
+        p.advanced = !!e.target.checked;
+        if (advPanel) advPanel.classList.toggle('visible', p.advanced);
+      };
     }
   };
 }

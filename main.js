@@ -62,6 +62,23 @@ function normalizeTrack(t) {
     t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
   }
 
+  if (!t.params || typeof t.params !== 'object') t.params = {};
+  if (!t.params.sampler || typeof t.params.sampler !== 'object') {
+    t.params.sampler = { start:0, end:1, semis:0, gain:1, loop:false, advanced:false };
+  } else {
+    const sampler = t.params.sampler;
+    const toNumber = (value, fallback) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : fallback;
+    };
+    sampler.start = toNumber(sampler.start, 0);
+    sampler.end = toNumber(sampler.end, 1);
+    sampler.semis = toNumber(sampler.semis, 0);
+    sampler.gain = toNumber(sampler.gain, 1);
+    sampler.loop = !!sampler.loop;
+    sampler.advanced = !!sampler.advanced;
+  }
+
   if (!Array.isArray(t.mods)) {
     t.mods = [];
   } else {
