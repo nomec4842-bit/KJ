@@ -1,7 +1,18 @@
 import { ctx, master, clampInt } from './core.js';
 import { synthBlip, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
+import { createAdvancedSamplerState, sanitizeAdvancedSamplerState } from './advancedsampler.js';
 
 export const STEP_CHOICES = [4, 8, 12, 16, 24, 32];
+
+const samplerDefaults = () => ({
+  start: 0,
+  end: 1,
+  semis: 0,
+  gain: 1,
+  loop: false,
+  advanced: false,
+  advancedState: createAdvancedSamplerState(),
+});
 
 export const defaults = {
   synth:   { cutoff:2000, q:1, a:0.01, d:0.2, s:0.6, r:0.2, baseFreq:220 },
@@ -9,7 +20,7 @@ export const defaults = {
   snare808:{ tone:180, noise:0.6, decay:0.22 },
   hat808:  { decay:0.06, hpf:8000 },
   clap909: { bursts:3, spread:0.02, decay:0.10 },
-  sampler: { start:0, end:1, semis:0, gain:1, loop:false },
+  sampler: samplerDefaults(),
 };
 
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -25,6 +36,12 @@ function makeBus(){
 
 export function createTrack(name, engine='synth', length=16){
   const bus = makeBus();
+  const samplerParams = clone(defaults.sampler);
+  if (!samplerParams.advancedState || typeof samplerParams.advancedState !== 'object') {
+    samplerParams.advancedState = createAdvancedSamplerState();
+  } else {
+    sanitizeAdvancedSamplerState(samplerParams.advancedState);
+  }
   return {
     name, engine,
     mode: 'steps',           // 'steps' | 'piano'
@@ -45,7 +62,7 @@ export function createTrack(name, engine='synth', length=16){
       snare808:clone(defaults.snare808),
       hat808:  clone(defaults.hat808),
       clap909: clone(defaults.clap909),
-      sampler: clone(defaults.sampler),
+      sampler: samplerParams,
     },
 
     sample: { buffer:null, name:'' },

@@ -9,6 +9,11 @@ import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
 import { refreshTrackSelect, renderParams, makeField } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
+import {
+  createAdvancedSamplerState,
+  sanitizeAdvancedSamplerState,
+  resetAdvancedSamplerState,
+} from './advancedsampler.js';
 
 /* ---------- DOM ---------- */
 const tempoInput   = document.getElementById('tempo');
@@ -60,6 +65,43 @@ function normalizeTrack(t) {
   // only initialize steps ONCE
   if (!Array.isArray(t.steps) || t.steps.length !== t.length) {
     t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
+  }
+
+  if (!t.params || typeof t.params !== 'object') t.params = {};
+  if (!t.params.sampler || typeof t.params.sampler !== 'object') {
+    t.params.sampler = {
+      start: 0,
+      end: 1,
+      semis: 0,
+      gain: 1,
+      loop: false,
+      advanced: false,
+      advancedState: createAdvancedSamplerState(),
+    };
+  } else {
+    const sampler = t.params.sampler;
+    const toNumber = (value, fallback) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : fallback;
+    };
+    sampler.start = toNumber(sampler.start, 0);
+    sampler.end = toNumber(sampler.end, 1);
+    sampler.semis = toNumber(sampler.semis, 0);
+    sampler.gain = toNumber(sampler.gain, 1);
+    sampler.loop = !!sampler.loop;
+    sampler.advanced = !!sampler.advanced;
+    if (!sampler.advancedState || typeof sampler.advancedState !== 'object') {
+      sampler.advancedState = createAdvancedSamplerState();
+    } else {
+      sanitizeAdvancedSamplerState(sampler.advancedState);
+    }
+  }
+
+  if (!t.sample || typeof t.sample !== 'object') {
+    t.sample = { buffer: null, name: '' };
+  } else {
+    if (typeof t.sample.name !== 'string') t.sample.name = `${t.sample.name ?? ''}`;
+    if (!('buffer' in t.sample)) t.sample.buffer = null;
   }
 
   if (!Array.isArray(t.mods)) {
@@ -166,6 +208,12 @@ async function onSampleFile(file) {
 
   track.sample = { buffer, name: file.name };
   sampleCache[file.name] = buffer;
+
+  if (track.params?.sampler) {
+    track.params.sampler.start = 0;
+    track.params.sampler.end = 1;
+    resetAdvancedSamplerState(track.params.sampler, { keepFine: true, keepRecordBars: true });
+  }
 
   if (track === currentTrack()) {
     renderParamsPanel();

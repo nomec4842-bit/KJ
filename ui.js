@@ -1,5 +1,6 @@
 // ui.js
 import { STEP_CHOICES, createModulator, removeModulator } from './tracks.js';
+import { mountAdvancedSampler } from './advancedsampler.js';
 
 const MOD_SOURCES = [
   { value: 'lfo', label: 'LFO' },
@@ -150,15 +151,52 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     html += field('Semitones', `<input id="sam_semi" type="number" min="-24" max="24" step="1" value="${p.semis}">`);
     html += field('Gain',   `<input id="sam_gain"  type="range" min="0" max="2" step="0.01" value="${p.gain}">`);
     html += field('Loop',   `<button id="sam_loop" class="toggle ${p.loop?'active':''}">${p.loop ? 'On' : 'Off'}</button>`);
+    html += field('Advanced controls',
+      `<label class="ctrl"><input id="sam_adv" type="checkbox" ${p.advanced ? 'checked' : ''}> Enable advanced sampler</label>`,
+      'Show experimental sampler tools');
+    html += `<div id="sam_advPanel" class="sampler-advanced ${p.advanced ? 'visible' : ''}">
+      <div data-role="adv-sampler"></div>
+    </div>`;
   }
 
   html += `<div class="badge">Modulation</div>`;
   html += `<div id="modRack" class="mod-rack"></div>`;
 
+  if (typeof containerEl.__advancedSamplerHandle === 'object' && containerEl.__advancedSamplerHandle) {
+    try { containerEl.__advancedSamplerHandle.dispose?.(); } catch {}
+    containerEl.__advancedSamplerHandle = null;
+  }
+
   containerEl.innerHTML = html;
 
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
+
+  let advancedSamplerHandle = null;
+  let samplerElements = {};
+  if (eng === 'sampler') {
+    samplerElements = {
+      fileInput: containerEl.querySelector('#sam_file'),
+      startInput: containerEl.querySelector('#sam_start'),
+      endInput: containerEl.querySelector('#sam_end'),
+      semiInput: containerEl.querySelector('#sam_semi'),
+      gainInput: containerEl.querySelector('#sam_gain'),
+      loopBtn: containerEl.querySelector('#sam_loop'),
+      advToggle: containerEl.querySelector('#sam_adv'),
+      advPanel: containerEl.querySelector('#sam_advPanel'),
+    };
+
+    const advHost = samplerElements.advPanel?.querySelector('[data-role="adv-sampler"]');
+    if (advHost) {
+      advancedSamplerHandle = mountAdvancedSampler(advHost, {
+        track,
+        params: p,
+        startInput: samplerElements.startInput,
+        endInput: samplerElements.endInput,
+      });
+    }
+    containerEl.__advancedSamplerHandle = advancedSamplerHandle;
+  }
 
   return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile }) {
     // Mixer
@@ -241,19 +279,42 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
     if (eng === 'sampler') {
       const p = t.params.sampler;
-      const f   = document.getElementById('sam_file');
-      const sIn = document.getElementById('sam_start');
-      const eIn = document.getElementById('sam_end');
-      const semi= document.getElementById('sam_semi');
-      const gIn = document.getElementById('sam_gain');
-      const lBtn= document.getElementById('sam_loop');
+      const { fileInput, startInput, endInput, semiInput, gainInput, loopBtn, advToggle, advPanel } = samplerElements;
+      const clamp01 = (value) => {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return 0;
+        if (num <= 0) return 0;
+        if (num >= 1) return 1;
+        return num;
+      };
 
-      if (f && onSampleFile) f.onchange = (ev) => onSampleFile(ev.target.files?.[0] || null);
-      if (sIn) sIn.oninput = e => { p.start = +e.target.value; };
-      if (eIn) eIn.oninput = e => { p.end   = +e.target.value; };
-      if (semi)semi.oninput= e => { p.semis = +e.target.value; };
-      if (gIn) gIn.oninput = e => { p.gain  = +e.target.value; };
-      if (lBtn)lBtn.onclick= () => { p.loop = !p.loop; lBtn.classList.toggle('active', p.loop); lBtn.textContent = p.loop ? 'On' : 'Off'; };
+      if (fileInput && onSampleFile) fileInput.onchange = (ev) => onSampleFile(ev.target.files?.[0] || null);
+      if (startInput) startInput.oninput = e => {
+        const value = clamp01(e.target.value);
+        p.start = Math.min(value, p.end - 0.001);
+        startInput.value = p.start.toFixed(2);
+        advancedSamplerHandle?.notifyManualRange();
+        advancedSamplerHandle?.syncFromParams();
+      };
+      if (endInput) endInput.oninput = e => {
+        const value = clamp01(e.target.value);
+        p.end = Math.max(value, p.start + 0.001);
+        endInput.value = p.end.toFixed(2);
+        advancedSamplerHandle?.notifyManualRange();
+        advancedSamplerHandle?.syncFromParams();
+      };
+      if (semiInput) semiInput.oninput = e => { p.semis = +e.target.value; };
+      if (gainInput) gainInput.oninput = e => { p.gain  = +e.target.value; };
+      if (loopBtn) loopBtn.onclick = () => {
+        p.loop = !p.loop;
+        loopBtn.classList.toggle('active', p.loop);
+        loopBtn.textContent = p.loop ? 'On' : 'Off';
+      };
+      if (advToggle) advToggle.onchange = (e) => {
+        p.advanced = !!e.target.checked;
+        if (advPanel) advPanel.classList.toggle('visible', p.advanced);
+        advancedSamplerHandle?.syncFromParams();
+      };
     }
   };
 }

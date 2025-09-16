@@ -168,14 +168,27 @@ export function samplerPlay(p, dest, vel = 1, sample, semis = 0) {
   src.buffer = sample.buffer;
 
   const totalSemis = (p.semis ?? 0) + (semis || 0);
-  const rate = Math.pow(2, totalSemis / 12);
-  src.playbackRate.setValueAtTime(rate, now);
+  const adv = p?.advancedState;
+  const fineCents = Number(adv?.fine);
+  const fineRate = Number.isFinite(fineCents) ? Math.pow(2, fineCents / 1200) : 1;
+  let rate = Math.pow(2, totalSemis / 12) * fineRate;
 
   const dur = sample.buffer.duration;
   const startNorm = Math.max(0, Math.min(1, p.start ?? 0));
   const endNorm = Math.max(startNorm, Math.min(1, p.end ?? 1));
   const startSec = startNorm * dur;
   const endSec = Math.max(startSec + 0.005, endNorm * dur);
+  const sliceDuration = Math.max(0.005, endSec - startSec);
+
+  const stretchSeconds = Number(adv?.activeStretchSeconds);
+  if (Number.isFinite(stretchSeconds) && stretchSeconds > 0.001) {
+    const ratio = sliceDuration / stretchSeconds;
+    if (Number.isFinite(ratio) && ratio > 0) {
+      rate *= ratio;
+    }
+  }
+
+  src.playbackRate.setValueAtTime(rate, now);
 
   src.loop = !!p.loop;
   if (src.loop) {
@@ -187,5 +200,5 @@ export function samplerPlay(p, dest, vel = 1, sample, semis = 0) {
   vca.gain.value = (p.gain ?? 1) * vel;
 
   src.connect(vca).connect(dest);
-  src.start(now, startSec, Math.max(0.005, endSec - startSec));
+  src.start(now, startSec, sliceDuration);
 }
