@@ -20,7 +20,7 @@ h3 { margin:0 0 8px; font-weight:600; }
 .mod-cell span { font-size:12px; color:var(--muted); }
 .mod-row input, .mod-row select { min-width:110px; }
 .mod-row button { align-self:center; }
-.mod-actions { display:flex; }
+.mod-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .mod-empty { color:var(--muted); font-size:12px; padding:2px 0; }
 
 #sequencer { display:grid; grid-template-columns: repeat(16, minmax(22px,1fr)); gap:6px; }
