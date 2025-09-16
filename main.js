@@ -337,6 +337,39 @@ function refreshPatternSelect() {
   renderChain();
 }
 
+if (addPatternBtn) addPatternBtn.onclick = () => {
+  const nextIndex = song.patterns.length + 1;
+  const name = `P${nextIndex}`;
+  const requestedLen = Number(patLenInput?.value);
+  const patternLen = Number.isFinite(requestedLen) && requestedLen > 0
+    ? requestedLen
+    : 16;
+  const serialized = serializePattern(name, tracks, patternLen);
+  song.patterns.push(serialized);
+  song.current = song.patterns.length - 1;
+  refreshPatternSelect();
+};
+
+if (dupPatternBtn) dupPatternBtn.onclick = () => {
+  if (!song.patterns.length) return;
+
+  const selected = Number(patternSel?.value);
+  const baseIndex = (patternSel?.value === '' || Number.isNaN(selected))
+    ? song.current
+    : selected;
+  const patIndex = clampPatternIndex(baseIndex);
+  const source = song.patterns[patIndex];
+  if (!source) return;
+
+  const clone = clonePatternData(source);
+  if (!clone || typeof clone !== 'object') return;
+
+  clone.name = `P${song.patterns.length + 1}`;
+  song.patterns.push(clone);
+  song.current = song.patterns.length - 1;
+  refreshPatternSelect();
+};
+
 if (chainAddBtn) chainAddBtn.onclick = () => {
   if (!song.patterns.length) return;
   const selected = Number.parseInt(patternSel?.value ?? '', 10);
