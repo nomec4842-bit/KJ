@@ -228,6 +228,70 @@ function clampPatternIndex(idx) {
   return Math.max(0, Math.min(song.patterns.length - 1, parsed));
 }
 
+function saveCurrentPattern() {
+  if (!Array.isArray(song.patterns) || !song.patterns.length) return;
+
+  const index = clampPatternIndex(song.current ?? 0);
+  song.current = index;
+
+  const existing = song.patterns[index];
+  const existingName = existing?.name ?? `P${index + 1}`;
+  const storedLen = Number(existing?.len16);
+  const inputLen = Number.parseInt(patLenInput?.value ?? '', 10);
+  const patternLen = Number.isFinite(storedLen) && storedLen > 0
+    ? storedLen
+    : (Number.isFinite(inputLen) && inputLen > 0 ? inputLen : 16);
+
+  song.patterns[index] = serializePattern(existingName, tracks, patternLen);
+}
+
+function loadPattern(index) {
+  if (!Array.isArray(song.patterns) || !song.patterns.length) {
+    refreshPatternSelect();
+    return;
+  }
+
+  const target = clampPatternIndex(index ?? song.current ?? 0);
+  song.current = target;
+
+  const pat = song.patterns[target];
+  if (!pat) {
+    refreshPatternSelect();
+    return;
+  }
+
+  const instance = instantiatePattern(pat, sampleCache) || {};
+  const nextTracks = Array.isArray(instance.tracks) ? instance.tracks : [];
+
+  const normalized = nextTracks.map((t) => normalizeTrack(t));
+  tracks.splice(0, tracks.length, ...normalized);
+
+  if (tracks.length) {
+    selectedTrackIndex = Math.max(0, Math.min(tracks.length - 1, selectedTrackIndex));
+  } else {
+    selectedTrackIndex = 0;
+  }
+
+  applyMixer(tracks);
+
+  if (patLenInput) {
+    const len16 = Number(instance.len16 ?? pat.len16);
+    if (Number.isFinite(len16) && len16 > 0) {
+      patLenInput.value = String(len16);
+    }
+  }
+
+  refreshPatternSelect();
+
+  if (!tracks.length) {
+    refreshTrackSelect(trackSel, tracks, selectedTrackIndex);
+    if (trackSel) trackSel.value = '';
+    return;
+  }
+
+  refreshAndSelect(selectedTrackIndex);
+}
+
 function ensureChainPosition() {
   if (!Array.isArray(song.chain)) song.chain = [];
   if (!song.chain.length) {
@@ -298,6 +362,8 @@ function renderChain() {
 }
 
 function gotoChainSlot(slotIndex) {
+  saveCurrentPattern();
+
   if (!Array.isArray(song.chain) || !song.chain.length) {
     ensureChainPosition();
     renderChain();
@@ -315,7 +381,7 @@ function gotoChainSlot(slotIndex) {
   const slot = song.chain[clamped];
   const patIndex = clampPatternIndex(slot?.pattern ?? 0);
   song.current = patIndex;
-  refreshPatternSelect();
+  loadPattern(patIndex);
 }
 
 function refreshPatternSelect() {
@@ -337,7 +403,21 @@ function refreshPatternSelect() {
   renderChain();
 }
 
+if (patternSel) patternSel.onchange = () => {
+  saveCurrentPattern();
+  if (!song.patterns.length) {
+    refreshPatternSelect();
+    return;
+  }
+
+  const selected = clampPatternIndex(patternSel.value);
+  song.current = selected;
+  loadPattern(selected);
+};
+
 if (addPatternBtn) addPatternBtn.onclick = () => {
+  saveCurrentPattern();
+
   const nextIndex = song.patterns.length + 1;
   const name = `P${nextIndex}`;
   const requestedLen = Number(patLenInput?.value);
@@ -347,10 +427,11 @@ if (addPatternBtn) addPatternBtn.onclick = () => {
   const serialized = serializePattern(name, tracks, patternLen);
   song.patterns.push(serialized);
   song.current = song.patterns.length - 1;
-  refreshPatternSelect();
+  loadPattern(song.current);
 };
 
 if (dupPatternBtn) dupPatternBtn.onclick = () => {
+  saveCurrentPattern();
   if (!song.patterns.length) return;
 
   const selected = Number(patternSel?.value);
@@ -367,10 +448,11 @@ if (dupPatternBtn) dupPatternBtn.onclick = () => {
   clone.name = `P${song.patterns.length + 1}`;
   song.patterns.push(clone);
   song.current = song.patterns.length - 1;
-  refreshPatternSelect();
+  loadPattern(song.current);
 };
 
 if (chainAddBtn) chainAddBtn.onclick = () => {
+  saveCurrentPattern();
   if (!song.patterns.length) return;
   const selected = Number.parseInt(patternSel?.value ?? '', 10);
   const target = Number.isNaN(selected) ? song.current : selected;
