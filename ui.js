@@ -267,6 +267,22 @@ export function renderModulationRack(rootEl, track) {
 
   const mods = track.mods;
   const rerender = () => renderModulationRack(rootEl, track);
+  const addModWithDefaults = (extra = {}) => {
+    const { target: targetOverride, options: extraOptions, ...rest } = extra || {};
+    const options = getTargetOptionsForTrack(track);
+    const defaultTarget = targetOverride ?? options?.[0]?.value ?? '';
+    const mod = createModulator(track, {
+      source: 'lfo',
+      amount: 0,
+      target: defaultTarget,
+      options: { rate: 1, ...(extraOptions || {}) },
+      ...rest,
+    });
+    if (!mod.options || typeof mod.options !== 'object') mod.options = {};
+    if (mod.options.rate === undefined) mod.options.rate = 1;
+    rerender();
+    return mod;
+  };
 
   if (!mods.length) {
     const empty = document.createElement('div');
@@ -371,19 +387,18 @@ export function renderModulationRack(rootEl, track) {
   addBtn.className = 'ghost';
   addBtn.textContent = '+ Add Modulation';
   addBtn.onclick = () => {
-    const options = getTargetOptionsForTrack(track);
-    const defaultTarget = options?.[0]?.value || '';
-    const mod = createModulator(track, {
-      source: 'lfo',
-      amount: 0,
-      target: defaultTarget,
-      options: { rate: 1 },
-    });
-    if (!mod.options || typeof mod.options !== 'object') mod.options = { rate: 1 };
-    if (mod.options.rate === undefined) mod.options.rate = 1;
-    rerender();
+    addModWithDefaults();
   };
   actions.appendChild(addBtn);
+
+  const addLfoBtn = document.createElement('button');
+  addLfoBtn.type = 'button';
+  addLfoBtn.className = 'ghost';
+  addLfoBtn.textContent = '+ Add LFO';
+  addLfoBtn.onclick = () => {
+    addModWithDefaults({ source: 'lfo' });
+  };
+  actions.appendChild(addLfoBtn);
   rootEl.appendChild(actions);
 }
 
