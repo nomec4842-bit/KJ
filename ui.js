@@ -5,6 +5,14 @@ const MOD_SOURCES = [
   { value: 'lfo', label: 'LFO' },
 ];
 
+const LFO_SHAPE_OPTIONS = [
+  { value: 'sine', label: 'Sine' },
+  { value: 'triangle', label: 'Triangle' },
+  { value: 'square', label: 'Square' },
+  { value: 'saw', label: 'Saw' },
+  { value: 'ramp', label: 'Ramp' },
+];
+
 const TARGETS_BY_ENGINE = {
   synth: [
     { value: 'synth.baseFreq', label: 'Base Freq' },
@@ -275,11 +283,12 @@ export function renderModulationRack(rootEl, track) {
       source: 'lfo',
       amount: 0,
       target: defaultTarget,
-      options: { rate: 1, ...(extraOptions || {}) },
+      options: { rate: 1, shape: 'sine', ...(extraOptions || {}) },
       ...rest,
     });
     if (!mod.options || typeof mod.options !== 'object') mod.options = {};
     if (mod.options.rate === undefined) mod.options.rate = 1;
+    if (typeof mod.options.shape !== 'string') mod.options.shape = 'sine';
     rerender();
     return mod;
   };
@@ -312,11 +321,53 @@ export function renderModulationRack(rootEl, track) {
       sourceSelect.appendChild(option);
     });
     sourceSelect.value = mod.source || 'lfo';
+    row.appendChild(createModCell('Source', sourceSelect));
+
+    const shapeSelect = document.createElement('select');
+    const shapeValues = new Set();
+    LFO_SHAPE_OPTIONS.forEach(opt => {
+      shapeValues.add(opt.value);
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      shapeSelect.appendChild(option);
+    });
+    const savedShapeRaw = typeof mod.options.shape === 'string' ? mod.options.shape : '';
+    const savedShapeKey = savedShapeRaw.toLowerCase();
+    if (savedShapeRaw && !shapeValues.has(savedShapeKey)) {
+      const customOption = document.createElement('option');
+      customOption.value = savedShapeRaw;
+      customOption.textContent = savedShapeRaw;
+      shapeSelect.appendChild(customOption);
+    }
+    const initialShape = savedShapeRaw
+      ? (shapeValues.has(savedShapeKey) ? savedShapeKey : savedShapeRaw)
+      : 'sine';
+    shapeSelect.value = initialShape;
+    if (!savedShapeRaw || mod.options.shape !== initialShape) {
+      mod.options.shape = initialShape;
+    }
+    shapeSelect.onchange = (ev) => {
+      const value = ev.target.value || 'sine';
+      mod.options.shape = value;
+    };
+    const shapeCell = createModCell('Waveform', shapeSelect);
+    row.appendChild(shapeCell);
+
+    const updateSourceControls = () => {
+      const currentSource = mod.source ?? sourceSelect.value ?? '';
+      const isLfo = `${currentSource}`.toLowerCase() === 'lfo';
+      shapeCell.style.display = isLfo ? '' : 'none';
+      if (isLfo && typeof mod.options.shape !== 'string') {
+        mod.options.shape = shapeSelect.value || 'sine';
+      }
+    };
     sourceSelect.onchange = (ev) => {
       const value = ev.target.value || 'lfo';
       mod.source = value;
+      updateSourceControls();
     };
-    row.appendChild(createModCell('Source', sourceSelect));
+    updateSourceControls();
 
     const rateInput = document.createElement('input');
     rateInput.type = 'number';
