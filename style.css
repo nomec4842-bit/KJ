@@ -14,6 +14,19 @@ h3 { margin:0 0 8px; font-weight:600; }
 .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
 .field .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 
+.sampler-advanced {
+  display:none;
+  margin:8px 0 0;
+  padding:10px;
+  border:1px dashed var(--border);
+  border-radius:10px;
+  background:#14171f;
+}
+
+.sampler-advanced.visible {
+  display:block;
+}
+
 .mod-rack { margin:12px 0; display:flex; flex-direction:column; gap:10px; }
 .mod-row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:10px; background:#14171f; border:1px solid var(--border); border-radius:10px; }
 .mod-cell { display:flex; flex-direction:column; gap:4px; min-width:120px; }
