@@ -393,11 +393,13 @@ export function renderModulationRack(rootEl, track) {
     };
     row.appendChild(createModCell('Depth', depthInput));
 
+    const getTargetString = (value) => (Array.isArray(value)
+      ? value.join('.')
+      : (value || ''));
+
     const targetSelect = document.createElement('select');
     const baseOptions = [...getTargetOptionsForTrack(track)];
-    const currentTarget = Array.isArray(mod.target)
-      ? mod.target.join('.')
-      : (mod.target || '');
+    const currentTarget = getTargetString(mod.target);
     if (currentTarget && !baseOptions.some(opt => opt.value === currentTarget)) {
       baseOptions.push({ value: currentTarget, label: currentTarget });
     }
@@ -412,11 +414,76 @@ export function renderModulationRack(rootEl, track) {
       targetSelect.appendChild(option);
     });
     targetSelect.value = currentTarget || '';
+
+    const targetInput = document.createElement('input');
+    targetInput.type = 'text';
+    targetInput.className = 'mod-target-input';
+    targetInput.value = currentTarget;
+    targetInput.placeholder = 'engine.param';
+
+    const ensureTargetOption = (value) => {
+      if (!value) return;
+      const exists = Array.from(targetSelect.options).some(opt => opt.value === value);
+      if (!exists) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        targetSelect.appendChild(opt);
+      }
+    };
+
     targetSelect.onchange = (ev) => {
       const value = ev.target.value;
       mod.target = value || '';
+      targetInput.value = value || '';
     };
-    row.appendChild(createModCell('Target', targetSelect));
+
+    targetInput.oninput = (ev) => {
+      const value = ev.target.value;
+      mod.target = value;
+      if (value) ensureTargetOption(value);
+      targetSelect.value = value || '';
+    };
+
+    const targetModeToggle = document.createElement('button');
+    targetModeToggle.type = 'button';
+    targetModeToggle.className = 'toggle mod-target-toggle';
+    targetModeToggle.textContent = 'Freeform';
+    targetModeToggle.title = 'Toggle freeform target entry';
+
+    const targetControls = document.createElement('div');
+    targetControls.className = 'mod-target-controls';
+    targetControls.appendChild(targetModeToggle);
+    targetControls.appendChild(targetSelect);
+    targetControls.appendChild(targetInput);
+
+    const updateTargetModeUI = () => {
+      const useFreeform = !!mod.options.useFreeformTarget;
+      targetModeToggle.classList.toggle('active', useFreeform);
+      targetModeToggle.setAttribute('aria-pressed', useFreeform ? 'true' : 'false');
+      targetSelect.style.display = useFreeform ? 'none' : '';
+      targetInput.style.display = useFreeform ? '' : 'none';
+      const targetValue = getTargetString(mod.target);
+      if (useFreeform) {
+        targetInput.value = targetValue;
+      } else {
+        if (targetValue) ensureTargetOption(targetValue);
+        targetSelect.value = targetValue || '';
+      }
+    };
+
+    targetModeToggle.onclick = () => {
+      const nextValue = !mod.options.useFreeformTarget;
+      mod.options.useFreeformTarget = nextValue;
+      updateTargetModeUI();
+      if (nextValue) {
+        targetInput.focus();
+      }
+    };
+
+    updateTargetModeUI();
+
+    row.appendChild(createModCell('Target', targetControls));
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
