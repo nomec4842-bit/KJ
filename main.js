@@ -809,13 +809,21 @@ function evaluateSampleHoldFx(track, step, stepIndex) {
   if (state.remaining > 0) state.remaining -= 1;
 
   const value = Number(state.value);
-  if (!Number.isFinite(value) || value === 0) {
-    if (!Number.isFinite(state.value)) state.value = 0;
+  if (!Number.isFinite(value)) {
+    state.value = 0;
     return null;
   }
 
+  const targetKey = target.toLowerCase();
+  if (targetKey === 'velocity' || targetKey === 'vel' || targetKey === 'step.velocity') {
+    if (value === 0) return { velocityOffset: 0 };
+    return { velocityOffset: value };
+  }
+
   const pathParts = target.split('.').map(p => p.trim()).filter(Boolean);
-  return buildOffsetFromPath(pathParts, value);
+  const offsets = buildOffsetFromPath(pathParts, value);
+  if (offsets) return { paramOffsets: offsets };
+  return null;
 }
 
 function evaluateStepFx(track, step, stepIndex) {
@@ -872,12 +880,22 @@ playBtn.onclick = async () => {
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const fxOffsets = evaluateStepFx(t, st, t.pos);
-            if (fxOffsets) {
-              const restore = mergeParamOffsets(t.params, fxOffsets);
-              if (typeof restore === 'function') restoreStack.push(restore);
+            const fxResult = evaluateStepFx(t, st, t.pos);
+            let vel = getStepVelocity(st, 1);
+            if (fxResult) {
+              const offsets = fxResult.paramOffsets
+                || (fxResult && !('paramOffsets' in fxResult) && !('velocityOffset' in fxResult)
+                  ? fxResult
+                  : null);
+              if (offsets) {
+                const restore = mergeParamOffsets(t.params, offsets);
+                if (typeof restore === 'function') restoreStack.push(restore);
+              }
+              if (Number.isFinite(fxResult.velocityOffset)) {
+                vel += fxResult.velocityOffset;
+              }
             }
-            const vel = getStepVelocity(st, 1);
+            vel = Math.max(0, Math.min(1, vel));
             if (vel > 0) triggerEngine?.(t, vel);
           }
         }

@@ -21,7 +21,7 @@ export const STEP_FX_TYPES = Object.freeze({
 
 export const STEP_FX_DEFAULTS = Object.freeze({
   [STEP_FX_TYPES.SAMPLE_HOLD]: Object.freeze({
-    target: '',
+    target: 'velocity',
     min: -0.25,
     max: 0.25,
     amount: 0.25,
