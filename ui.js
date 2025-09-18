@@ -1,6 +1,10 @@
 // ui.js
 import {
   STEP_CHOICES,
+  STEP_FX_TYPES,
+  STEP_FX_DEFAULTS,
+  createStepFx,
+  normalizeStepFx,
   createModulator,
   removeModulator,
   getStepVelocity,
@@ -282,6 +286,312 @@ function createStepParamsPanel(rootEl, track) {
   };
 }
 
+function createStepFxPanel(rootEl, track) {
+  if (!rootEl) return null;
+
+  let onChange = null;
+  let selectedIndex = -1;
+  let suppress = false;
+
+  const sampleHoldDefaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.SAMPLE_HOLD] || {
+    target: '',
+    min: -0.25,
+    max: 0.25,
+    amount: 0.25,
+    chance: 1,
+    hold: 1,
+  };
+
+  const typeSelect = document.createElement('select');
+  const noneOpt = document.createElement('option');
+  noneOpt.value = STEP_FX_TYPES.NONE;
+  noneOpt.textContent = 'None';
+  typeSelect.appendChild(noneOpt);
+  const shOpt = document.createElement('option');
+  shOpt.value = STEP_FX_TYPES.SAMPLE_HOLD;
+  shOpt.textContent = 'Sample & Hold';
+  typeSelect.appendChild(shOpt);
+
+  const targetSelect = document.createElement('select');
+  targetSelect.className = 'step-fx-target';
+
+  const minInput = document.createElement('input');
+  minInput.type = 'number';
+  minInput.step = '0.01';
+  minInput.className = 'step-fx-range-min';
+
+  const maxInput = document.createElement('input');
+  maxInput.type = 'number';
+  maxInput.step = '0.01';
+  maxInput.className = 'step-fx-range-max';
+
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.step = '0.01';
+  amountInput.min = '0';
+  amountInput.className = 'step-fx-amount';
+
+  const chanceInput = document.createElement('input');
+  chanceInput.type = 'number';
+  chanceInput.min = '0';
+  chanceInput.max = '1';
+  chanceInput.step = '0.01';
+  chanceInput.className = 'step-fx-chance';
+
+  const chanceWrap = document.createElement('div');
+  chanceWrap.className = 'ctrl';
+  chanceWrap.appendChild(chanceInput);
+  const chanceHint = document.createElement('span');
+  chanceHint.className = 'hint';
+  chanceHint.textContent = '0–1';
+  chanceWrap.appendChild(chanceHint);
+
+  const holdInput = document.createElement('input');
+  holdInput.type = 'number';
+  holdInput.min = '1';
+  holdInput.max = '128';
+  holdInput.step = '1';
+  holdInput.className = 'step-fx-hold';
+
+  const holdWrap = document.createElement('div');
+  holdWrap.className = 'ctrl';
+  holdWrap.appendChild(holdInput);
+  const holdHint = document.createElement('span');
+  holdHint.className = 'hint';
+  holdHint.textContent = 'steps';
+  holdWrap.appendChild(holdHint);
+
+  const controls = document.createElement('div');
+  controls.className = 'step-fx-controls';
+  const typeCell = createModCell('Type', typeSelect);
+  controls.appendChild(typeCell);
+
+  const configSection = document.createElement('div');
+  configSection.className = 'step-fx-config';
+  configSection.appendChild(createModCell('Target', targetSelect));
+  const rangeMinCell = createModCell('Range Min', minInput);
+  const rangeMaxCell = createModCell('Range Max', maxInput);
+  const amountCell = createModCell('Amount ±', amountInput);
+  const chanceCell = createModCell('Chance', chanceWrap);
+  const holdCell = createModCell('Hold', holdWrap);
+  configSection.appendChild(rangeMinCell);
+  configSection.appendChild(rangeMaxCell);
+  configSection.appendChild(amountCell);
+  configSection.appendChild(chanceCell);
+  configSection.appendChild(holdCell);
+  controls.appendChild(configSection);
+
+  function showPlaceholder(message) {
+    rootEl.innerHTML = `<span class="hint">${message}</span>`;
+    rootEl.classList.add('placeholder');
+  }
+
+  function ensureControls() {
+    if (rootEl.contains(controls)) return;
+    rootEl.innerHTML = '';
+    rootEl.classList.remove('placeholder');
+    rootEl.appendChild(controls);
+  }
+
+  function refreshTargetOptions(selected) {
+    const options = getTargetOptionsForTrack(track) || [];
+    targetSelect.innerHTML = '';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '(none)';
+    targetSelect.appendChild(blank);
+    const seen = new Set(['']);
+    options.forEach(opt => {
+      if (!opt || typeof opt.value !== 'string') return;
+      const value = opt.value;
+      if (seen.has(value)) return;
+      const optionEl = document.createElement('option');
+      optionEl.value = value;
+      optionEl.textContent = opt.label || value;
+      targetSelect.appendChild(optionEl);
+      seen.add(value);
+    });
+    const trimmed = (selected || '').trim();
+    if (trimmed && !seen.has(trimmed)) {
+      const extra = document.createElement('option');
+      extra.value = trimmed;
+      extra.textContent = trimmed;
+      targetSelect.appendChild(extra);
+    }
+    targetSelect.value = trimmed || '';
+  }
+
+  function getSelectedStep() {
+    if (!track || !Array.isArray(track.steps)) return null;
+    if (selectedIndex < 0 || selectedIndex >= track.steps.length) return null;
+    return track.steps[selectedIndex];
+  }
+
+  function updateControlsFromFx(fx) {
+    const effectiveFx = normalizeStepFx(fx);
+    const isSampleHold = effectiveFx.type === STEP_FX_TYPES.SAMPLE_HOLD;
+    suppress = true;
+    typeSelect.value = isSampleHold ? STEP_FX_TYPES.SAMPLE_HOLD : STEP_FX_TYPES.NONE;
+    configSection.style.display = isSampleHold ? '' : 'none';
+    const enabled = isSampleHold;
+    [targetSelect, minInput, maxInput, amountInput, chanceInput, holdInput].forEach(el => {
+      el.disabled = !enabled;
+    });
+
+    const cfg = isSampleHold ? (effectiveFx.config || {}) : sampleHoldDefaults;
+    const minVal = Number.isFinite(Number(cfg.min)) ? Number(cfg.min) : sampleHoldDefaults.min;
+    const maxVal = Number.isFinite(Number(cfg.max)) ? Number(cfg.max) : sampleHoldDefaults.max;
+    const amtVal = Number.isFinite(Number(cfg.amount)) ? Math.abs(Number(cfg.amount)) : Math.max(Math.abs(minVal), Math.abs(maxVal), sampleHoldDefaults.amount);
+    const chanceVal = Number.isFinite(Number(cfg.chance)) ? Number(cfg.chance) : sampleHoldDefaults.chance;
+    const holdValRaw = Number.isFinite(Number(cfg.hold)) ? Number(cfg.hold) : sampleHoldDefaults.hold;
+    const holdVal = Math.max(1, Math.min(128, Math.floor(holdValRaw)));
+
+    const targetVal = typeof cfg.target === 'string' ? cfg.target : sampleHoldDefaults.target;
+    refreshTargetOptions(enabled ? targetVal : '');
+
+    minInput.value = String(minVal);
+    maxInput.value = String(maxVal);
+    amountInput.value = String(amtVal);
+    chanceInput.value = String(Math.max(0, Math.min(1, chanceVal)));
+    holdInput.value = String(holdVal);
+    suppress = false;
+  }
+
+  function commitFx(mutator) {
+    const step = getSelectedStep();
+    if (!step) return;
+    const current = normalizeStepFx(step.fx);
+    if (current.type !== STEP_FX_TYPES.SAMPLE_HOLD) return;
+    if (typeof mutator === 'function') {
+      mutator(current.config || {}, current);
+    }
+    step.fx = normalizeStepFx(current);
+    suppress = true;
+    updateControlsFromFx(step.fx);
+    suppress = false;
+    if (typeof onChange === 'function') onChange(selectedIndex, step);
+  }
+
+  typeSelect.addEventListener('change', () => {
+    if (suppress) return;
+    const step = getSelectedStep();
+    if (!step) return;
+    const value = typeSelect.value;
+    if (value === STEP_FX_TYPES.SAMPLE_HOLD) {
+      const defaults = createStepFx(STEP_FX_TYPES.SAMPLE_HOLD);
+      const existing = step.fx && step.fx.type === STEP_FX_TYPES.SAMPLE_HOLD
+        ? step.fx
+        : null;
+      const merged = existing
+        ? { type: STEP_FX_TYPES.SAMPLE_HOLD, config: { ...defaults.config, ...(existing.config || {}) } }
+        : defaults;
+      step.fx = normalizeStepFx(merged);
+    } else {
+      step.fx = createStepFx(STEP_FX_TYPES.NONE);
+    }
+    suppress = true;
+    updateControlsFromFx(step.fx);
+    suppress = false;
+    if (typeof onChange === 'function') onChange(selectedIndex, step);
+  });
+
+  targetSelect.addEventListener('change', () => {
+    if (suppress) return;
+    const value = targetSelect.value;
+    commitFx(config => {
+      config.target = value;
+    });
+  });
+
+  minInput.addEventListener('change', () => {
+    if (suppress) return;
+    const value = Number(minInput.value);
+    if (!Number.isFinite(value)) return;
+    commitFx(config => {
+      config.min = value;
+      const maxVal = Number(config.max);
+      const amt = Math.max(Math.abs(value), Number.isFinite(maxVal) ? Math.abs(maxVal) : 0);
+      if (Number.isFinite(amt)) config.amount = amt;
+    });
+  });
+
+  maxInput.addEventListener('change', () => {
+    if (suppress) return;
+    const value = Number(maxInput.value);
+    if (!Number.isFinite(value)) return;
+    commitFx(config => {
+      config.max = value;
+      const minVal = Number(config.min);
+      const amt = Math.max(Math.abs(value), Number.isFinite(minVal) ? Math.abs(minVal) : 0);
+      if (Number.isFinite(amt)) config.amount = amt;
+    });
+  });
+
+  amountInput.addEventListener('change', () => {
+    if (suppress) return;
+    const value = Number(amountInput.value);
+    if (!Number.isFinite(value)) return;
+    const normalized = Math.max(0, Math.abs(value));
+    commitFx(config => {
+      config.amount = normalized;
+      config.min = -normalized;
+      config.max = normalized;
+    });
+  });
+
+  chanceInput.addEventListener('input', () => {
+    if (suppress) return;
+    const value = Number(chanceInput.value);
+    if (!Number.isFinite(value)) return;
+    commitFx(config => {
+      config.chance = Math.max(0, Math.min(1, value));
+    });
+  });
+
+  holdInput.addEventListener('input', () => {
+    if (suppress) return;
+    const value = Number(holdInput.value);
+    if (!Number.isFinite(value)) return;
+    const normalized = Math.max(1, Math.min(128, Math.floor(value)));
+    commitFx(config => {
+      config.hold = normalized;
+    });
+  });
+
+  function updateSelection(index) {
+    selectedIndex = Number.isInteger(index) ? index : -1;
+    if (!track || track.mode !== 'steps') {
+      showPlaceholder('Step effects are available in Steps mode.');
+      return;
+    }
+    const steps = track.steps;
+    if (!Array.isArray(steps) || selectedIndex < 0 || selectedIndex >= steps.length) {
+      showPlaceholder('Select a step to edit effects.');
+      return;
+    }
+    const step = steps[selectedIndex];
+    ensureControls();
+    if (step) {
+      step.fx = normalizeStepFx(step.fx);
+      updateControlsFromFx(step.fx);
+    } else {
+      updateControlsFromFx(createStepFx());
+    }
+  }
+
+  showPlaceholder('Select a step to edit effects.');
+
+  return {
+    updateSelection,
+    refresh() {
+      updateSelection(selectedIndex);
+    },
+    setOnChange(fn) {
+      onChange = typeof fn === 'function' ? fn : null;
+    },
+  };
+}
+
 export function renderParams(containerEl, track, makeFieldHtml) {
   const t = track;
   const eng = t.engine;
@@ -395,10 +705,18 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     delete containerEl._stepParamsEditor;
   }
 
+  const stepFxRoot = containerEl.querySelector('#trk_stepFx');
+  const stepFxEditor = createStepFxPanel(stepFxRoot, track);
+  if (stepFxEditor) {
+    containerEl._stepFxEditor = stepFxEditor;
+  } else if (containerEl._stepFxEditor) {
+    delete containerEl._stepFxEditor;
+  }
+
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepToggle, onStepParamsChange }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepToggle, onStepParamsChange, onStepFxChange }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -461,6 +779,31 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       stepParamsEditor.updateSelection(selectedIndex);
       stepParamsEditor.setOnChange((index, step) => {
         if (typeof onStepParamsChange === 'function') onStepParamsChange(index, step);
+      });
+    }
+
+    const stepFxEditor = containerEl._stepFxEditor;
+    if (containerEl._stepFxSelectionHandler) {
+      containerEl.removeEventListener('stepselectionchange', containerEl._stepFxSelectionHandler);
+      delete containerEl._stepFxSelectionHandler;
+    }
+
+    if (stepFxEditor) {
+      const fxHandler = (ev) => {
+        const detail = ev?.detail;
+        if (!detail || detail.track !== t) return;
+        const idx = Number.isInteger(detail.index) ? detail.index : -1;
+        stepFxEditor.updateSelection(idx);
+      };
+      containerEl._stepFxSelectionHandler = fxHandler;
+      containerEl.addEventListener('stepselectionchange', fxHandler);
+
+      const selectedIndex = Number.isInteger(containerEl._selectedStepIndex)
+        ? containerEl._selectedStepIndex
+        : -1;
+      stepFxEditor.updateSelection(selectedIndex);
+      stepFxEditor.setOnChange((index, step) => {
+        if (typeof onStepFxChange === 'function') onStepFxChange(index, step);
       });
     }
 
