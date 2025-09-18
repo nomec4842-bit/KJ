@@ -83,6 +83,59 @@ export function refreshTrackSelect(selectEl, tracks, selectedIndex) {
   selectEl.value = String(selectedIndex);
 }
 
+function createInlineStepEditor(rootEl) {
+  if (!rootEl) return null;
+
+  let onToggle = null;
+  let buttons = [];
+
+  function handleClick(index) {
+    if (typeof onToggle === 'function') {
+      onToggle(index);
+    }
+  }
+
+  function rebuild(length) {
+    const len = Math.max(0, Number.isFinite(length) ? Math.trunc(length) : 0);
+    buttons = [];
+    rootEl.innerHTML = '';
+    for (let i = 0; i < len; i++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mini-step';
+      btn.dataset.index = String(i);
+      btn.setAttribute('aria-label', `Toggle step ${i + 1}`);
+      btn.setAttribute('aria-pressed', 'false');
+      btn.title = `Step ${i + 1}`;
+      btn.addEventListener('click', () => handleClick(i));
+      rootEl.appendChild(btn);
+      buttons.push(btn);
+    }
+  }
+
+  function update(steps = []) {
+    buttons.forEach((btn, idx) => {
+      const step = steps[idx];
+      const active = !!step?.on;
+      btn.classList.toggle('on', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function paint(stepIndex) {
+    buttons.forEach(btn => btn.classList.remove('playhead'));
+    if (stepIndex >= 0 && stepIndex < buttons.length) {
+      buttons[stepIndex].classList.add('playhead');
+    }
+  }
+
+  function setOnToggle(fn) {
+    onToggle = typeof fn === 'function' ? fn : null;
+  }
+
+  return { rebuild, update, paint, setOnToggle };
+}
+
 export function renderParams(containerEl, track, makeFieldHtml) {
   const t = track;
   const eng = t.engine;
@@ -101,7 +154,12 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
   // Steps per track
   const opts = STEP_CHOICES.map(n => `<option value="${n}" ${n===t.length?'selected':''}>${n}</option>`).join('');
-  html += field('Steps', `<select id="trk_steps">${opts}</select>`, 'per-track length');
+  const stepInline = `
+    <div class="step-inline">
+      <select id="trk_steps">${opts}</select>
+      <div id="trk_stepEditor" class="step-inline-grid" role="group" aria-label="Track steps"></div>
+    </div>`;
+  html += field('Steps', stepInline, 'per-track length');
 
   // Instrument block
   html += `<div class="badge">Instrument • ${eng}</div>`;
@@ -163,10 +221,18 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
   containerEl.innerHTML = html;
 
+  const stepEditorRoot = containerEl.querySelector('#trk_stepEditor');
+  const inlineStepEditor = createInlineStepEditor(stepEditorRoot);
+  if (inlineStepEditor) {
+    containerEl._inlineStepEditor = inlineStepEditor;
+  } else if (containerEl._inlineStepEditor) {
+    delete containerEl._inlineStepEditor;
+  }
+
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepToggle }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -175,9 +241,28 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
     // Steps
     const sSel = document.getElementById('trk_steps');
+    if (inlineStepEditor) {
+      inlineStepEditor.setOnToggle((index) => {
+        if (!t.steps || !Array.isArray(t.steps)) return;
+        const step = t.steps[index];
+        if (!step) return;
+        step.on = !step.on;
+        step.vel = step.on ? 1 : 0;
+        inlineStepEditor.update(t.steps);
+        if (typeof onStepToggle === 'function') onStepToggle(index, step);
+      });
+      inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
+      inlineStepEditor.update(t.steps);
+      inlineStepEditor.paint(t.pos ?? -1);
+    }
     if (sSel) sSel.onchange = e => {
       const v = parseInt(e.target.value, 10);
       onStepsChange && onStepsChange(v);
+      if (inlineStepEditor) {
+        inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
+        inlineStepEditor.update(t.steps);
+        inlineStepEditor.paint(t.pos ?? -1);
+      }
     };
 
     // Engine params

@@ -129,11 +129,17 @@ function renderCurrentEditor(){
   const t = currentTrack();
   if (t.mode === 'piano') piano.update();
   else stepGrid.update((i)=>t.steps[i]);
+  const inlineStep = paramsEl?._inlineStepEditor;
+  if (inlineStep && t && Array.isArray(t.steps)) {
+    inlineStep.update(t.steps);
+  }
 }
 function paintPlayhead(){
   const t = currentTrack();
   if (t.mode === 'piano') piano.paint(t.pos);
   else stepGrid.paint(t.pos);
+  const inlineStep = paramsEl?._inlineStepEditor;
+  if (inlineStep) inlineStep.paint(t.pos ?? -1);
 }
 
 /* ---------- Params ---------- */
@@ -190,18 +196,34 @@ async function onSampleFile(file) {
 }
 
 function renderParamsPanel(){
-  const binder = renderParams(paramsEl, currentTrack(), makeField);
+  const track = currentTrack();
+  const binder = renderParams(paramsEl, track, makeField);
   binder({
     applyMixer: () => applyMixer(tracks),
-    t: currentTrack(),
+    t: track,
     onStepsChange: (newLen) => {
-      resizeTrackSteps(currentTrack(), newLen);
-      normalizeTrack(currentTrack());
+      resizeTrackSteps(track, newLen);
+      normalizeTrack(track);
       showEditorForTrack();
       paintPlayhead();
+      const inlineStep = paramsEl?._inlineStepEditor;
+      if (inlineStep && Array.isArray(track.steps)) {
+        inlineStep.rebuild(track.length ?? track.steps.length);
+        inlineStep.update(track.steps);
+        inlineStep.paint(track.pos ?? -1);
+      }
     },
     onSampleFile,
+    onStepToggle: () => {
+      renderCurrentEditor();
+      paintPlayhead();
+    },
   });
+  const inlineStep = paramsEl?._inlineStepEditor;
+  if (inlineStep && track && Array.isArray(track.steps)) {
+    inlineStep.update(track.steps);
+    inlineStep.paint(track.pos ?? -1);
+  }
 }
 function refreshAndSelect(i = selectedTrackIndex){
   normalizeTrack(currentTrack());
