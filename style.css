@@ -14,6 +14,30 @@ h3 { margin:0 0 8px; font-weight:600; }
 .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
 .field .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 
+.slider-control { display:flex; align-items:center; gap:8px; width:100%; }
+.slider-control-input { flex:1 1 140px; min-width:120px; }
+.slider-control-value {
+  min-width:52px;
+  padding:2px 6px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:#1a1d25;
+  color:var(--fg);
+  font-size:12px;
+  font-variant-numeric: tabular-nums;
+  text-align:right;
+  white-space:nowrap;
+  cursor:text;
+}
+.slider-control-value:focus {
+  outline:2px solid var(--accent);
+  outline-offset:1px;
+}
+.slider-control-value[aria-disabled="true"] {
+  opacity:0.6;
+  cursor:default;
+}
+
 .step-inline { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; width:100%; }
 .step-inline select { min-width:72px; flex:0 0 auto; }
 .step-inline-grid { display:grid; flex:1; grid-template-columns: repeat(auto-fit, minmax(18px, 1fr)); gap:4px; }

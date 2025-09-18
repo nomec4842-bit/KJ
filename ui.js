@@ -82,6 +82,142 @@ function createModCell(labelText, controlEl) {
   return wrap;
 }
 
+function formatSliderValue(value, maxDecimals = 3) {
+  if (!Number.isFinite(value)) return '0';
+  const abs = Math.abs(value);
+  let decimals = Math.max(0, Math.min(6, maxDecimals));
+  if (abs >= 1000) decimals = 0;
+  else if (abs >= 100) decimals = Math.min(decimals, 1);
+  else if (abs >= 10) decimals = Math.min(decimals, 2);
+  const str = value.toFixed(decimals);
+  return str.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '').replace(/\.$/, '');
+}
+
+function createSliderControl(options = {}) {
+  const {
+    min = 0,
+    max = 1,
+    step = 0.01,
+    value = 0,
+    allowExtend = false,
+    format = (val) => formatSliderValue(val),
+    parseDisplay = (text) => Number.parseFloat(text),
+    className = '',
+  } = options || {};
+
+  const wrap = document.createElement('div');
+  wrap.className = ['slider-control', className].filter(Boolean).join(' ');
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = `${min}`;
+  slider.max = `${max}`;
+  slider.step = `${step}`;
+  slider.value = `${value}`;
+  slider.className = 'slider-control-input';
+
+  const valueEl = document.createElement('span');
+  valueEl.className = 'slider-control-value';
+  valueEl.contentEditable = 'true';
+  valueEl.spellcheck = false;
+  valueEl.setAttribute('aria-disabled', 'false');
+
+  const applyStep = (val) => {
+    const stepVal = Number(slider.step);
+    if (!Number.isFinite(stepVal) || stepVal <= 0) return val;
+    const minVal = Number(slider.min);
+    const steps = Math.round((val - minVal) / stepVal);
+    const quantized = minVal + steps * stepVal;
+    return Number.isFinite(quantized) ? Number(quantized.toFixed(6)) : val;
+  };
+
+  const extendRangeIfNeeded = (val) => {
+    if (!allowExtend || !Number.isFinite(val)) return;
+    if (val < Number(slider.min)) slider.min = `${val}`;
+    if (val > Number(slider.max)) slider.max = `${val}`;
+  };
+
+  const clampToRange = (val) => {
+    if (!Number.isFinite(val)) return Number(slider.value);
+    let result = applyStep(val);
+    if (!allowExtend) {
+      const minVal = Number(slider.min);
+      const maxVal = Number(slider.max);
+      if (result < minVal) result = minVal;
+      if (result > maxVal) result = maxVal;
+    }
+    return result;
+  };
+
+  const updateDisplay = () => {
+    const current = Number(slider.value);
+    valueEl.textContent = format(current);
+  };
+
+  let changeHandler = typeof options.onChange === 'function' ? options.onChange : null;
+
+  const notify = (val, source) => {
+    if (typeof changeHandler === 'function') changeHandler(val, { source });
+  };
+
+  slider.addEventListener('input', () => {
+    const current = Number(slider.value);
+    valueEl.textContent = format(current);
+    notify(current, 'slider');
+  });
+
+  valueEl.addEventListener('focus', () => {
+    valueEl.dataset.prevValue = valueEl.textContent || '';
+  });
+
+  valueEl.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      valueEl.blur();
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      valueEl.textContent = valueEl.dataset.prevValue ?? format(Number(slider.value));
+      valueEl.blur();
+    }
+  });
+
+  valueEl.addEventListener('blur', () => {
+    const text = valueEl.textContent ?? '';
+    const parsed = parseDisplay(text);
+    if (!Number.isFinite(parsed)) {
+      valueEl.textContent = format(Number(slider.value));
+      return;
+    }
+    extendRangeIfNeeded(parsed);
+    const finalVal = clampToRange(parsed);
+    slider.value = `${finalVal}`;
+    valueEl.textContent = format(finalVal);
+    notify(finalVal, 'input');
+  });
+
+  wrap.appendChild(slider);
+  wrap.appendChild(valueEl);
+  updateDisplay();
+
+  return {
+    wrap,
+    input: slider,
+    valueEl,
+    setOnChange(fn) {
+      changeHandler = typeof fn === 'function' ? fn : null;
+    },
+    setValue(val, { silent = false } = {}) {
+      if (!Number.isFinite(val)) return;
+      extendRangeIfNeeded(val);
+      const finalVal = clampToRange(val);
+      slider.value = `${finalVal}`;
+      valueEl.textContent = format(finalVal);
+      if (!silent) notify(finalVal, 'programmatic');
+    },
+    updateDisplay,
+  };
+}
+
 export function refreshTrackSelect(selectEl, tracks, selectedIndex) {
   selectEl.innerHTML = '';
   tracks.forEach((t, i) => {
@@ -294,7 +430,7 @@ function createStepFxPanel(rootEl, track) {
   let suppress = false;
 
   const sampleHoldDefaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.SAMPLE_HOLD] || {
-    target: '',
+    target: 'velocity',
     min: -0.25,
     max: 0.25,
     amount: 0.25,
@@ -315,51 +451,75 @@ function createStepFxPanel(rootEl, track) {
   const targetSelect = document.createElement('select');
   targetSelect.className = 'step-fx-target';
 
-  const minInput = document.createElement('input');
-  minInput.type = 'number';
-  minInput.step = '0.01';
-  minInput.className = 'step-fx-range-min';
+  let currentAmount = sampleHoldDefaults.amount;
 
-  const maxInput = document.createElement('input');
-  maxInput.type = 'number';
-  maxInput.step = '0.01';
-  maxInput.className = 'step-fx-range-max';
+  const minControl = createSliderControl({
+    min: -1,
+    max: 1,
+    step: 0.01,
+    value: 0,
+    format: (ratio) => formatSliderValue(ratio * currentAmount),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw) || currentAmount <= 0) return 0;
+      const normalized = raw / currentAmount;
+      return Math.max(-1, Math.min(1, normalized));
+    },
+  });
 
-  const amountInput = document.createElement('input');
-  amountInput.type = 'number';
-  amountInput.step = '0.01';
-  amountInput.min = '0';
-  amountInput.className = 'step-fx-amount';
+  const maxControl = createSliderControl({
+    min: -1,
+    max: 1,
+    step: 0.01,
+    value: 0,
+    format: (ratio) => formatSliderValue(ratio * currentAmount),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw) || currentAmount <= 0) return 0;
+      const normalized = raw / currentAmount;
+      return Math.max(-1, Math.min(1, normalized));
+    },
+  });
 
-  const chanceInput = document.createElement('input');
-  chanceInput.type = 'number';
-  chanceInput.min = '0';
-  chanceInput.max = '1';
-  chanceInput.step = '0.01';
-  chanceInput.className = 'step-fx-chance';
+  const amountControl = createSliderControl({
+    min: 0,
+    max: 4,
+    step: 0.01,
+    value: sampleHoldDefaults.amount,
+    allowExtend: true,
+    format: (val) => formatSliderValue(val),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return Math.max(0, raw);
+    },
+  });
 
-  const chanceWrap = document.createElement('div');
-  chanceWrap.className = 'ctrl';
-  chanceWrap.appendChild(chanceInput);
-  const chanceHint = document.createElement('span');
-  chanceHint.className = 'hint';
-  chanceHint.textContent = '0–1';
-  chanceWrap.appendChild(chanceHint);
+  const chanceControl = createSliderControl({
+    min: 0,
+    max: 1,
+    step: 0.01,
+    value: sampleHoldDefaults.chance,
+    format: (val) => formatSliderValue(val, 2),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return Math.max(0, Math.min(1, raw));
+    },
+  });
 
-  const holdInput = document.createElement('input');
-  holdInput.type = 'number';
-  holdInput.min = '1';
-  holdInput.max = '128';
-  holdInput.step = '1';
-  holdInput.className = 'step-fx-hold';
-
-  const holdWrap = document.createElement('div');
-  holdWrap.className = 'ctrl';
-  holdWrap.appendChild(holdInput);
-  const holdHint = document.createElement('span');
-  holdHint.className = 'hint';
-  holdHint.textContent = 'steps';
-  holdWrap.appendChild(holdHint);
+  const holdControl = createSliderControl({
+    min: 1,
+    max: 128,
+    step: 1,
+    value: sampleHoldDefaults.hold,
+    format: (val) => formatSliderValue(Math.round(val), 0),
+    parseDisplay: (text) => {
+      const raw = Number.parseInt(text, 10);
+      if (!Number.isFinite(raw)) return NaN;
+      return Math.max(1, Math.min(128, raw));
+    },
+  });
 
   const controls = document.createElement('div');
   controls.className = 'step-fx-controls';
@@ -369,11 +529,11 @@ function createStepFxPanel(rootEl, track) {
   const configSection = document.createElement('div');
   configSection.className = 'step-fx-config';
   configSection.appendChild(createModCell('Target', targetSelect));
-  const rangeMinCell = createModCell('Range Min', minInput);
-  const rangeMaxCell = createModCell('Range Max', maxInput);
-  const amountCell = createModCell('Amount ±', amountInput);
-  const chanceCell = createModCell('Chance', chanceWrap);
-  const holdCell = createModCell('Hold', holdWrap);
+  const rangeMinCell = createModCell('Range Min', minControl.wrap);
+  const rangeMaxCell = createModCell('Range Max', maxControl.wrap);
+  const amountCell = createModCell('Amount ±', amountControl.wrap);
+  const chanceCell = createModCell('Chance', chanceControl.wrap);
+  const holdCell = createModCell('Hold', holdControl.wrap);
   configSection.appendChild(rangeMinCell);
   configSection.appendChild(rangeMaxCell);
   configSection.appendChild(amountCell);
@@ -394,14 +554,18 @@ function createStepFxPanel(rootEl, track) {
   }
 
   function refreshTargetOptions(selected) {
-    const options = getTargetOptionsForTrack(track) || [];
+    const baseOptions = getTargetOptionsForTrack(track);
+    const options = Array.isArray(baseOptions) ? [...baseOptions] : [];
+    const extras = [
+      { value: 'velocity', label: 'Velocity' },
+    ];
     targetSelect.innerHTML = '';
     const blank = document.createElement('option');
     blank.value = '';
     blank.textContent = '(none)';
     targetSelect.appendChild(blank);
     const seen = new Set(['']);
-    options.forEach(opt => {
+    [...extras, ...options].forEach(opt => {
       if (!opt || typeof opt.value !== 'string') return;
       const value = opt.value;
       if (seen.has(value)) return;
@@ -434,8 +598,12 @@ function createStepFxPanel(rootEl, track) {
     typeSelect.value = isSampleHold ? STEP_FX_TYPES.SAMPLE_HOLD : STEP_FX_TYPES.NONE;
     configSection.style.display = isSampleHold ? '' : 'none';
     const enabled = isSampleHold;
-    [targetSelect, minInput, maxInput, amountInput, chanceInput, holdInput].forEach(el => {
-      el.disabled = !enabled;
+    targetSelect.disabled = !enabled;
+    [minControl, maxControl, amountControl, chanceControl, holdControl].forEach(ctrl => {
+      if (!ctrl) return;
+      ctrl.input.disabled = !enabled;
+      ctrl.valueEl.contentEditable = enabled ? 'true' : 'false';
+      ctrl.valueEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     });
 
     const cfg = isSampleHold ? (effectiveFx.config || {}) : sampleHoldDefaults;
@@ -449,11 +617,24 @@ function createStepFxPanel(rootEl, track) {
     const targetVal = typeof cfg.target === 'string' ? cfg.target : sampleHoldDefaults.target;
     refreshTargetOptions(enabled ? targetVal : '');
 
-    minInput.value = String(minVal);
-    maxInput.value = String(maxVal);
-    amountInput.value = String(amtVal);
-    chanceInput.value = String(Math.max(0, Math.min(1, chanceVal)));
-    holdInput.value = String(holdVal);
+    currentAmount = amtVal;
+    amountControl.setValue(amtVal, { silent: true });
+
+    const safeAmount = amtVal > 0 ? amtVal : 0;
+    const minRatio = safeAmount > 0 ? Math.max(-1, Math.min(1, minVal / safeAmount)) : 0;
+    const maxRatio = safeAmount > 0 ? Math.max(-1, Math.min(1, maxVal / safeAmount)) : 0;
+
+    minControl.setValue(minRatio, { silent: true });
+    maxControl.setValue(maxRatio, { silent: true });
+    minControl.updateDisplay();
+    maxControl.updateDisplay();
+
+    const normalizedChance = Math.max(0, Math.min(1, chanceVal));
+    chanceControl.setValue(normalizedChance, { silent: true });
+    chanceControl.updateDisplay();
+
+    holdControl.setValue(holdVal, { silent: true });
+    holdControl.updateDisplay();
     suppress = false;
   }
 
@@ -503,56 +684,62 @@ function createStepFxPanel(rootEl, track) {
     });
   });
 
-  minInput.addEventListener('change', () => {
+  const clampRatio = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    return Math.max(-1, Math.min(1, num));
+  };
+
+  minControl.setOnChange((ratio) => {
     if (suppress) return;
-    const value = Number(minInput.value);
-    if (!Number.isFinite(value)) return;
+    const normalizedRatio = clampRatio(ratio);
     commitFx(config => {
-      config.min = value;
-      const maxVal = Number(config.max);
-      const amt = Math.max(Math.abs(value), Number.isFinite(maxVal) ? Math.abs(maxVal) : 0);
-      if (Number.isFinite(amt)) config.amount = amt;
+      const amount = Math.max(0, Number(config.amount) || 0);
+      const actual = normalizedRatio * amount;
+      config.min = actual;
     });
   });
 
-  maxInput.addEventListener('change', () => {
+  maxControl.setOnChange((ratio) => {
     if (suppress) return;
-    const value = Number(maxInput.value);
-    if (!Number.isFinite(value)) return;
+    const normalizedRatio = clampRatio(ratio);
     commitFx(config => {
-      config.max = value;
-      const minVal = Number(config.min);
-      const amt = Math.max(Math.abs(value), Number.isFinite(minVal) ? Math.abs(minVal) : 0);
-      if (Number.isFinite(amt)) config.amount = amt;
+      const amount = Math.max(0, Number(config.amount) || 0);
+      const actual = normalizedRatio * amount;
+      config.max = actual;
     });
   });
 
-  amountInput.addEventListener('change', () => {
+  amountControl.setOnChange((value) => {
     if (suppress) return;
-    const value = Number(amountInput.value);
-    if (!Number.isFinite(value)) return;
-    const normalized = Math.max(0, Math.abs(value));
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    const normalized = Math.max(0, numeric);
     commitFx(config => {
+      const minRatio = clampRatio(minControl.input.value);
+      const maxRatio = clampRatio(maxControl.input.value);
       config.amount = normalized;
-      config.min = -normalized;
-      config.max = normalized;
+      const minActual = minRatio * normalized;
+      const maxActual = maxRatio * normalized;
+      config.min = Math.min(minActual, maxActual);
+      config.max = Math.max(minActual, maxActual);
     });
   });
 
-  chanceInput.addEventListener('input', () => {
+  chanceControl.setOnChange((value) => {
     if (suppress) return;
-    const value = Number(chanceInput.value);
-    if (!Number.isFinite(value)) return;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return;
     commitFx(config => {
-      config.chance = Math.max(0, Math.min(1, value));
+      config.chance = Math.max(0, Math.min(1, num));
     });
   });
 
-  holdInput.addEventListener('input', () => {
+  holdControl.setOnChange((value) => {
     if (suppress) return;
-    const value = Number(holdInput.value);
-    if (!Number.isFinite(value)) return;
-    const normalized = Math.max(1, Math.min(128, Math.floor(value)));
+    const num = Number(value);
+    if (!Number.isFinite(num)) return;
+    const normalized = Math.max(1, Math.min(128, Math.round(num)));
     commitFx(config => {
       config.hold = normalized;
     });
@@ -1008,29 +1195,46 @@ export function renderModulationRack(rootEl, track) {
     };
     updateSourceControls();
 
-    const rateInput = document.createElement('input');
-    rateInput.type = 'number';
-    rateInput.min = '0';
-    rateInput.step = '0.01';
     const rateVal = Number(mod.options.rate);
-    rateInput.value = Number.isFinite(rateVal) ? `${rateVal}` : '1';
-    rateInput.oninput = (ev) => {
-      const value = Number.parseFloat(ev.target.value);
+    const rateControl = createSliderControl({
+      min: 0,
+      max: 20,
+      step: 0.01,
+      value: Number.isFinite(rateVal) ? rateVal : 1,
+      allowExtend: true,
+      format: (val) => formatSliderValue(val, 2),
+      parseDisplay: (text) => {
+        const raw = Number.parseFloat(text);
+        if (!Number.isFinite(raw)) return NaN;
+        return Math.max(0, raw);
+      },
+    });
+    rateControl.setOnChange((val) => {
+      const value = Number(val);
       if (!Number.isFinite(value)) return;
       mod.options.rate = value;
-    };
-    row.appendChild(createModCell('Rate', rateInput));
+    });
+    row.appendChild(createModCell('Rate', rateControl.wrap));
 
-    const depthInput = document.createElement('input');
-    depthInput.type = 'number';
-    depthInput.step = '0.01';
     const depthVal = Number(mod.amount);
-    depthInput.value = Number.isFinite(depthVal) ? `${depthVal}` : '0';
-    depthInput.oninput = (ev) => {
-      const value = Number.parseFloat(ev.target.value);
+    const depthControl = createSliderControl({
+      min: -1,
+      max: 1,
+      step: 0.01,
+      value: Number.isFinite(depthVal) ? depthVal : 0,
+      allowExtend: true,
+      format: (val) => formatSliderValue(val, 3),
+      parseDisplay: (text) => {
+        const raw = Number.parseFloat(text);
+        if (!Number.isFinite(raw)) return NaN;
+        return raw;
+      },
+    });
+    depthControl.setOnChange((val) => {
+      const value = Number(val);
       mod.amount = Number.isFinite(value) ? value : 0;
-    };
-    row.appendChild(createModCell('Depth', depthInput));
+    });
+    row.appendChild(createModCell('Depth', depthControl.wrap));
 
     const targetSelect = document.createElement('select');
     const baseOptions = [...getTargetOptionsForTrack(track)];
