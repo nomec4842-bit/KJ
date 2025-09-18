@@ -21,7 +21,6 @@ export const STEP_FX_TYPES = Object.freeze({
 
 export const STEP_FX_DEFAULTS = Object.freeze({
   [STEP_FX_TYPES.SAMPLE_HOLD]: Object.freeze({
-    target: '',
     min: -0.25,
     max: 0.25,
     amount: 0.25,
@@ -36,7 +35,6 @@ function cloneFxDefaults(type = STEP_FX_TYPES.NONE) {
     return {
       type,
       config: {
-        target: defaults.target,
         min: defaults.min,
         max: defaults.max,
         amount: defaults.amount,
@@ -64,23 +62,40 @@ export function normalizeStepFx(definition) {
       ? definition.config
       : {};
 
+    let amount = Number(source.amount);
+    if (!Number.isFinite(amount)) {
+      amount = defaults.amount;
+    }
+    amount = Math.max(0, Math.abs(amount));
+
     let min = Number(source.min);
     if (!Number.isFinite(min)) {
-      const amount = Number(source.amount);
-      min = Number.isFinite(amount) ? -Math.abs(amount) : defaults.min;
+      min = Number.isFinite(amount) ? -amount : defaults.min;
     }
 
     let max = Number(source.max);
     if (!Number.isFinite(max)) {
-      const amount = Number(source.amount);
-      max = Number.isFinite(amount) ? Math.abs(amount) : defaults.max;
+      max = Number.isFinite(amount) ? amount : defaults.max;
     }
+
+    if (!Number.isFinite(min) && Number.isFinite(max)) {
+      min = -Math.abs(max);
+    }
+    if (!Number.isFinite(max) && Number.isFinite(min)) {
+      max = Math.abs(min);
+    }
+
+    if (!Number.isFinite(min)) min = defaults.min;
+    if (!Number.isFinite(max)) max = defaults.max;
 
     if (min > max) {
       const tmp = min;
       min = max;
       max = tmp;
     }
+
+    amount = Math.max(Math.abs(min), Math.abs(max), amount);
+    if (!Number.isFinite(amount)) amount = Math.abs(defaults.amount);
 
     const chance = Number(source.chance);
     const normalizedChance = Number.isFinite(chance)
@@ -91,22 +106,9 @@ export function normalizeStepFx(definition) {
     const normalizedHold = Number.isFinite(hold) ? hold : defaults.hold;
     const holdSteps = clampInt(normalizedHold, 1, 128);
 
-    let amount = Number(source.amount);
-    if (!Number.isFinite(amount)) {
-      amount = Math.max(Math.abs(min), Math.abs(max), defaults.amount);
-    } else {
-      amount = Math.max(0, Math.abs(amount));
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      amount = Math.max(Math.abs(min), Math.abs(max), defaults.amount);
-    }
-
-    const target = typeof source.target === 'string' ? source.target : defaults.target;
-
     return {
       type,
       config: {
-        target,
         min,
         max,
         amount,
@@ -272,14 +274,16 @@ export function resizeTrackSteps(track, newLen){
     .filter(n => n.length > 0);
 }
 
-export function triggerEngine(track, vel=1, semis=0){
+export function triggerEngine(track, vel=1, semis=0, destOverride=null){
+  if (!track) return;
+  const destination = destOverride || track.gainNode;
   switch(track.engine){
-    case 'synth':    return synthBlip(track.params.synth,    track.gainNode, vel, semis);
-    case 'kick808':  return kick808(track.params.kick808,    track.gainNode, vel);
-    case 'snare808': return snare808(track.params.snare808,  track.gainNode, vel);
-    case 'hat808':   return hat808(track.params.hat808,      track.gainNode, vel);
-    case 'clap909':  return clap909(track.params.clap909,    track.gainNode, vel);
-    case 'sampler':  return samplerPlay(track.params.sampler,track.gainNode, vel, track.sample, semis);
+    case 'synth':    return synthBlip(track.params.synth,    destination, vel, semis);
+    case 'kick808':  return kick808(track.params.kick808,    destination, vel);
+    case 'snare808': return snare808(track.params.snare808,  destination, vel);
+    case 'hat808':   return hat808(track.params.hat808,      destination, vel);
+    case 'clap909':  return clap909(track.params.clap909,    destination, vel);
+    case 'sampler':  return samplerPlay(track.params.sampler,destination, vel, track.sample, semis);
   }
 }
 

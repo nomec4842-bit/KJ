@@ -740,33 +740,12 @@ function mergeParamOffsets(target, offsets) {
   };
 }
 
-function buildOffsetFromPath(pathParts, value) {
-  if (!Array.isArray(pathParts) || !pathParts.length) return null;
-  if (!Number.isFinite(value) || value === 0) return null;
-  const root = {};
-  let cursor = root;
-  for (let i = 0; i < pathParts.length; i++) {
-    const key = pathParts[i];
-    if (!key) return null;
-    if (i === pathParts.length - 1) {
-      cursor[key] = value;
-    } else {
-      const next = {};
-      cursor[key] = next;
-      cursor = next;
-    }
-  }
-  return root;
-}
-
 function evaluateSampleHoldFx(track, step, stepIndex) {
   if (!track || !step) return null;
   const normalized = normalizeStepFx(step.fx);
   if (normalized.type !== STEP_FX_TYPES.SAMPLE_HOLD) return null;
   step.fx = normalized;
   const cfg = normalized.config || {};
-  const target = typeof cfg.target === 'string' ? cfg.target.trim() : '';
-  if (!target) return null;
 
   const min = Number(cfg.min);
   const max = Number(cfg.max);
@@ -785,7 +764,7 @@ function evaluateSampleHoldFx(track, step, stepIndex) {
     store.sampleHold = {};
   }
   const sampleStore = store.sampleHold;
-  const key = `${stepIndex}:${target}`;
+  const key = `${stepIndex}:signal`;
   let state = sampleStore[key];
   if (!state || typeof state !== 'object') {
     state = sampleStore[key] = { remaining: 0, value: 0 };
@@ -802,6 +781,7 @@ function evaluateSampleHoldFx(track, step, stepIndex) {
       state.value = Number.isFinite(next) ? next : 0;
       state.remaining = holdSteps;
     } else {
+      state.value = 0;
       state.remaining = 1;
     }
   }
@@ -809,13 +789,44 @@ function evaluateSampleHoldFx(track, step, stepIndex) {
   if (state.remaining > 0) state.remaining -= 1;
 
   const value = Number(state.value);
-  if (!Number.isFinite(value) || value === 0) {
-    if (!Number.isFinite(state.value)) state.value = 0;
+  if (!Number.isFinite(value)) {
+    state.value = 0;
     return null;
   }
 
-  const pathParts = target.split('.').map(p => p.trim()).filter(Boolean);
-  return buildOffsetFromPath(pathParts, value);
+  if (Math.abs(value) < 1e-6) {
+    state.value = 0;
+    return null;
+  }
+
+  const gainMultiplier = 1 + value;
+  if (!Number.isFinite(gainMultiplier)) {
+    state.value = 0;
+    return null;
+  }
+
+  const durationSteps = Math.max(1, holdSteps);
+
+  return {
+    value,
+    gainMultiplier,
+    durationSteps,
+    createAudioNode(targetTrack) {
+      if (!targetTrack || !targetTrack.gainNode) return null;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = gainMultiplier;
+      gainNode.connect(targetTrack.gainNode);
+      let cleaned = false;
+      return {
+        input: gainNode,
+        cleanup() {
+          if (cleaned) return;
+          cleaned = true;
+          try { gainNode.disconnect(); } catch (_) {}
+        },
+      };
+    },
+  };
 }
 
 function evaluateStepFx(track, step, stepIndex) {
@@ -872,13 +883,49 @@ playBtn.onclick = async () => {
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const fxOffsets = evaluateStepFx(t, st, t.pos);
-            if (fxOffsets) {
-              const restore = mergeParamOffsets(t.params, fxOffsets);
-              if (typeof restore === 'function') restoreStack.push(restore);
+            const fxResult = evaluateStepFx(t, st, t.pos);
+            let vel = getStepVelocity(st, 1);
+            let fxAudioFactory = null;
+            if (fxResult) {
+              let paramOffsets = null;
+              if (fxResult.paramOffsets && typeof fxResult.paramOffsets === 'object') {
+                paramOffsets = fxResult.paramOffsets;
+              } else if (
+                typeof fxResult === 'object'
+                && !Array.isArray(fxResult)
+                && !('velocityOffset' in fxResult)
+                && !('createAudioNode' in fxResult)
+                && !('gainMultiplier' in fxResult)
+                && !('durationSteps' in fxResult)
+              ) {
+                paramOffsets = fxResult;
+              }
+
+              if (paramOffsets) {
+                const restore = mergeParamOffsets(t.params, paramOffsets);
+                if (typeof restore === 'function') restoreStack.push(restore);
+              }
+              if (Number.isFinite(fxResult.velocityOffset)) {
+                vel += fxResult.velocityOffset;
+              }
+              if (typeof fxResult.createAudioNode === 'function') {
+                fxAudioFactory = () => fxResult.createAudioNode(t);
+              }
             }
-            const vel = getStepVelocity(st, 1);
-            if (vel > 0) triggerEngine?.(t, vel);
+            vel = Math.max(0, Math.min(1, vel));
+            if (vel > 0) {
+              const fxAudio = typeof fxAudioFactory === 'function' ? fxAudioFactory() : null;
+              const destOverride = fxAudio?.input || null;
+              triggerEngine?.(t, vel, 0, destOverride);
+              if (fxAudio?.cleanup) {
+                const stepMs = 60000 / (bpm * 4);
+                const durationSteps = Number.isFinite(fxResult?.durationSteps)
+                  ? Math.max(1, fxResult.durationSteps)
+                  : 1;
+                const cleanupDelay = Math.max(1000, stepMs * durationSteps * 4);
+                setTimeout(() => fxAudio.cleanup(), cleanupDelay);
+              }
+            }
           }
         }
       } finally {
