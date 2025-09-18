@@ -1,4 +1,11 @@
-import { createTrack, resizeTrackSteps, createModulator } from './tracks.js';
+import {
+  createTrack,
+  resizeTrackSteps,
+  createModulator,
+  normalizeStep,
+  getStepVelocity,
+  setStepVelocity,
+} from './tracks.js';
 
 // structuredClone is not universally supported in all browsers, so fall back to
 // JSON serialization when it's unavailable. This ensures pattern cloning works
@@ -15,7 +22,14 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
       name: t.name,
       engine: t.engine,
       length: t.length,
-      steps: t.steps.map(s => ({ on: !!s.on, vel: s.vel ?? 1 })),
+      steps: t.steps.map(s => {
+        const normalized = normalizeStep(s);
+        return {
+          on: !!normalized.on,
+          vel: normalized.vel,
+          params: clone(normalized.params),
+        };
+      }),
       mode: t.mode || 'steps',
       notes: (t.notes || []).map(n => ({
         start: n.start|0,
@@ -46,9 +60,13 @@ export function instantiatePattern(pat, sampleCache = {}) {
     const t = createTrack(td.name, td.engine, td.length);
     resizeTrackSteps(t, td.length);
     for (let i = 0; i < td.length; i++) {
-      const s = td.steps[i];
-      t.steps[i].on = !!s?.on;
-      t.steps[i].vel = (s?.vel ?? 1);
+      const source = td.steps?.[i];
+      const normalizedStep = normalizeStep(source);
+      normalizedStep.on = !!source?.on;
+      const velocity = getStepVelocity(source, normalizedStep.on ? 1 : 0);
+      normalizedStep.params = clone(normalizedStep.params);
+      setStepVelocity(normalizedStep, velocity);
+      t.steps[i] = normalizedStep;
     }
     t.mode = td.mode || 'steps';
     t.notes = Array.isArray(td.notes) ? td.notes.map(n => ({

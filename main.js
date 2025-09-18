@@ -2,7 +2,7 @@
 import { ctx, startTransport, stopTransport } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
-  notesStartingAt
+  notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity
 } from './tracks.js';
 import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
@@ -57,9 +57,22 @@ function normalizeTrack(t) {
   t.length = Math.max(1, (t.length ?? 16)|0);
   t.pos    = Number.isInteger(t.pos) ? t.pos : -1;
 
-  // only initialize steps ONCE
-  if (!Array.isArray(t.steps) || t.steps.length !== t.length) {
-    t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
+  if (!Array.isArray(t.steps)) t.steps = [];
+  if (t.steps.length > t.length) t.steps.length = t.length;
+  for (let i = 0; i < t.length; i++) {
+    let step = t.steps[i];
+    if (!step || typeof step !== 'object') {
+      step = t.steps[i] = normalizeStep({});
+      continue;
+    }
+    step.on = !!step.on;
+    if (!step.params || typeof step.params !== 'object') step.params = {};
+    const fallbackVel = step.on ? 1 : 0;
+    const velocity = getStepVelocity(step, fallbackVel);
+    setStepVelocity(step, velocity);
+  }
+  while (t.steps.length < t.length) {
+    t.steps.push(normalizeStep({}));
   }
 
   const storedSelection = Number.isInteger(t.selectedStep) ? t.selectedStep : -1;
@@ -121,8 +134,14 @@ const stepGrid = createGrid(
   (i) => { // click = toggle
     const st = currentTrack()?.steps?.[i];
     if (!st) return;
+    const prevVel = getStepVelocity(st, 1);
     st.on = !st.on;
-    st.vel = st.on ? 1 : 0;
+    if (st.on) {
+      const nextVel = prevVel > 0 ? prevVel : 1;
+      setStepVelocity(st, nextVel);
+    } else {
+      setStepVelocity(st, prevVel);
+    }
     renderCurrentEditor();
   },
   undefined,
@@ -247,6 +266,10 @@ function renderCurrentEditor(){
   if (inlineStep && Array.isArray(t.steps)) {
     inlineStep.update(t.steps);
   }
+  const stepParams = paramsEl?._stepParamsEditor;
+  if (stepParams && typeof stepParams.refresh === 'function') {
+    stepParams.refresh();
+  }
   syncSelectionUI();
 }
 function paintPlayhead(){
@@ -350,11 +373,18 @@ function renderParamsPanel(){
       renderCurrentEditor();
       paintPlayhead();
     },
+    onStepParamsChange: () => {
+      renderCurrentEditor();
+    },
   });
   const inlineStep = paramsEl?._inlineStepEditor;
   if (inlineStep && track && Array.isArray(track.steps)) {
     inlineStep.update(track.steps);
     inlineStep.paint(track.pos ?? -1);
+  }
+  const stepParams = paramsEl?._stepParamsEditor;
+  if (stepParams && typeof stepParams.refresh === 'function') {
+    stepParams.refresh();
   }
   setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
 }
@@ -737,7 +767,10 @@ playBtn.onclick = async () => {
           for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch);
         } else {
           const st = t.steps[t.pos];
-          if (st?.on) triggerEngine?.(t, st.vel);
+          if (st?.on) {
+            const vel = getStepVelocity(st, 1);
+            if (vel > 0) triggerEngine?.(t, vel);
+          }
         }
       } finally {
         if (typeof restoreParams === 'function') restoreParams();

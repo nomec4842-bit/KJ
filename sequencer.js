@@ -1,4 +1,5 @@
 // sequencer.js
+import { getStepVelocity } from './tracks.js';
 
 /**
  * Build the step grid UI for ONE visible track.
@@ -44,6 +45,11 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
       const cell = document.createElement('div');
       cell.className = 'cell';
       cell.dataset.index = i;
+
+      const velBar = document.createElement('div');
+      velBar.className = 'vel';
+      velBar.style.height = '0%';
+      cell.appendChild(velBar);
 
       // --- Double-click/tap handling ---
       let lastTap = 0;
@@ -131,6 +137,17 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
       const st = getStep(i);
       const cell = gridCells[i];
       cell.classList.toggle('on', !!st?.on);
+      const bar = cell.querySelector('.vel');
+      if (bar){
+        const vel = getStepVelocity(st, st?.on ? 1 : 0);
+        const clamped = Math.max(0, Math.min(1, vel));
+        bar.style.height = Math.round(clamped * 100) + '%';
+      }
+      if (cell){
+        const vel = getStepVelocity(st, 0);
+        const clamped = Math.max(0, Math.min(1, vel));
+        cell.title = `Step ${i + 1} • Vel ${Math.round(clamped * 127)}`;
+      }
     }
   }
 

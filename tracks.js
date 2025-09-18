@@ -13,7 +13,41 @@ export const defaults = {
 };
 
 const clone = o => JSON.parse(JSON.stringify(o));
-const makeStep = () => ({ on:false, vel:1.0 });
+
+export function getStepVelocity(step, fallback = 0) {
+  if (!step || typeof step !== 'object') return fallback;
+  const params = step.params;
+  const paramVel = params && typeof params === 'object' ? Number(params.velocity) : NaN;
+  if (Number.isFinite(paramVel)) return Math.max(0, paramVel);
+  const vel = Number(step.vel);
+  if (Number.isFinite(vel)) return Math.max(0, vel);
+  return Math.max(0, fallback);
+}
+
+export function setStepVelocity(step, velocity = 0) {
+  if (!step || typeof step !== 'object') return 0;
+  const v = Number(velocity);
+  const next = Number.isFinite(v) ? Math.max(0, v) : 0;
+  if (!step.params || typeof step.params !== 'object') step.params = {};
+  step.params.velocity = next;
+  step.vel = next;
+  return next;
+}
+
+export function normalizeStep(step) {
+  const src = step && typeof step === 'object' ? step : {};
+  const normalized = {
+    on: !!src.on,
+    params: { ...(src.params && typeof src.params === 'object' ? src.params : {}) },
+    vel: 0,
+  };
+  const fallback = normalized.on ? 1 : 0;
+  const velocity = getStepVelocity(src, fallback);
+  setStepVelocity(normalized, velocity);
+  return normalized;
+}
+
+const makeStep = () => normalizeStep({});
 const makeNote = (start=0, length=1, pitch=0, vel=1) => ({ start, length, pitch, vel });
 
 function makeBus(){
@@ -108,7 +142,7 @@ export function resizeTrackSteps(track, newLen){
   const old = track.steps;
   const next = new Array(newLen);
   for (let i=0;i<newLen;i++){
-    next[i] = old[i] ? { on: !!old[i].on, vel: old[i].vel ?? 1 } : makeStep();
+    next[i] = old[i] ? normalizeStep(old[i]) : makeStep();
   }
   track.steps = next;
   track.length = newLen;
