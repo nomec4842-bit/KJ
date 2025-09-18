@@ -159,7 +159,19 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       <select id="trk_steps">${opts}</select>
       <div id="trk_stepEditor" class="step-inline-grid" role="group" aria-label="Track steps"></div>
     </div>`;
-  html += field('Steps', stepInline, 'per-track length');
+  html += field('Steps', stepInline, 'per-track length & toggles');
+
+  const stepParamsPanel = `
+    <div id="trk_stepParams" class="step-detail placeholder">
+      <span class="hint">Step parameter controls will appear here.</span>
+    </div>`;
+  html += field('Step Params', stepParamsPanel);
+
+  const stepFxPanel = `
+    <div id="trk_stepFx" class="step-detail placeholder">
+      <span class="hint">Step effect controls will appear here.</span>
+    </div>`;
+  html += field('Step Effects', stepFxPanel);
 
   // Instrument block
   html += `<div class="badge">Instrument • ${eng}</div>`;
@@ -257,11 +269,13 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     }
     if (sSel) sSel.onchange = e => {
       const v = parseInt(e.target.value, 10);
-      onStepsChange && onStepsChange(v);
-      if (inlineStepEditor) {
-        inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
-        inlineStepEditor.update(t.steps);
-        inlineStepEditor.paint(t.pos ?? -1);
+      if (!Number.isNaN(v)) {
+        onStepsChange && onStepsChange(v);
+        if (inlineStepEditor) {
+          inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
+          inlineStepEditor.update(t.steps);
+          inlineStepEditor.paint(t.pos ?? -1);
+        }
       }
     };
 
