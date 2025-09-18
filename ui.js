@@ -1,5 +1,5 @@
 // ui.js
-import { createModulator, removeModulator } from './tracks.js';
+import { STEP_CHOICES, createModulator, removeModulator } from './tracks.js';
 
 const MOD_SOURCES = [
   { value: 'lfo', label: 'LFO' },
@@ -153,11 +153,13 @@ export function renderParams(containerEl, track, makeFieldHtml) {
      <button id="mx_solo" class="toggle ${t.solo?'active':''}">Solo</button>`);
 
   // Steps per track
+  const opts = STEP_CHOICES.map(n => `<option value="${n}" ${n===t.length?'selected':''}>${n}</option>`).join('');
   const stepInline = `
     <div class="step-inline">
+      <select id="trk_steps">${opts}</select>
       <div id="trk_stepEditor" class="step-inline-grid" role="group" aria-label="Track steps"></div>
     </div>`;
-  html += field('Steps', stepInline, 'toggle per-step triggers');
+  html += field('Steps', stepInline, 'per-track length & toggles');
 
   const stepParamsPanel = `
     <div id="trk_stepParams" class="step-detail placeholder">
@@ -242,7 +244,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onSampleFile, onStepToggle }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepToggle }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -250,6 +252,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     const sb=document.getElementById('mx_solo'); if (sb) sb.onclick = () => { t.solo = !t.solo; sb.classList.toggle('active', t.solo); applyMixer(); };
 
     // Steps
+    const sSel = document.getElementById('trk_steps');
     if (inlineStepEditor) {
       inlineStepEditor.setOnToggle((index) => {
         if (!t.steps || !Array.isArray(t.steps)) return;
@@ -264,6 +267,17 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       inlineStepEditor.update(t.steps);
       inlineStepEditor.paint(t.pos ?? -1);
     }
+    if (sSel) sSel.onchange = e => {
+      const v = parseInt(e.target.value, 10);
+      if (!Number.isNaN(v)) {
+        onStepsChange && onStepsChange(v);
+        if (inlineStepEditor) {
+          inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
+          inlineStepEditor.update(t.steps);
+          inlineStepEditor.paint(t.pos ?? -1);
+        }
+      }
+    };
 
     // Engine params
     if (eng === 'synth') {

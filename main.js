@@ -1,7 +1,7 @@
 // main.js
 import { ctx, startTransport, stopTransport } from './core.js';
 import {
-  createTrack, triggerEngine, applyMixer,
+  createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt
 } from './tracks.js';
 import { applyMods } from './mods.js';
@@ -201,6 +201,18 @@ function renderParamsPanel(){
   binder({
     applyMixer: () => applyMixer(tracks),
     t: track,
+    onStepsChange: (newLen) => {
+      resizeTrackSteps(track, newLen);
+      normalizeTrack(track);
+      showEditorForTrack();
+      paintPlayhead();
+      const inlineStep = paramsEl?._inlineStepEditor;
+      if (inlineStep && Array.isArray(track.steps)) {
+        inlineStep.rebuild(track.length ?? track.steps.length);
+        inlineStep.update(track.steps);
+        inlineStep.paint(track.pos ?? -1);
+      }
+    },
     onSampleFile,
     onStepToggle: () => {
       renderCurrentEditor();
