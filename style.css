@@ -50,6 +50,7 @@ h3 { margin:0 0 8px; font-weight:600; }
 
 #sequencer { display:grid; grid-template-columns: repeat(16, minmax(22px,1fr)); gap:6px; }
 .cell { position:relative; height:28px; background:#171a21; border:1px solid var(--border); border-radius:8px; }
+.cell.selected { border-color:var(--accent); box-shadow:0 0 0 2px rgba(90,200,250,0.4); }
 .cell.on { background:#1d293c; }
 .cell.playhead { outline:2px solid var(--accent); }
 .vel { position:absolute; bottom:0; left:0; width:100%; background:#4aa3ff66; border-bottom-left-radius:8px; border-bottom-right-radius:8px; }

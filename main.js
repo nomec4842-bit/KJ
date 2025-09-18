@@ -62,6 +62,15 @@ function normalizeTrack(t) {
     t.steps = Array.from({ length: t.length }, () => ({ on:false, vel:0 }));
   }
 
+  const storedSelection = Number.isInteger(t.selectedStep) ? t.selectedStep : -1;
+  if (storedSelection >= 0 && storedSelection < t.length) {
+    t.selectedStep = storedSelection;
+  } else if (storedSelection >= t.length && t.length > 0) {
+    t.selectedStep = t.length - 1;
+  } else {
+    t.selectedStep = -1;
+  }
+
   if (!t.params || typeof t.params !== 'object') t.params = {};
   if (!t.params.sampler || typeof t.params.sampler !== 'object') {
     t.params.sampler = { start:0, end:1, semis:0, gain:1, loop:false, advanced:false };
@@ -110,32 +119,144 @@ function normalizeTrack(t) {
 const stepGrid = createGrid(
   seqEl,
   (i) => { // click = toggle
-    const st = currentTrack().steps[i];
+    const st = currentTrack()?.steps?.[i];
+    if (!st) return;
     st.on = !st.on;
     st.vel = st.on ? 1 : 0;
     renderCurrentEditor();
+  },
+  undefined,
+  (i) => {
+    const track = currentTrack();
+    if (!track) return;
+    setTrackSelectedStep(track, i);
   }
 );
 
 const piano = createPianoRoll(seqEl, () => currentTrack(), () => renderCurrentEditor());
 
+function getTrackStepCount(track) {
+  if (!track) return 0;
+  if (Number.isInteger(track.length)) return track.length;
+  if (Array.isArray(track.steps)) return track.steps.length;
+  return 0;
+}
+
+function getTrackSelectedStep(track) {
+  if (!track) return -1;
+  const index = Number.isInteger(track.selectedStep) ? track.selectedStep : -1;
+  const len = getTrackStepCount(track);
+  if (index < 0 || index >= len) return -1;
+  return index;
+}
+
+function updateInlineStepSelection(selectedIndex) {
+  if (!paramsEl) return;
+  const root = paramsEl.querySelector('#trk_stepEditor');
+  if (root) {
+    const buttons = root.querySelectorAll('.mini-step');
+    buttons.forEach((btn, idx) => {
+      btn.classList.toggle('selected', idx === selectedIndex);
+    });
+  }
+  if (selectedIndex >= 0) {
+    paramsEl.dataset.selectedStep = String(selectedIndex);
+  } else {
+    delete paramsEl.dataset.selectedStep;
+  }
+  paramsEl._selectedStepIndex = selectedIndex;
+}
+
+function syncSelectionUI() {
+  const track = currentTrack();
+  if (!track || track.mode !== 'steps') {
+    if (stepGrid && typeof stepGrid.select === 'function') {
+      stepGrid.select(-1);
+    }
+    updateInlineStepSelection(-1);
+    return;
+  }
+  const selectedIndex = getTrackSelectedStep(track);
+  if (stepGrid && typeof stepGrid.select === 'function') {
+    stepGrid.select(selectedIndex);
+  }
+  updateInlineStepSelection(selectedIndex);
+}
+
+function broadcastSelection(track) {
+  syncSelectionUI();
+  if (!track || track !== currentTrack() || !paramsEl) return;
+  const index = getTrackSelectedStep(track);
+  const detail = {
+    index,
+    track,
+    trackIndex: tracks.indexOf(track),
+    selectedTrackIndex,
+  };
+  paramsEl.dispatchEvent(new CustomEvent('stepselectionchange', {
+    detail,
+    bubbles: true,
+    composed: true,
+  }));
+}
+
+function setTrackSelectedStep(track, index, { force = false } = {}) {
+  if (!track) return;
+  const len = getTrackStepCount(track);
+  let next = -1;
+
+  if (index !== null && index !== undefined) {
+    const parsed = Number(index);
+    if (Number.isFinite(parsed)) {
+      next = Math.trunc(parsed);
+    }
+  }
+
+  if (next < 0 || len <= 0) {
+    next = -1;
+  } else if (next >= len) {
+    next = len - 1;
+  }
+
+  const prev = Number.isInteger(track.selectedStep) ? track.selectedStep : -1;
+  if (!force && prev === next) return;
+
+  track.selectedStep = next;
+  broadcastSelection(track);
+}
+
 function showEditorForTrack(){
   const t = currentTrack();
+  if (!t) {
+    syncSelectionUI();
+    return;
+  }
   if (t.mode === 'piano') piano.setLength(t.length);
   else stepGrid.setLength(t.length);
   renderCurrentEditor();
 }
 function renderCurrentEditor(){
   const t = currentTrack();
+  if (!t) {
+    syncSelectionUI();
+    return;
+  }
   if (t.mode === 'piano') piano.update();
   else stepGrid.update((i)=>t.steps[i]);
   const inlineStep = paramsEl?._inlineStepEditor;
-  if (inlineStep && t && Array.isArray(t.steps)) {
+  if (inlineStep && Array.isArray(t.steps)) {
     inlineStep.update(t.steps);
   }
+  syncSelectionUI();
 }
 function paintPlayhead(){
   const t = currentTrack();
+  if (!t) {
+    stepGrid.paint(-1);
+    const inlineStep = paramsEl?._inlineStepEditor;
+    if (inlineStep) inlineStep.paint(-1);
+    return;
+  }
   if (t.mode === 'piano') piano.paint(t.pos);
   else stepGrid.paint(t.pos);
   const inlineStep = paramsEl?._inlineStepEditor;
@@ -196,7 +317,14 @@ async function onSampleFile(file) {
 }
 
 function renderParamsPanel(){
+  if (!paramsEl) return;
   const track = currentTrack();
+  if (!track) {
+    paramsEl.innerHTML = '';
+    if (paramsEl._inlineStepEditor) delete paramsEl._inlineStepEditor;
+    syncSelectionUI();
+    return;
+  }
   const binder = renderParams(paramsEl, track, makeField);
   binder({
     applyMixer: () => applyMixer(tracks),
@@ -212,9 +340,13 @@ function renderParamsPanel(){
         inlineStep.update(track.steps);
         inlineStep.paint(track.pos ?? -1);
       }
+      setTrackSelectedStep(track, track.selectedStep, { force: true });
     },
     onSampleFile,
-    onStepToggle: () => {
+    onStepToggle: (index) => {
+      if (index !== undefined && index !== null) {
+        setTrackSelectedStep(track, index);
+      }
       renderCurrentEditor();
       paintPlayhead();
     },
@@ -224,12 +356,19 @@ function renderParamsPanel(){
     inlineStep.update(track.steps);
     inlineStep.paint(track.pos ?? -1);
   }
+  setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
 }
 function refreshAndSelect(i = selectedTrackIndex){
-  normalizeTrack(currentTrack());
+  const track = currentTrack();
+  if (track) normalizeTrack(track);
   refreshTrackSelect(trackSel, tracks, i);
-  engineSel.value = currentTrack().engine;
-  togglePiano.checked = currentTrack().mode === 'piano';
+  if (track) {
+    engineSel.value = track.engine;
+    togglePiano.checked = track.mode === 'piano';
+  } else {
+    engineSel.value = '';
+    togglePiano.checked = false;
+  }
   showEditorForTrack();
   renderParamsPanel();
 }
@@ -245,9 +384,12 @@ engineSel.onchange = () => {
 };
 
 togglePiano.onchange = () => {
-  currentTrack().mode = togglePiano.checked ? 'piano' : 'steps';
+  const track = currentTrack();
+  if (!track) return;
+  track.mode = togglePiano.checked ? 'piano' : 'steps';
   showEditorForTrack();
   paintPlayhead();
+  broadcastSelection(track);
 };
 
 addTrackBtn.onclick = () => {
@@ -325,6 +467,7 @@ function loadPattern(index) {
   if (!tracks.length) {
     refreshTrackSelect(trackSel, tracks, selectedTrackIndex);
     if (trackSel) trackSel.value = '';
+    renderParamsPanel();
     return;
   }
 
