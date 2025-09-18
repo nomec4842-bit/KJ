@@ -4,12 +4,39 @@
  * Build the step grid UI for ONE visible track.
  * You can change its length later via setLength().
  */
-export function createGrid(seqEl, onToggle, onDoubleToggle) {
+export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
   let gridCells = [];
   let currentLen = 16;
+  let selectedIndex = -1;
+
+  const toIndex = (value) => {
+    if (value === null || value === undefined) return -1;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return -1;
+    return Math.trunc(num);
+  };
+
+  function select(index) {
+    const len = gridCells.length;
+    let next = toIndex(index);
+    if (next < 0 || next >= len) next = -1;
+
+    if (selectedIndex >= 0 && selectedIndex < len) {
+      const prevCell = gridCells[selectedIndex];
+      if (prevCell) prevCell.classList.remove('selected');
+    }
+
+    selectedIndex = next;
+    if (selectedIndex >= 0 && selectedIndex < len) {
+      const cell = gridCells[selectedIndex];
+      if (cell) cell.classList.add('selected');
+    }
+  }
 
   function rebuild(len){
     currentLen = len;
+    const prevSelected = selectedIndex;
+    selectedIndex = -1;
     seqEl.innerHTML = '';
     gridCells = [];
 
@@ -22,6 +49,49 @@ export function createGrid(seqEl, onToggle, onDoubleToggle) {
       let lastTap = 0;
       const DOUBLE_MS = 280;
 
+      let skipClick = false;
+      let longPressTimer = null;
+      const LONG_PRESS_MS = 420;
+
+      const cancelLongPress = () => {
+        if (longPressTimer !== null) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
+      const triggerSelect = (shouldSkip = true) => {
+        if (typeof onSelect !== 'function') return;
+        cancelLongPress();
+        if (shouldSkip) skipClick = true;
+        onSelect(i);
+      };
+
+      cell.addEventListener('contextmenu', (e) => {
+        if (typeof onSelect !== 'function') return;
+        e.preventDefault();
+        triggerSelect(false);
+      });
+
+      cell.addEventListener('pointerdown', (e) => {
+        if (typeof onSelect !== 'function') return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        cancelLongPress();
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          triggerSelect();
+        }, LONG_PRESS_MS);
+      });
+
+      const clearPendingSelect = () => {
+        cancelLongPress();
+      };
+
+      cell.addEventListener('pointerup', clearPendingSelect);
+      cell.addEventListener('pointerleave', clearPendingSelect);
+      cell.addEventListener('pointercancel', clearPendingSelect);
+      cell.addEventListener('pointerout', clearPendingSelect);
+
       // Native dblclick (desktop)
       cell.addEventListener('dblclick', (e) => {
         e.preventDefault();
@@ -30,6 +100,11 @@ export function createGrid(seqEl, onToggle, onDoubleToggle) {
 
       // Manual double detection for taps/clicks
       cell.addEventListener('click', () => {
+        if (skipClick) {
+          skipClick = false;
+          lastTap = 0;
+          return;
+        }
         if (!onDoubleToggle) {
           onToggle(i);
           return;
@@ -47,6 +122,8 @@ export function createGrid(seqEl, onToggle, onDoubleToggle) {
       seqEl.appendChild(cell);
       gridCells.push(cell);
     }
+
+    select(prevSelected);
   }
 
   function update(getStep){
@@ -69,5 +146,5 @@ export function createGrid(seqEl, onToggle, onDoubleToggle) {
   // initial
   rebuild(16);
 
-  return { update, paint, setLength: rebuild };
+  return { update, paint, setLength: rebuild, select };
 }
