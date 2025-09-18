@@ -1,5 +1,11 @@
 // ui.js
-import { STEP_CHOICES, createModulator, removeModulator } from './tracks.js';
+import {
+  STEP_CHOICES,
+  createModulator,
+  removeModulator,
+  getStepVelocity,
+  setStepVelocity,
+} from './tracks.js';
 
 const MOD_SOURCES = [
   { value: 'lfo', label: 'LFO' },
@@ -107,6 +113,10 @@ function createInlineStepEditor(rootEl) {
       btn.setAttribute('aria-label', `Toggle step ${i + 1}`);
       btn.setAttribute('aria-pressed', 'false');
       btn.title = `Step ${i + 1}`;
+      const velBar = document.createElement('div');
+      velBar.className = 'vel';
+      velBar.style.height = '0%';
+      btn.appendChild(velBar);
       btn.addEventListener('click', () => handleClick(i));
       rootEl.appendChild(btn);
       buttons.push(btn);
@@ -119,6 +129,19 @@ function createInlineStepEditor(rootEl) {
       const active = !!step?.on;
       btn.classList.toggle('on', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      const bar = btn.querySelector('.vel');
+      if (bar) {
+        const vel = getStepVelocity(step, active ? 1 : 0);
+        const clamped = Math.max(0, Math.min(1, vel));
+        bar.style.height = Math.round(clamped * 100) + '%';
+      }
+      if (step) {
+        const vel = getStepVelocity(step, 0);
+        const clamped = Math.max(0, Math.min(1, vel));
+        btn.title = `Step ${idx + 1} • Vel ${Math.round(clamped * 127)}`;
+      } else {
+        btn.title = `Step ${idx + 1}`;
+      }
     });
   }
 
@@ -134,6 +157,129 @@ function createInlineStepEditor(rootEl) {
   }
 
   return { rebuild, update, paint, setOnToggle };
+}
+
+function createStepParamsPanel(rootEl, track) {
+  if (!rootEl) return null;
+
+  let onChange = null;
+  let selectedIndex = -1;
+  let suppressEvents = false;
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '1';
+  slider.step = '0.01';
+  slider.value = '1';
+  slider.className = 'step-param-slider';
+  slider.setAttribute('aria-label', 'Step velocity');
+
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = '0';
+  numberInput.max = '127';
+  numberInput.step = '1';
+  numberInput.value = '127';
+  numberInput.className = 'step-param-value';
+  numberInput.setAttribute('aria-label', 'Step velocity (0-127)');
+  numberInput.inputMode = 'numeric';
+
+  const stateLabel = document.createElement('span');
+  stateLabel.className = 'step-param-state hint';
+
+  const controls = document.createElement('div');
+  controls.className = 'step-param-controls';
+  controls.appendChild(slider);
+  controls.appendChild(numberInput);
+  controls.appendChild(stateLabel);
+
+  const showPlaceholder = (message) => {
+    rootEl.innerHTML = `<span class="hint">${message}</span>`;
+    rootEl.classList.add('placeholder');
+  };
+
+  const ensureControls = () => {
+    if (rootEl.contains(controls)) return;
+    rootEl.innerHTML = '';
+    rootEl.classList.remove('placeholder');
+    rootEl.appendChild(controls);
+  };
+
+  const updateStateLabel = (step) => {
+    if (!step) {
+      stateLabel.textContent = '';
+      return;
+    }
+    stateLabel.textContent = step.on ? 'On' : 'Off';
+  };
+
+  const commitVelocity = (value) => {
+    if (selectedIndex < 0) return;
+    const steps = track?.steps;
+    if (!Array.isArray(steps)) return;
+    const step = steps[selectedIndex];
+    if (!step) return;
+    const normalized = Math.max(0, Math.min(1, Number(value) || 0));
+    setStepVelocity(step, normalized);
+    suppressEvents = true;
+    slider.value = String(normalized);
+    numberInput.value = String(Math.round(normalized * 127));
+    suppressEvents = false;
+    updateStateLabel(step);
+    if (typeof onChange === 'function') onChange(selectedIndex, step);
+  };
+
+  slider.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const val = Number(ev.target.value);
+    if (!Number.isFinite(val)) return;
+    commitVelocity(val);
+  });
+
+  numberInput.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const midi = Number.parseInt(ev.target.value, 10);
+    if (!Number.isFinite(midi)) return;
+    const normalized = Math.max(0, Math.min(1, midi / 127));
+    commitVelocity(normalized);
+  });
+
+  const updateSelection = (index) => {
+    selectedIndex = Number.isInteger(index) ? index : -1;
+    if (!track || track.mode !== 'steps') {
+      showPlaceholder('Step parameters are available in Steps mode.');
+      return;
+    }
+    const steps = track.steps;
+    if (!Array.isArray(steps) || selectedIndex < 0 || selectedIndex >= steps.length) {
+      showPlaceholder('Select a step to edit velocity.');
+      return;
+    }
+    const step = steps[selectedIndex];
+    ensureControls();
+    const vel = getStepVelocity(step, step?.on ? 1 : 0);
+    const clamped = Math.max(0, Math.min(1, vel));
+    suppressEvents = true;
+    slider.value = String(clamped);
+    numberInput.value = String(Math.round(clamped * 127));
+    suppressEvents = false;
+    slider.disabled = false;
+    numberInput.disabled = false;
+    updateStateLabel(step);
+  };
+
+  showPlaceholder('Select a step to edit velocity.');
+
+  return {
+    updateSelection,
+    refresh() {
+      updateSelection(selectedIndex);
+    },
+    setOnChange(fn) {
+      onChange = typeof fn === 'function' ? fn : null;
+    },
+  };
 }
 
 export function renderParams(containerEl, track, makeFieldHtml) {
@@ -241,10 +387,18 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     delete containerEl._inlineStepEditor;
   }
 
+  const stepParamsRoot = containerEl.querySelector('#trk_stepParams');
+  const stepParamsEditor = createStepParamsPanel(stepParamsRoot, track);
+  if (stepParamsEditor) {
+    containerEl._stepParamsEditor = stepParamsEditor;
+  } else if (containerEl._stepParamsEditor) {
+    delete containerEl._stepParamsEditor;
+  }
+
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepToggle }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepToggle, onStepParamsChange }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -258,9 +412,16 @@ export function renderParams(containerEl, track, makeFieldHtml) {
         if (!t.steps || !Array.isArray(t.steps)) return;
         const step = t.steps[index];
         if (!step) return;
+        const previous = getStepVelocity(step, 1);
         step.on = !step.on;
-        step.vel = step.on ? 1 : 0;
+        if (step.on) {
+          const nextVel = previous > 0 ? previous : 1;
+          setStepVelocity(step, nextVel);
+        } else {
+          setStepVelocity(step, previous);
+        }
         inlineStepEditor.update(t.steps);
+        if (stepParamsEditor) stepParamsEditor.refresh();
         if (typeof onStepToggle === 'function') onStepToggle(index, step);
       });
       inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
@@ -278,6 +439,30 @@ export function renderParams(containerEl, track, makeFieldHtml) {
         }
       }
     };
+
+    if (containerEl._stepParamsSelectionHandler) {
+      containerEl.removeEventListener('stepselectionchange', containerEl._stepParamsSelectionHandler);
+      delete containerEl._stepParamsSelectionHandler;
+    }
+
+    if (stepParamsEditor) {
+      const paramsHandler = (ev) => {
+        const detail = ev?.detail;
+        if (!detail || detail.track !== t) return;
+        const idx = Number.isInteger(detail.index) ? detail.index : -1;
+        stepParamsEditor.updateSelection(idx);
+      };
+      containerEl._stepParamsSelectionHandler = paramsHandler;
+      containerEl.addEventListener('stepselectionchange', paramsHandler);
+
+      const selectedIndex = Number.isInteger(containerEl._selectedStepIndex)
+        ? containerEl._selectedStepIndex
+        : -1;
+      stepParamsEditor.updateSelection(selectedIndex);
+      stepParamsEditor.setOnChange((index, step) => {
+        if (typeof onStepParamsChange === 'function') onStepParamsChange(index, step);
+      });
+    }
 
     // Engine params
     if (eng === 'synth') {
