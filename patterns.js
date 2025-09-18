@@ -28,6 +28,7 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
           on: !!normalized.on,
           vel: normalized.vel,
           params: clone(normalized.params),
+          fx: clone(normalized.fx),
         };
       }),
       mode: t.mode || 'steps',
@@ -65,6 +66,7 @@ export function instantiatePattern(pat, sampleCache = {}) {
       normalizedStep.on = !!source?.on;
       const velocity = getStepVelocity(source, normalizedStep.on ? 1 : 0);
       normalizedStep.params = clone(normalizedStep.params);
+      normalizedStep.fx = clone(normalizedStep.fx);
       setStepVelocity(normalizedStep, velocity);
       t.steps[i] = normalizedStep;
     }

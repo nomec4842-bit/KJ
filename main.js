@@ -2,7 +2,8 @@
 import { ctx, startTransport, stopTransport } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
-  notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity
+  notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
+  STEP_FX_TYPES, normalizeStepFx,
 } from './tracks.js';
 import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
@@ -67,6 +68,7 @@ function normalizeTrack(t) {
     }
     step.on = !!step.on;
     if (!step.params || typeof step.params !== 'object') step.params = {};
+    step.fx = normalizeStepFx(step.fx);
     const fallbackVel = step.on ? 1 : 0;
     const velocity = getStepVelocity(step, fallbackVel);
     setStepVelocity(step, velocity);
@@ -270,6 +272,10 @@ function renderCurrentEditor(){
   if (stepParams && typeof stepParams.refresh === 'function') {
     stepParams.refresh();
   }
+  const stepFx = paramsEl?._stepFxEditor;
+  if (stepFx && typeof stepFx.refresh === 'function') {
+    stepFx.refresh();
+  }
   syncSelectionUI();
 }
 function paintPlayhead(){
@@ -376,6 +382,9 @@ function renderParamsPanel(){
     onStepParamsChange: () => {
       renderCurrentEditor();
     },
+    onStepFxChange: () => {
+      renderCurrentEditor();
+    },
   });
   const inlineStep = paramsEl?._inlineStepEditor;
   if (inlineStep && track && Array.isArray(track.steps)) {
@@ -385,6 +394,10 @@ function renderParamsPanel(){
   const stepParams = paramsEl?._stepParamsEditor;
   if (stepParams && typeof stepParams.refresh === 'function') {
     stepParams.refresh();
+  }
+  const stepFx = paramsEl?._stepFxEditor;
+  if (stepFx && typeof stepFx.refresh === 'function') {
+    stepFx.refresh();
   }
   setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
 }
@@ -727,6 +740,93 @@ function mergeParamOffsets(target, offsets) {
   };
 }
 
+function buildOffsetFromPath(pathParts, value) {
+  if (!Array.isArray(pathParts) || !pathParts.length) return null;
+  if (!Number.isFinite(value) || value === 0) return null;
+  const root = {};
+  let cursor = root;
+  for (let i = 0; i < pathParts.length; i++) {
+    const key = pathParts[i];
+    if (!key) return null;
+    if (i === pathParts.length - 1) {
+      cursor[key] = value;
+    } else {
+      const next = {};
+      cursor[key] = next;
+      cursor = next;
+    }
+  }
+  return root;
+}
+
+function evaluateSampleHoldFx(track, step, stepIndex) {
+  if (!track || !step) return null;
+  const normalized = normalizeStepFx(step.fx);
+  if (normalized.type !== STEP_FX_TYPES.SAMPLE_HOLD) return null;
+  step.fx = normalized;
+  const cfg = normalized.config || {};
+  const target = typeof cfg.target === 'string' ? cfg.target.trim() : '';
+  if (!target) return null;
+
+  const min = Number(cfg.min);
+  const max = Number(cfg.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+
+  const chance = Number(cfg.chance);
+  const probability = Number.isFinite(chance) ? Math.max(0, Math.min(1, chance)) : 0;
+  const holdValue = Number(cfg.hold);
+  const holdSteps = Number.isFinite(holdValue) ? Math.max(1, Math.min(128, Math.floor(holdValue))) : 1;
+
+  if (!track._stepFxState || typeof track._stepFxState !== 'object') {
+    track._stepFxState = {};
+  }
+  const store = track._stepFxState;
+  if (!store.sampleHold || typeof store.sampleHold !== 'object') {
+    store.sampleHold = {};
+  }
+  const sampleStore = store.sampleHold;
+  const key = `${stepIndex}:${target}`;
+  let state = sampleStore[key];
+  if (!state || typeof state !== 'object') {
+    state = sampleStore[key] = { remaining: 0, value: 0 };
+  }
+
+  if (!Number.isFinite(state.remaining)) state.remaining = 0;
+  if (!Number.isFinite(state.value)) state.value = 0;
+
+  if (state.remaining <= 0) {
+    const shouldSample = Math.random() <= probability || !Number.isFinite(state.value);
+    if (shouldSample) {
+      const span = max - min;
+      const next = span === 0 ? min : (min + Math.random() * span);
+      state.value = Number.isFinite(next) ? next : 0;
+      state.remaining = holdSteps;
+    } else {
+      state.remaining = 1;
+    }
+  }
+
+  if (state.remaining > 0) state.remaining -= 1;
+
+  const value = Number(state.value);
+  if (!Number.isFinite(value) || value === 0) {
+    if (!Number.isFinite(state.value)) state.value = 0;
+    return null;
+  }
+
+  const pathParts = target.split('.').map(p => p.trim()).filter(Boolean);
+  return buildOffsetFromPath(pathParts, value);
+}
+
+function evaluateStepFx(track, step, stepIndex) {
+  if (!track || !step || !step.fx) return null;
+  const type = step.fx.type;
+  if (type === STEP_FX_TYPES.SAMPLE_HOLD) {
+    return evaluateSampleHoldFx(track, step, stepIndex);
+  }
+  return null;
+}
+
 function startScheduler(bpm, cb) {
   const interval = 60000 / (bpm * 4);
   let next = performance.now();
@@ -758,8 +858,12 @@ playBtn.onclick = async () => {
       const L = t.length;
       t.pos = ((t.pos|0) + 1) % L;
 
-      const offsets = applyMods?.(t);
-      const restoreParams = offsets ? mergeParamOffsets(t.params, offsets) : null;
+      const restoreStack = [];
+      const modOffsets = applyMods?.(t);
+      if (modOffsets) {
+        const restore = mergeParamOffsets(t.params, modOffsets);
+        if (typeof restore === 'function') restoreStack.push(restore);
+      }
 
       try {
         if (t.mode === 'piano') {
@@ -768,12 +872,20 @@ playBtn.onclick = async () => {
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
+            const fxOffsets = evaluateStepFx(t, st, t.pos);
+            if (fxOffsets) {
+              const restore = mergeParamOffsets(t.params, fxOffsets);
+              if (typeof restore === 'function') restoreStack.push(restore);
+            }
             const vel = getStepVelocity(st, 1);
             if (vel > 0) triggerEngine?.(t, vel);
           }
         }
       } finally {
-        if (typeof restoreParams === 'function') restoreParams();
+        for (let i = restoreStack.length - 1; i >= 0; i--) {
+          const restore = restoreStack[i];
+          if (typeof restore === 'function') restore();
+        }
       }
     }
     paintPlayhead();
