@@ -12,9 +12,11 @@ import {
   createStepFx,
   normalizeStepFx,
 } from './stepfx.js';
+import { SAMPLE_HOLD_INPUT_OPTIONS } from './mods.js';
 
 const MOD_SOURCES = [
   { value: 'lfo', label: 'LFO' },
+  { value: 'sampleHold', label: 'Sample & Hold' },
 ];
 
 const LFO_SHAPE_OPTIONS = [
@@ -1063,19 +1065,39 @@ export function renderModulationRack(rootEl, track) {
   const mods = track.mods;
   const rerender = () => renderModulationRack(rootEl, track);
   const addModWithDefaults = (extra = {}) => {
-    const { target: targetOverride, options: extraOptions, ...rest } = extra || {};
+    const {
+      target: targetOverride,
+      options: extraOptions,
+      source: sourceOverride,
+      ...rest
+    } = extra || {};
     const options = getTargetOptionsForTrack(track);
     const defaultTarget = targetOverride ?? options?.[0]?.value ?? '';
+    const source = typeof sourceOverride === 'string' && sourceOverride ? sourceOverride : 'lfo';
+    const defaultSampleInput = (SAMPLE_HOLD_INPUT_OPTIONS && SAMPLE_HOLD_INPUT_OPTIONS[0]?.value) || 'random';
+    const baseOptions = source === 'sampleHold'
+      ? { sampleInput: defaultSampleInput, hold: 1 }
+      : { rate: 1, shape: 'sine' };
     const mod = createModulator(track, {
-      source: 'lfo',
+      source,
       amount: 0,
       target: defaultTarget,
-      options: { rate: 1, shape: 'sine', ...(extraOptions || {}) },
+      options: { ...baseOptions, ...(extraOptions || {}) },
       ...rest,
     });
     if (!mod.options || typeof mod.options !== 'object') mod.options = {};
-    if (mod.options.rate === undefined) mod.options.rate = 1;
-    if (typeof mod.options.shape !== 'string') mod.options.shape = 'sine';
+    if ((mod.source ?? source) === 'sampleHold') {
+      if (typeof mod.options.sampleInput !== 'string' || !mod.options.sampleInput) {
+        mod.options.sampleInput = baseOptions.sampleInput;
+      }
+      const holdVal = Number(mod.options.hold);
+      mod.options.hold = Number.isFinite(holdVal)
+        ? Math.max(1, Math.min(128, Math.round(holdVal)))
+        : baseOptions.hold;
+    } else {
+      if (mod.options.rate === undefined) mod.options.rate = baseOptions.rate;
+      if (typeof mod.options.shape !== 'string') mod.options.shape = baseOptions.shape;
+    }
     rerender();
     return mod;
   };
@@ -1108,7 +1130,8 @@ export function renderModulationRack(rootEl, track) {
       sourceSelect.appendChild(option);
     });
     sourceSelect.value = mod.source || 'lfo';
-    row.appendChild(createModCell('Source', sourceSelect));
+    const sourceCell = createModCell('Source', sourceSelect);
+    row.appendChild(sourceCell);
 
     const shapeSelect = document.createElement('select');
     const shapeValues = new Set();
@@ -1141,21 +1164,6 @@ export function renderModulationRack(rootEl, track) {
     const shapeCell = createModCell('Waveform', shapeSelect);
     row.appendChild(shapeCell);
 
-    const updateSourceControls = () => {
-      const currentSource = mod.source ?? sourceSelect.value ?? '';
-      const isLfo = `${currentSource}`.toLowerCase() === 'lfo';
-      shapeCell.style.display = isLfo ? '' : 'none';
-      if (isLfo && typeof mod.options.shape !== 'string') {
-        mod.options.shape = shapeSelect.value || 'sine';
-      }
-    };
-    sourceSelect.onchange = (ev) => {
-      const value = ev.target.value || 'lfo';
-      mod.source = value;
-      updateSourceControls();
-    };
-    updateSourceControls();
-
     const rateVal = Number(mod.options.rate);
     const rateControl = createSliderControl({
       min: 0,
@@ -1175,7 +1183,119 @@ export function renderModulationRack(rootEl, track) {
       if (!Number.isFinite(value)) return;
       mod.options.rate = value;
     });
-    row.appendChild(createModCell('Rate', rateControl.wrap));
+    const rateCell = createModCell('Rate', rateControl.wrap);
+    row.appendChild(rateCell);
+
+    const sampleInputSelect = document.createElement('select');
+    const availableSampleInputs = (Array.isArray(SAMPLE_HOLD_INPUT_OPTIONS) && SAMPLE_HOLD_INPUT_OPTIONS.length)
+      ? SAMPLE_HOLD_INPUT_OPTIONS
+      : [{ value: 'random', label: 'Random' }];
+    const sampleInputValues = new Set();
+    availableSampleInputs.forEach(opt => {
+      sampleInputValues.add(opt.value);
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      sampleInputSelect.appendChild(option);
+    });
+    const defaultSampleInput = availableSampleInputs[0]?.value ?? 'random';
+    let savedSampleInput = typeof mod.options.sampleInput === 'string' ? mod.options.sampleInput : '';
+    if (!sampleInputValues.has(savedSampleInput)) {
+      savedSampleInput = defaultSampleInput;
+    }
+    mod.options.sampleInput = savedSampleInput;
+    sampleInputSelect.value = savedSampleInput;
+    sampleInputSelect.onchange = (ev) => {
+      const value = ev.target.value || defaultSampleInput;
+      mod.options.sampleInput = value;
+      if (mod._state && typeof mod._state === 'object') {
+        mod._state.remaining = 0;
+      }
+    };
+    const sampleInputCell = createModCell('Sample Input', sampleInputSelect);
+    row.appendChild(sampleInputCell);
+
+    const holdInitial = Number(mod.options.hold);
+    const normalizedHold = Number.isFinite(holdInitial)
+      ? Math.max(1, Math.min(128, Math.round(holdInitial)))
+      : 1;
+    mod.options.hold = normalizedHold;
+    const holdControl = createSliderControl({
+      min: 1,
+      max: 128,
+      step: 1,
+      value: normalizedHold,
+      format: (val) => formatSliderValue(Math.round(val), 0),
+      parseDisplay: (text) => {
+        const raw = Number.parseInt(text, 10);
+        if (!Number.isFinite(raw)) return NaN;
+        return Math.max(1, Math.min(128, raw));
+      },
+    });
+    holdControl.setOnChange((val) => {
+      const raw = Number(val);
+      if (!Number.isFinite(raw)) return;
+      const next = Math.max(1, Math.min(128, Math.round(raw)));
+      mod.options.hold = next;
+      if (mod._state && typeof mod._state === 'object') {
+        mod._state.remaining = 0;
+      }
+    });
+    const holdCell = createModCell('Hold Steps', holdControl.wrap);
+    row.appendChild(holdCell);
+
+    const updateSourceControls = () => {
+      const currentSource = mod.source ?? sourceSelect.value ?? '';
+      const normalizedSource = `${currentSource}`.toLowerCase();
+      const isLfo = normalizedSource === 'lfo';
+      const isSampleHold = normalizedSource === 'samplehold';
+
+      shapeCell.style.display = isLfo ? '' : 'none';
+      shapeSelect.disabled = !isLfo;
+      shapeSelect.setAttribute('aria-disabled', isLfo ? 'false' : 'true');
+      rateCell.style.display = isLfo ? '' : 'none';
+      rateControl.input.disabled = !isLfo;
+      rateControl.valueEl.contentEditable = isLfo ? 'true' : 'false';
+      rateControl.valueEl.setAttribute('aria-disabled', isLfo ? 'false' : 'true');
+      if (isLfo) {
+        if (typeof mod.options.shape !== 'string') {
+          mod.options.shape = shapeSelect.value || 'sine';
+        }
+        const rateValue = Number(mod.options.rate);
+        const safeRate = Number.isFinite(rateValue) ? rateValue : 1;
+        mod.options.rate = safeRate;
+        rateControl.setValue(safeRate, { silent: true });
+        rateControl.updateDisplay();
+      }
+
+      sampleInputCell.style.display = isSampleHold ? '' : 'none';
+      holdCell.style.display = isSampleHold ? '' : 'none';
+      sampleInputSelect.disabled = !isSampleHold;
+      sampleInputSelect.setAttribute('aria-disabled', isSampleHold ? 'false' : 'true');
+      holdControl.input.disabled = !isSampleHold;
+      holdControl.valueEl.contentEditable = isSampleHold ? 'true' : 'false';
+      holdControl.valueEl.setAttribute('aria-disabled', isSampleHold ? 'false' : 'true');
+      if (isSampleHold) {
+        if (typeof mod.options.sampleInput !== 'string' || !sampleInputValues.has(mod.options.sampleInput)) {
+          mod.options.sampleInput = defaultSampleInput;
+        }
+        sampleInputSelect.value = mod.options.sampleInput;
+
+        let holdVal = Number(mod.options.hold);
+        if (!Number.isFinite(holdVal)) holdVal = 1;
+        holdVal = Math.max(1, Math.min(128, Math.round(holdVal)));
+        mod.options.hold = holdVal;
+        holdControl.setValue(holdVal, { silent: true });
+        holdControl.updateDisplay();
+      }
+    };
+
+    sourceSelect.onchange = (ev) => {
+      const value = ev.target.value || 'lfo';
+      mod.source = value;
+      updateSourceControls();
+    };
+    updateSourceControls();
 
     const depthVal = Number(mod.amount);
     const depthControl = createSliderControl({
@@ -1258,6 +1378,15 @@ export function renderModulationRack(rootEl, track) {
     addModWithDefaults({ source: 'lfo' });
   };
   actions.appendChild(addLfoBtn);
+
+  const addSampleHoldBtn = document.createElement('button');
+  addSampleHoldBtn.type = 'button';
+  addSampleHoldBtn.className = 'ghost';
+  addSampleHoldBtn.textContent = '+ Add Sample & Hold';
+  addSampleHoldBtn.onclick = () => {
+    addModWithDefaults({ source: 'sampleHold' });
+  };
+  actions.appendChild(addSampleHoldBtn);
   rootEl.appendChild(actions);
 }
 

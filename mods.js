@@ -1,4 +1,5 @@
-import { ctx } from './core.js';
+import { ctx, clampInt } from './core.js';
+import { getStepVelocity } from './tracks.js';
 
 const TAU = Math.PI * 2;
 
@@ -15,7 +16,32 @@ const LFO_SHAPES = {
   ramp: (phase) => ((phase % 1) * 2) - 1,
 };
 
-function evaluateLfo(mod) {
+export const SAMPLE_HOLD_INPUT_OPTIONS = Object.freeze([
+  { value: 'random', label: 'Random' },
+  { value: 'stepVelocity', label: 'Step Velocity' },
+]);
+
+const DEFAULT_SAMPLE_INPUT = SAMPLE_HOLD_INPUT_OPTIONS[0]?.value || 'random';
+
+const SAMPLE_INPUT_HANDLERS = {
+  random() {
+    return (Math.random() * 2) - 1;
+  },
+  stepVelocity(track) {
+    if (!track || !Array.isArray(track.steps) || !track.steps.length) return 0;
+    const index = Number(track.pos);
+    if (!Number.isFinite(index) || index < 0) return 0;
+    const step = track.steps[index % track.steps.length];
+    if (!step || typeof step !== 'object') return 0;
+    const fallback = step.on ? 1 : 0;
+    const velocity = getStepVelocity(step, fallback);
+    if (!Number.isFinite(velocity)) return 0;
+    const clamped = Math.max(0, Math.min(1, velocity));
+    return (clamped * 2) - 1;
+  },
+};
+
+function evaluateLfo(track, mod) {
   const opts = mod?.options || {};
   const now = (ctx?.currentTime ?? (performance.now() / 1000));
   const state = mod._state || (mod._state = {
@@ -45,8 +71,53 @@ function evaluateLfo(mod) {
   return value;
 }
 
+function evaluateSampleHold(track, mod) {
+  const opts = mod?.options || {};
+  const state = mod._state || (mod._state = {
+    remaining: 0,
+    value: 0,
+    lastStep: null,
+  });
+
+  const holdRaw = Number(opts.hold);
+  const holdSteps = clampInt(Number.isFinite(holdRaw) ? holdRaw : 1, 1, 128);
+
+  const currentStep = Number(track?.pos);
+  if (Number.isFinite(currentStep)) {
+    if (state.lastStep !== currentStep) {
+      state.lastStep = currentStep;
+      const remaining = Number(state.remaining);
+      state.remaining = Number.isFinite(remaining) ? remaining - 1 : 0;
+    }
+  } else {
+    state.lastStep = null;
+    state.remaining = 0;
+  }
+
+  if (!Number.isFinite(state.remaining) || state.remaining <= 0) {
+    const inputKeyRaw = typeof opts.sampleInput === 'string' ? opts.sampleInput : '';
+    const inputKey = SAMPLE_INPUT_HANDLERS[inputKeyRaw] ? inputKeyRaw : DEFAULT_SAMPLE_INPUT;
+    const sampler = SAMPLE_INPUT_HANDLERS[inputKey] || SAMPLE_INPUT_HANDLERS[DEFAULT_SAMPLE_INPUT];
+    const next = sampler(track, mod);
+    state.value = Number.isFinite(next) ? next : 0;
+    state.remaining = holdSteps;
+  }
+
+  let value = Number(state.value);
+  if (!Number.isFinite(value)) value = 0;
+
+  if (opts.unipolar) value = (value + 1) / 2;
+  if (Number.isFinite(opts.bias)) value += opts.bias;
+  const depth = Number(opts.depth);
+  if (Number.isFinite(depth)) value *= depth;
+
+  return value;
+}
+
 const SOURCES = {
   lfo: evaluateLfo,
+  sampleHold: evaluateSampleHold,
+  samplehold: evaluateSampleHold,
 };
 
 function normalizeTarget(target) {
@@ -84,7 +155,8 @@ export function applyMods(track) {
   for (const mod of track.mods) {
     if (!mod || typeof mod !== 'object') continue;
     if (mod.enabled === false) continue;
-    const handler = SOURCES[mod.source];
+    const rawSource = typeof mod.source === 'string' ? mod.source : '';
+    const handler = SOURCES[rawSource] || SOURCES[rawSource.toLowerCase?.()];
     if (!handler) continue;
     const normalized = handler(track, mod);
     const amount = Number(mod.amount);
