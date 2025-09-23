@@ -759,12 +759,90 @@ function buildOffsetFromPath(pathParts, value) {
   return root;
 }
 
-function evaluateSampleHoldFx(track, step, stepIndex) {
+function prepareSampleHoldConfig(baseConfig = {}, offsets = null) {
+  const working = { ...(baseConfig || {}) };
+  if (!offsets || typeof offsets !== 'object') {
+    return working;
+  }
+
+  let amountTouched = false;
+  let minTouched = false;
+  let maxTouched = false;
+
+  const apply = (target, source) => {
+    if (!target || typeof target !== 'object' || !source || typeof source !== 'object') return;
+    for (const [key, value] of Object.entries(source)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        if (target[key] && typeof target[key] === 'object') {
+          apply(target[key], value);
+        }
+        continue;
+      }
+      if (!Number.isFinite(value) || value === 0) continue;
+      const current = Number(target[key]);
+      if (!Number.isFinite(current)) continue;
+      target[key] = current + value;
+      if (key === 'amount') amountTouched = true;
+      else if (key === 'min') minTouched = true;
+      else if (key === 'max') maxTouched = true;
+    }
+  };
+
+  apply(working, offsets);
+
+  if (amountTouched) {
+    const baseAmountRaw = Number(baseConfig?.amount);
+    const baseAmount = Number.isFinite(baseAmountRaw) ? Math.abs(baseAmountRaw) : 0;
+    const nextAmountRaw = Number(working.amount);
+    const nextAmount = Number.isFinite(nextAmountRaw) ? Math.abs(nextAmountRaw) : 0;
+    const safeAmount = Math.max(0, nextAmount);
+    working.amount = safeAmount;
+
+    if (baseAmount > 0) {
+      const baseMin = Number(baseConfig?.min);
+      const baseMax = Number(baseConfig?.max);
+      if (!minTouched && Number.isFinite(baseMin)) {
+        const minRatio = baseMin / baseAmount;
+        working.min = minRatio * safeAmount;
+      }
+      if (!maxTouched && Number.isFinite(baseMax)) {
+        const maxRatio = baseMax / baseAmount;
+        working.max = maxRatio * safeAmount;
+      }
+    }
+  }
+
+  const candidates = [
+    Number.isFinite(working.amount) ? Math.abs(working.amount) : NaN,
+    Number.isFinite(working.min) ? Math.abs(working.min) : NaN,
+    Number.isFinite(working.max) ? Math.abs(working.max) : NaN,
+  ].filter(Number.isFinite);
+  if (candidates.length) {
+    working.amount = Math.max(...candidates);
+  } else if (Number.isFinite(baseConfig?.amount)) {
+    working.amount = Math.abs(baseConfig.amount);
+  }
+
+  if (Number.isFinite(working.min) && Number.isFinite(working.max) && working.min > working.max) {
+    const tmp = working.min;
+    working.min = working.max;
+    working.max = tmp;
+  }
+
+  return working;
+}
+
+function evaluateSampleHoldFx(track, step, stepIndex, effectOffsets) {
   if (!track || !step) return null;
   const normalized = normalizeStepFx(step.fx);
   if (normalized.type !== STEP_FX_TYPES.SAMPLE_HOLD) return null;
   step.fx = normalized;
-  const cfg = normalized.config || {};
+  const baseConfig = normalized.config || {};
+  const effectKey = `${normalized.type ?? ''}`.toLowerCase();
+  const overrides = effectOffsets && typeof effectOffsets === 'object'
+    ? effectOffsets[effectKey]
+    : null;
+  const cfg = prepareSampleHoldConfig(baseConfig, overrides);
   const target = typeof cfg.target === 'string' ? cfg.target.trim() : '';
   if (!target) return null;
 
@@ -826,11 +904,11 @@ function evaluateSampleHoldFx(track, step, stepIndex) {
   return null;
 }
 
-function evaluateStepFx(track, step, stepIndex) {
+function evaluateStepFx(track, step, stepIndex, effectOffsets) {
   if (!track || !step || !step.fx) return null;
   const type = step.fx.type;
   if (type === STEP_FX_TYPES.SAMPLE_HOLD) {
-    return evaluateSampleHoldFx(track, step, stepIndex);
+    return evaluateSampleHoldFx(track, step, stepIndex, effectOffsets);
   }
   return null;
 }
@@ -867,9 +945,21 @@ playBtn.onclick = async () => {
       t.pos = ((t.pos|0) + 1) % L;
 
       const restoreStack = [];
-      const modOffsets = applyMods?.(t);
-      if (modOffsets) {
-        const restore = mergeParamOffsets(t.params, modOffsets);
+      const modResult = applyMods?.(t);
+      let paramOffsets = null;
+      let effectOffsets = null;
+      if (modResult && typeof modResult === 'object' && (modResult.params || modResult.effects || 'params' in modResult || 'effects' in modResult)) {
+        if (modResult.params && typeof modResult.params === 'object') {
+          paramOffsets = modResult.params;
+        }
+        if (modResult.effects && typeof modResult.effects === 'object') {
+          effectOffsets = modResult.effects;
+        }
+      } else if (modResult) {
+        paramOffsets = modResult;
+      }
+      if (paramOffsets) {
+        const restore = mergeParamOffsets(t.params, paramOffsets);
         if (typeof restore === 'function') restoreStack.push(restore);
       }
 
@@ -880,7 +970,7 @@ playBtn.onclick = async () => {
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const fxResult = evaluateStepFx(t, st, t.pos);
+            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets);
             let vel = getStepVelocity(st, 1);
             if (fxResult) {
               const offsets = fxResult.paramOffsets

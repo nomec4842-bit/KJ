@@ -76,8 +76,10 @@ function assignOffset(root, path, value) {
 export function applyMods(track) {
   if (!track || !Array.isArray(track.mods) || !track.mods.length) return null;
 
-  const offsets = {};
-  let touched = false;
+  const paramOffsets = {};
+  const effectOffsets = {};
+  let paramsTouched = false;
+  let effectsTouched = false;
 
   for (const mod of track.mods) {
     if (!mod || typeof mod !== 'object') continue;
@@ -91,9 +93,34 @@ export function applyMods(track) {
     if (!Number.isFinite(delta) || delta === 0) continue;
     const path = normalizeTarget(mod.target);
     if (!path.length) continue;
-    assignOffset(offsets, path, delta);
-    touched = true;
+
+    const prefix = path[0]?.toLowerCase?.();
+    if (prefix === 'fx' || prefix === 'stepfx' || prefix === 'effects' || prefix === 'effect') {
+      if (path.length < 3) continue;
+      const rawType = path[1];
+      const effectType = typeof rawType === 'string' ? rawType.trim() : '';
+      if (!effectType) continue;
+      let effectPath = path.slice(2);
+      if (effectPath[0]?.toLowerCase?.() === 'config') {
+        effectPath = effectPath.slice(1);
+      }
+      if (!effectPath.length) continue;
+      const key = effectType.toLowerCase();
+      if (!key) continue;
+      const bucket = effectOffsets[key] || (effectOffsets[key] = {});
+      assignOffset(bucket, effectPath, delta);
+      effectsTouched = true;
+      continue;
+    }
+
+    assignOffset(paramOffsets, path, delta);
+    paramsTouched = true;
   }
 
-  return touched ? offsets : null;
+  if (!paramsTouched && !effectsTouched) return null;
+
+  const result = {};
+  if (paramsTouched) result.params = paramOffsets;
+  if (effectsTouched) result.effects = effectOffsets;
+  return result;
 }
