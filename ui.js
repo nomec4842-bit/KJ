@@ -6,12 +6,6 @@ import {
   getStepVelocity,
   setStepVelocity,
 } from './tracks.js';
-import {
-  STEP_FX_TYPES,
-  STEP_FX_DEFAULTS,
-  createStepFx,
-  normalizeStepFx,
-} from './stepfx.js';
 import { SAMPLE_HOLD_INPUT_OPTIONS } from './mods.js';
 
 const MOD_SOURCES = [
@@ -68,14 +62,6 @@ const TARGETS_BY_ENGINE = {
 const FALLBACK_TARGETS = Object.freeze(
   Object.values(TARGETS_BY_ENGINE).flat()
 );
-
-const FX_TARGET_OPTIONS = [
-  { value: 'fx.sampleHold.min', label: 'FX • S&H Min' },
-  { value: 'fx.sampleHold.max', label: 'FX • S&H Max' },
-  { value: 'fx.sampleHold.amount', label: 'FX • S&H Amount' },
-  { value: 'fx.sampleHold.chance', label: 'FX • S&H Chance' },
-  { value: 'fx.sampleHold.hold', label: 'FX • S&H Hold' },
-];
 
 function getTargetOptionsForTrack(track) {
   if (track?.engine && TARGETS_BY_ENGINE[track.engine]) {
@@ -434,313 +420,14 @@ function createStepParamsPanel(rootEl, track) {
   };
 }
 
-function createStepFxPanel(rootEl, track) {
+function createStepFxPanel(rootEl) {
   if (!rootEl) return null;
 
-  let onChange = null;
-  let selectedIndex = -1;
-  let suppress = false;
-
-  const sampleHoldDefaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.SAMPLE_HOLD] || {
-    min: -0.25,
-    max: 0.25,
-    amount: 0.25,
-    chance: 1,
-    hold: 1,
-  };
-
-  const typeSelect = document.createElement('select');
-  const noneOpt = document.createElement('option');
-  noneOpt.value = STEP_FX_TYPES.NONE;
-  noneOpt.textContent = 'None';
-  typeSelect.appendChild(noneOpt);
-  const shOpt = document.createElement('option');
-  shOpt.value = STEP_FX_TYPES.SAMPLE_HOLD;
-  shOpt.textContent = 'Sample & Hold';
-  typeSelect.appendChild(shOpt);
-
-  let currentAmount = sampleHoldDefaults.amount;
-
-  const minControl = createSliderControl({
-    min: -1,
-    max: 1,
-    step: 0.01,
-    value: 0,
-    format: (ratio) => formatSliderValue(ratio * currentAmount),
-    parseDisplay: (text) => {
-      const raw = Number.parseFloat(text);
-      if (!Number.isFinite(raw) || currentAmount <= 0) return 0;
-      const normalized = raw / currentAmount;
-      return Math.max(-1, Math.min(1, normalized));
-    },
-  });
-
-  const maxControl = createSliderControl({
-    min: -1,
-    max: 1,
-    step: 0.01,
-    value: 0,
-    format: (ratio) => formatSliderValue(ratio * currentAmount),
-    parseDisplay: (text) => {
-      const raw = Number.parseFloat(text);
-      if (!Number.isFinite(raw) || currentAmount <= 0) return 0;
-      const normalized = raw / currentAmount;
-      return Math.max(-1, Math.min(1, normalized));
-    },
-  });
-
-  const amountControl = createSliderControl({
-    min: 0,
-    max: 4,
-    step: 0.01,
-    value: sampleHoldDefaults.amount,
-    allowExtend: true,
-    format: (val) => formatSliderValue(val),
-    parseDisplay: (text) => {
-      const raw = Number.parseFloat(text);
-      if (!Number.isFinite(raw)) return NaN;
-      return Math.max(0, raw);
-    },
-  });
-
-  const chanceControl = createSliderControl({
-    min: 0,
-    max: 1,
-    step: 0.01,
-    value: sampleHoldDefaults.chance,
-    format: (val) => formatSliderValue(val, 2),
-    parseDisplay: (text) => {
-      const raw = Number.parseFloat(text);
-      if (!Number.isFinite(raw)) return NaN;
-      return Math.max(0, Math.min(1, raw));
-    },
-  });
-
-  const holdControl = createSliderControl({
-    min: 1,
-    max: 128,
-    step: 1,
-    value: sampleHoldDefaults.hold,
-    format: (val) => formatSliderValue(Math.round(val), 0),
-    parseDisplay: (text) => {
-      const raw = Number.parseInt(text, 10);
-      if (!Number.isFinite(raw)) return NaN;
-      return Math.max(1, Math.min(128, raw));
-    },
-  });
-
-  const controls = document.createElement('div');
-  controls.className = 'step-fx-controls';
-  const typeCell = createModCell('Type', typeSelect);
-  controls.appendChild(typeCell);
-
-  const configSection = document.createElement('div');
-  configSection.className = 'step-fx-config';
-  const rangeMinCell = createModCell('Velocity Offset Min', minControl.wrap);
-  const rangeMaxCell = createModCell('Velocity Offset Max', maxControl.wrap);
-  const amountCell = createModCell('Velocity Offset ±', amountControl.wrap);
-  const chanceCell = createModCell('Chance', chanceControl.wrap);
-  const holdCell = createModCell('Hold', holdControl.wrap);
-  configSection.appendChild(rangeMinCell);
-  configSection.appendChild(rangeMaxCell);
-  configSection.appendChild(amountCell);
-  configSection.appendChild(chanceCell);
-  configSection.appendChild(holdCell);
-  controls.appendChild(configSection);
-
-  function showPlaceholder(message) {
-    rootEl.innerHTML = `<span class="hint">${message}</span>`;
-    rootEl.classList.add('placeholder');
-  }
-
-  function ensureControls() {
-    if (rootEl.contains(controls)) return;
-    rootEl.innerHTML = '';
-    rootEl.classList.remove('placeholder');
-    rootEl.appendChild(controls);
-  }
-
-  function getSelectedStep() {
-    if (!track || !Array.isArray(track.steps)) return null;
-    if (selectedIndex < 0 || selectedIndex >= track.steps.length) return null;
-    return track.steps[selectedIndex];
-  }
-
-  function updateControlsFromFx(fx) {
-    const effectiveFx = normalizeStepFx(fx);
-    const isSampleHold = effectiveFx.type === STEP_FX_TYPES.SAMPLE_HOLD;
-    suppress = true;
-    typeSelect.value = isSampleHold ? STEP_FX_TYPES.SAMPLE_HOLD : STEP_FX_TYPES.NONE;
-    configSection.style.display = isSampleHold ? '' : 'none';
-    const enabled = isSampleHold;
-    [minControl, maxControl, amountControl, chanceControl, holdControl].forEach(ctrl => {
-      if (!ctrl) return;
-      ctrl.input.disabled = !enabled;
-      ctrl.valueEl.contentEditable = enabled ? 'true' : 'false';
-      ctrl.valueEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
-    });
-
-    const cfg = isSampleHold ? (effectiveFx.config || {}) : sampleHoldDefaults;
-    const minVal = Number.isFinite(Number(cfg.min)) ? Number(cfg.min) : sampleHoldDefaults.min;
-    const maxVal = Number.isFinite(Number(cfg.max)) ? Number(cfg.max) : sampleHoldDefaults.max;
-    const amtVal = Number.isFinite(Number(cfg.amount)) ? Math.abs(Number(cfg.amount)) : Math.max(Math.abs(minVal), Math.abs(maxVal), sampleHoldDefaults.amount);
-    const chanceVal = Number.isFinite(Number(cfg.chance)) ? Number(cfg.chance) : sampleHoldDefaults.chance;
-    const holdValRaw = Number.isFinite(Number(cfg.hold)) ? Number(cfg.hold) : sampleHoldDefaults.hold;
-    const holdVal = Math.max(1, Math.min(128, Math.floor(holdValRaw)));
-
-    currentAmount = amtVal;
-    amountControl.setValue(amtVal, { silent: true });
-
-    const safeAmount = amtVal > 0 ? amtVal : 0;
-    const minRatio = safeAmount > 0 ? Math.max(-1, Math.min(1, minVal / safeAmount)) : 0;
-    const maxRatio = safeAmount > 0 ? Math.max(-1, Math.min(1, maxVal / safeAmount)) : 0;
-
-    minControl.setValue(minRatio, { silent: true });
-    maxControl.setValue(maxRatio, { silent: true });
-    minControl.updateDisplay();
-    maxControl.updateDisplay();
-
-    const normalizedChance = Math.max(0, Math.min(1, chanceVal));
-    chanceControl.setValue(normalizedChance, { silent: true });
-    chanceControl.updateDisplay();
-
-    holdControl.setValue(holdVal, { silent: true });
-    holdControl.updateDisplay();
-    suppress = false;
-  }
-
-  function commitFx(mutator) {
-    const step = getSelectedStep();
-    if (!step) return;
-    const current = normalizeStepFx(step.fx);
-    if (current.type !== STEP_FX_TYPES.SAMPLE_HOLD) return;
-    if (typeof mutator === 'function') {
-      mutator(current.config || {}, current);
-    }
-    step.fx = normalizeStepFx(current);
-    suppress = true;
-    updateControlsFromFx(step.fx);
-    suppress = false;
-    if (typeof onChange === 'function') onChange(selectedIndex, step);
-  }
-
-  typeSelect.addEventListener('change', () => {
-    if (suppress) return;
-    const step = getSelectedStep();
-    if (!step) return;
-    const value = typeSelect.value;
-    if (value === STEP_FX_TYPES.SAMPLE_HOLD) {
-      const defaults = createStepFx(STEP_FX_TYPES.SAMPLE_HOLD);
-      const existing = step.fx && step.fx.type === STEP_FX_TYPES.SAMPLE_HOLD
-        ? step.fx
-        : null;
-      const merged = existing
-        ? { type: STEP_FX_TYPES.SAMPLE_HOLD, config: { ...defaults.config, ...(existing.config || {}) } }
-        : defaults;
-      step.fx = normalizeStepFx(merged);
-    } else {
-      step.fx = createStepFx(STEP_FX_TYPES.NONE);
-    }
-    suppress = true;
-    updateControlsFromFx(step.fx);
-    suppress = false;
-    if (typeof onChange === 'function') onChange(selectedIndex, step);
-  });
-
-  const clampRatio = (value) => {
-    const num = Number(value);
-    if (!Number.isFinite(num)) return 0;
-    return Math.max(-1, Math.min(1, num));
-  };
-
-  minControl.setOnChange((ratio) => {
-    if (suppress) return;
-    const normalizedRatio = clampRatio(ratio);
-    commitFx(config => {
-      const amount = Math.max(0, Number(config.amount) || 0);
-      const actual = normalizedRatio * amount;
-      config.min = actual;
-    });
-  });
-
-  maxControl.setOnChange((ratio) => {
-    if (suppress) return;
-    const normalizedRatio = clampRatio(ratio);
-    commitFx(config => {
-      const amount = Math.max(0, Number(config.amount) || 0);
-      const actual = normalizedRatio * amount;
-      config.max = actual;
-    });
-  });
-
-  amountControl.setOnChange((value) => {
-    if (suppress) return;
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return;
-    const normalized = Math.max(0, numeric);
-    commitFx(config => {
-      const minRatio = clampRatio(minControl.input.value);
-      const maxRatio = clampRatio(maxControl.input.value);
-      config.amount = normalized;
-      const minActual = minRatio * normalized;
-      const maxActual = maxRatio * normalized;
-      config.min = Math.min(minActual, maxActual);
-      config.max = Math.max(minActual, maxActual);
-    });
-  });
-
-  chanceControl.setOnChange((value) => {
-    if (suppress) return;
-    const num = Number(value);
-    if (!Number.isFinite(num)) return;
-    commitFx(config => {
-      config.chance = Math.max(0, Math.min(1, num));
-    });
-  });
-
-  holdControl.setOnChange((value) => {
-    if (suppress) return;
-    const num = Number(value);
-    if (!Number.isFinite(num)) return;
-    const normalized = Math.max(1, Math.min(128, Math.round(num)));
-    commitFx(config => {
-      config.hold = normalized;
-    });
-  });
-
-  function updateSelection(index) {
-    selectedIndex = Number.isInteger(index) ? index : -1;
-    if (!track || track.mode !== 'steps') {
-      showPlaceholder('Step effects are available in Steps mode.');
-      return;
-    }
-    const steps = track.steps;
-    if (!Array.isArray(steps) || selectedIndex < 0 || selectedIndex >= steps.length) {
-      showPlaceholder('Select a step to edit effects.');
-      return;
-    }
-    const step = steps[selectedIndex];
-    ensureControls();
-    if (step) {
-      step.fx = normalizeStepFx(step.fx);
-      updateControlsFromFx(step.fx);
-    } else {
-      updateControlsFromFx(createStepFx());
-    }
-  }
-
-  showPlaceholder('Select a step to edit effects.');
-
-  return {
-    updateSelection,
-    refresh() {
-      updateSelection(selectedIndex);
-    },
-    setOnChange(fn) {
-      onChange = typeof fn === 'function' ? fn : null;
-    },
-  };
+  rootEl.classList.add('placeholder');
+  rootEl.innerHTML = '<span class="hint">Step effects are not available.</span>';
+  return null;
 }
+
 
 export function renderParams(containerEl, track, makeFieldHtml) {
   const t = track;
@@ -775,7 +462,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
   const stepFxPanel = `
     <div id="trk_stepFx" class="step-detail placeholder">
-      <span class="hint">Step effect controls will appear here.</span>
+      <span class="hint">Step effects are not available.</span>
     </div>`;
   html += field('Step Effects', stepFxPanel);
 
@@ -1321,7 +1008,6 @@ export function renderModulationRack(rootEl, track) {
     const optionSource = getTargetOptionsForTrack(track);
     const baseOptions = [
       ...(Array.isArray(optionSource) ? optionSource : []),
-      ...FX_TARGET_OPTIONS,
     ];
     const currentTarget = Array.isArray(mod.target)
       ? mod.target.join('.')

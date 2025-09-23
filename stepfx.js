@@ -1,34 +1,10 @@
-import { clampInt } from './core.js';
-
 export const STEP_FX_TYPES = Object.freeze({
   NONE: '',
-  SAMPLE_HOLD: 'sampleHold',
 });
 
-export const STEP_FX_DEFAULTS = Object.freeze({
-  [STEP_FX_TYPES.SAMPLE_HOLD]: Object.freeze({
-    min: -0.25,
-    max: 0.25,
-    amount: 0.25,
-    chance: 1,
-    hold: 1,
-  }),
-});
+export const STEP_FX_DEFAULTS = Object.freeze({});
 
-function cloneFxDefaults(type = STEP_FX_TYPES.NONE) {
-  if (type === STEP_FX_TYPES.SAMPLE_HOLD) {
-    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.SAMPLE_HOLD];
-    return {
-      type,
-      config: {
-        min: defaults.min,
-        max: defaults.max,
-        amount: defaults.amount,
-        chance: defaults.chance,
-        hold: defaults.hold,
-      },
-    };
-  }
+function cloneFxDefaults() {
   return { type: STEP_FX_TYPES.NONE, config: {} };
 }
 
@@ -38,75 +14,13 @@ export function normalizeStepFx(definition) {
   }
 
   const type = typeof definition.type === 'string' ? definition.type.trim() : '';
-  if (!type || !(type in STEP_FX_DEFAULTS)) {
+  if (!type || type === STEP_FX_TYPES.NONE) {
     return cloneFxDefaults();
-  }
-
-  if (type === STEP_FX_TYPES.SAMPLE_HOLD) {
-    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.SAMPLE_HOLD];
-    const source = definition.config && typeof definition.config === 'object'
-      ? definition.config
-      : {};
-
-    let min = Number(source.min);
-    if (!Number.isFinite(min)) {
-      const amount = Number(source.amount);
-      min = Number.isFinite(amount) ? -Math.abs(amount) : defaults.min;
-    }
-
-    let max = Number(source.max);
-    if (!Number.isFinite(max)) {
-      const amount = Number(source.amount);
-      max = Number.isFinite(amount) ? Math.abs(amount) : defaults.max;
-    }
-
-    if (min > max) {
-      const tmp = min;
-      min = max;
-      max = tmp;
-    }
-
-    const chance = Number(source.chance);
-    const normalizedChance = Number.isFinite(chance)
-      ? Math.max(0, Math.min(1, chance))
-      : defaults.chance;
-
-    const hold = Number(source.hold);
-    const normalizedHold = Number.isFinite(hold) ? hold : defaults.hold;
-    const holdSteps = clampInt(normalizedHold, 1, 128);
-
-    let amount = Number(source.amount);
-    if (!Number.isFinite(amount)) {
-      amount = Math.max(Math.abs(min), Math.abs(max), defaults.amount);
-    } else {
-      amount = Math.max(0, Math.abs(amount));
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      amount = Math.max(Math.abs(min), Math.abs(max), defaults.amount);
-    }
-
-    return {
-      type,
-      config: {
-        min,
-        max,
-        amount,
-        chance: normalizedChance,
-        hold: holdSteps,
-      },
-    };
   }
 
   return cloneFxDefaults();
 }
 
-export function createStepFx(type = STEP_FX_TYPES.NONE) {
-  if (type === STEP_FX_TYPES.SAMPLE_HOLD) {
-    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.SAMPLE_HOLD];
-    return normalizeStepFx({
-      type,
-      config: { ...defaults },
-    });
-  }
+export function createStepFx() {
   return cloneFxDefaults();
 }
