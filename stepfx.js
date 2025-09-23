@@ -7,7 +7,6 @@ export const STEP_FX_TYPES = Object.freeze({
 
 export const STEP_FX_DEFAULTS = Object.freeze({
   [STEP_FX_TYPES.SAMPLE_HOLD]: Object.freeze({
-    target: 'velocity',
     min: -0.25,
     max: 0.25,
     amount: 0.25,
@@ -22,7 +21,6 @@ function cloneFxDefaults(type = STEP_FX_TYPES.NONE) {
     return {
       type,
       config: {
-        target: defaults.target,
         min: defaults.min,
         max: defaults.max,
         amount: defaults.amount,
@@ -87,12 +85,9 @@ export function normalizeStepFx(definition) {
       amount = Math.max(Math.abs(min), Math.abs(max), defaults.amount);
     }
 
-    const target = typeof source.target === 'string' ? source.target : defaults.target;
-
     return {
       type,
       config: {
-        target,
         min,
         max,
         amount,

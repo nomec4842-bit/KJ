@@ -809,15 +809,7 @@ playBtn.onclick = async () => {
           if (st?.on) {
             const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets);
             let vel = getStepVelocity(st, 1);
-            if (fxResult) {
-              const offsets = fxResult.paramOffsets
-                || (fxResult && !('paramOffsets' in fxResult) && !('velocityOffset' in fxResult)
-                  ? fxResult
-                  : null);
-              if (offsets) {
-                const restore = mergeParamOffsets(t.params, offsets);
-                if (typeof restore === 'function') restoreStack.push(restore);
-              }
+            if (fxResult && typeof fxResult === 'object') {
               if (Number.isFinite(fxResult.velocityOffset)) {
                 vel += fxResult.velocityOffset;
               }

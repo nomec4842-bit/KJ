@@ -440,7 +440,6 @@ function createStepFxPanel(rootEl, track) {
   let suppress = false;
 
   const sampleHoldDefaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.SAMPLE_HOLD] || {
-    target: 'velocity',
     min: -0.25,
     max: 0.25,
     amount: 0.25,
@@ -457,9 +456,6 @@ function createStepFxPanel(rootEl, track) {
   shOpt.value = STEP_FX_TYPES.SAMPLE_HOLD;
   shOpt.textContent = 'Sample & Hold';
   typeSelect.appendChild(shOpt);
-
-  const targetSelect = document.createElement('select');
-  targetSelect.className = 'step-fx-target';
 
   let currentAmount = sampleHoldDefaults.amount;
 
@@ -538,10 +534,9 @@ function createStepFxPanel(rootEl, track) {
 
   const configSection = document.createElement('div');
   configSection.className = 'step-fx-config';
-  configSection.appendChild(createModCell('Target', targetSelect));
-  const rangeMinCell = createModCell('Range Min', minControl.wrap);
-  const rangeMaxCell = createModCell('Range Max', maxControl.wrap);
-  const amountCell = createModCell('Amount ±', amountControl.wrap);
+  const rangeMinCell = createModCell('Velocity Offset Min', minControl.wrap);
+  const rangeMaxCell = createModCell('Velocity Offset Max', maxControl.wrap);
+  const amountCell = createModCell('Velocity Offset ±', amountControl.wrap);
   const chanceCell = createModCell('Chance', chanceControl.wrap);
   const holdCell = createModCell('Hold', holdControl.wrap);
   configSection.appendChild(rangeMinCell);
@@ -563,38 +558,6 @@ function createStepFxPanel(rootEl, track) {
     rootEl.appendChild(controls);
   }
 
-  function refreshTargetOptions(selected) {
-    const baseOptions = getTargetOptionsForTrack(track);
-    const options = Array.isArray(baseOptions) ? [...baseOptions] : [];
-    const extras = [
-      { value: 'velocity', label: 'Velocity' },
-    ];
-    targetSelect.innerHTML = '';
-    const blank = document.createElement('option');
-    blank.value = '';
-    blank.textContent = '(none)';
-    targetSelect.appendChild(blank);
-    const seen = new Set(['']);
-    [...extras, ...options].forEach(opt => {
-      if (!opt || typeof opt.value !== 'string') return;
-      const value = opt.value;
-      if (seen.has(value)) return;
-      const optionEl = document.createElement('option');
-      optionEl.value = value;
-      optionEl.textContent = opt.label || value;
-      targetSelect.appendChild(optionEl);
-      seen.add(value);
-    });
-    const trimmed = (selected || '').trim();
-    if (trimmed && !seen.has(trimmed)) {
-      const extra = document.createElement('option');
-      extra.value = trimmed;
-      extra.textContent = trimmed;
-      targetSelect.appendChild(extra);
-    }
-    targetSelect.value = trimmed || '';
-  }
-
   function getSelectedStep() {
     if (!track || !Array.isArray(track.steps)) return null;
     if (selectedIndex < 0 || selectedIndex >= track.steps.length) return null;
@@ -608,7 +571,6 @@ function createStepFxPanel(rootEl, track) {
     typeSelect.value = isSampleHold ? STEP_FX_TYPES.SAMPLE_HOLD : STEP_FX_TYPES.NONE;
     configSection.style.display = isSampleHold ? '' : 'none';
     const enabled = isSampleHold;
-    targetSelect.disabled = !enabled;
     [minControl, maxControl, amountControl, chanceControl, holdControl].forEach(ctrl => {
       if (!ctrl) return;
       ctrl.input.disabled = !enabled;
@@ -623,9 +585,6 @@ function createStepFxPanel(rootEl, track) {
     const chanceVal = Number.isFinite(Number(cfg.chance)) ? Number(cfg.chance) : sampleHoldDefaults.chance;
     const holdValRaw = Number.isFinite(Number(cfg.hold)) ? Number(cfg.hold) : sampleHoldDefaults.hold;
     const holdVal = Math.max(1, Math.min(128, Math.floor(holdValRaw)));
-
-    const targetVal = typeof cfg.target === 'string' ? cfg.target : sampleHoldDefaults.target;
-    refreshTargetOptions(enabled ? targetVal : '');
 
     currentAmount = amtVal;
     amountControl.setValue(amtVal, { silent: true });
@@ -684,14 +643,6 @@ function createStepFxPanel(rootEl, track) {
     updateControlsFromFx(step.fx);
     suppress = false;
     if (typeof onChange === 'function') onChange(selectedIndex, step);
-  });
-
-  targetSelect.addEventListener('change', () => {
-    if (suppress) return;
-    const value = targetSelect.value;
-    commitFx(config => {
-      config.target = value;
-    });
   });
 
   const clampRatio = (value) => {

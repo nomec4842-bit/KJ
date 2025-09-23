@@ -1,27 +1,9 @@
 // samplenhold.js
 import { STEP_FX_TYPES, normalizeStepFx } from './stepfx.js';
 
-export function buildOffsetFromPath(pathParts, value) {
-  if (!Array.isArray(pathParts) || !pathParts.length) return null;
-  if (!Number.isFinite(value) || value === 0) return null;
-  const root = {};
-  let cursor = root;
-  for (let i = 0; i < pathParts.length; i++) {
-    const key = pathParts[i];
-    if (!key) return null;
-    if (i === pathParts.length - 1) {
-      cursor[key] = value;
-    } else {
-      const next = {};
-      cursor[key] = next;
-      cursor = next;
-    }
-  }
-  return root;
-}
-
 export function prepareSampleHoldConfig(baseConfig = {}, offsets = null) {
   const working = { ...(baseConfig || {}) };
+  if ('target' in working) delete working.target;
   if (!offsets || typeof offsets !== 'object') {
     return working;
   }
@@ -30,19 +12,20 @@ export function prepareSampleHoldConfig(baseConfig = {}, offsets = null) {
   let minTouched = false;
   let maxTouched = false;
 
-  const apply = (target, source) => {
-    if (!target || typeof target !== 'object' || !source || typeof source !== 'object') return;
+  const apply = (dest, source) => {
+    if (!dest || typeof dest !== 'object' || !source || typeof source !== 'object') return;
     for (const [key, value] of Object.entries(source)) {
       if (value && typeof value === 'object' && !Array.isArray(value)) {
-        if (target[key] && typeof target[key] === 'object') {
-          apply(target[key], value);
+        if (dest[key] && typeof dest[key] === 'object') {
+          apply(dest[key], value);
         }
         continue;
       }
       if (!Number.isFinite(value) || value === 0) continue;
-      const current = Number(target[key]);
+      if (key === 'target') continue;
+      const current = Number(dest[key]);
       if (!Number.isFinite(current)) continue;
-      target[key] = current + value;
+      dest[key] = current + value;
       if (key === 'amount') amountTouched = true;
       else if (key === 'min') minTouched = true;
       else if (key === 'max') maxTouched = true;
@@ -90,6 +73,7 @@ export function prepareSampleHoldConfig(baseConfig = {}, offsets = null) {
     working.max = tmp;
   }
 
+  if ('target' in working) delete working.target;
   return working;
 }
 
@@ -104,8 +88,6 @@ export function evaluateSampleHoldFx(track, step, stepIndex, effectOffsets) {
     ? effectOffsets[effectKey]
     : null;
   const cfg = prepareSampleHoldConfig(baseConfig, overrides);
-  const target = typeof cfg.target === 'string' ? cfg.target.trim() : '';
-  if (!target) return null;
 
   const min = Number(cfg.min);
   const max = Number(cfg.max);
@@ -124,7 +106,7 @@ export function evaluateSampleHoldFx(track, step, stepIndex, effectOffsets) {
     store.sampleHold = {};
   }
   const sampleStore = store.sampleHold;
-  const key = `${stepIndex}:${target}`;
+  const key = `${stepIndex}`;
   let state = sampleStore[key];
   if (!state || typeof state !== 'object') {
     state = sampleStore[key] = { remaining: 0, value: 0 };
@@ -153,14 +135,5 @@ export function evaluateSampleHoldFx(track, step, stepIndex, effectOffsets) {
     return null;
   }
 
-  const targetKey = target.toLowerCase();
-  if (targetKey === 'velocity' || targetKey === 'vel' || targetKey === 'step.velocity') {
-    if (value === 0) return { velocityOffset: 0 };
-    return { velocityOffset: value };
-  }
-
-  const pathParts = target.split('.').map(p => p.trim()).filter(Boolean);
-  const offsets = buildOffsetFromPath(pathParts, value);
-  if (offsets) return { paramOffsets: offsets };
-  return null;
+  return { velocityOffset: value };
 }
