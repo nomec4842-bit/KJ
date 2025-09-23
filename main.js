@@ -3,8 +3,8 @@ import { ctx, startTransport, stopTransport } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
-  STEP_FX_TYPES, normalizeStepFx,
 } from './tracks.js';
+import { STEP_FX_TYPES, normalizeStepFx } from './stepfx.js';
 import { evaluateSampleHoldFx } from './samplenhold.js';
 import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
