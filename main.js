@@ -4,8 +4,7 @@ import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
 } from './tracks.js';
-import { STEP_FX_TYPES, normalizeStepFx } from './stepfx.js';
-import { evaluateSampleHoldFx } from './samplenhold.js';
+import { normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
@@ -741,12 +740,7 @@ function mergeParamOffsets(target, offsets) {
   };
 }
 
-function evaluateStepFx(track, step, stepIndex, effectOffsets) {
-  if (!track || !step || !step.fx) return null;
-  const type = step.fx.type;
-  if (type === STEP_FX_TYPES.SAMPLE_HOLD) {
-    return evaluateSampleHoldFx(track, step, stepIndex, effectOffsets);
-  }
+function evaluateStepFx() {
   return null;
 }
 
