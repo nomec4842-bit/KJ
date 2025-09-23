@@ -65,6 +65,14 @@ const FALLBACK_TARGETS = Object.freeze(
   Object.values(TARGETS_BY_ENGINE).flat()
 );
 
+const FX_TARGET_OPTIONS = [
+  { value: 'fx.sampleHold.min', label: 'FX • S&H Min' },
+  { value: 'fx.sampleHold.max', label: 'FX • S&H Max' },
+  { value: 'fx.sampleHold.amount', label: 'FX • S&H Amount' },
+  { value: 'fx.sampleHold.chance', label: 'FX • S&H Chance' },
+  { value: 'fx.sampleHold.hold', label: 'FX • S&H Hold' },
+];
+
 function getTargetOptionsForTrack(track) {
   if (track?.engine && TARGETS_BY_ENGINE[track.engine]) {
     return TARGETS_BY_ENGINE[track.engine];
@@ -1237,7 +1245,11 @@ export function renderModulationRack(rootEl, track) {
     row.appendChild(createModCell('Depth', depthControl.wrap));
 
     const targetSelect = document.createElement('select');
-    const baseOptions = [...getTargetOptionsForTrack(track)];
+    const optionSource = getTargetOptionsForTrack(track);
+    const baseOptions = [
+      ...(Array.isArray(optionSource) ? optionSource : []),
+      ...FX_TARGET_OPTIONS,
+    ];
     const currentTarget = Array.isArray(mod.target)
       ? mod.target.join('.')
       : (mod.target || '');
