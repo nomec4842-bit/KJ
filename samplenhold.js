@@ -1,5 +1,5 @@
 // samplenhold.js
-import { STEP_FX_TYPES, normalizeStepFx } from './tracks.js';
+import { STEP_FX_TYPES, normalizeStepFx } from './stepfx.js';
 
 export function buildOffsetFromPath(pathParts, value) {
   if (!Array.isArray(pathParts) || !pathParts.length) return null;

@@ -1,15 +1,17 @@
 // ui.js
 import {
   STEP_CHOICES,
-  STEP_FX_TYPES,
-  STEP_FX_DEFAULTS,
-  createStepFx,
-  normalizeStepFx,
   createModulator,
   removeModulator,
   getStepVelocity,
   setStepVelocity,
 } from './tracks.js';
+import {
+  STEP_FX_TYPES,
+  STEP_FX_DEFAULTS,
+  createStepFx,
+  normalizeStepFx,
+} from './stepfx.js';
 
 const MOD_SOURCES = [
   { value: 'lfo', label: 'LFO' },
