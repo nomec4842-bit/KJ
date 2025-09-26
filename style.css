@@ -55,6 +55,15 @@ h3 { margin:0 0 8px; font-weight:600; }
 .step-param-controls .step-param-value:focus { outline:2px solid var(--accent); outline-offset:1px; }
 .step-param-state { min-width:60px; text-transform:uppercase; font-size:11px; letter-spacing:0.04em; }
 
+.step-fx-controls { display:flex; flex-direction:column; gap:12px; width:100%; }
+.step-fx-field { display:flex; flex-direction:column; gap:4px; min-width:150px; align-items:flex-start; }
+.step-fx-select, .step-fx-number { padding:4px 6px; border-radius:8px; border:1px solid var(--border); background:#1a1d25; color:var(--fg); }
+.step-fx-select:focus, .step-fx-number:focus { outline:2px solid var(--accent); outline-offset:1px; }
+.step-fx-delay { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+.step-fx-slider { width:100%; flex:1 1 160px; min-width:140px; }
+.step-fx-readout { font-size:12px; color:var(--muted); font-variant-numeric: tabular-nums; }
+.step-fx-hint { flex:1 1 100%; font-size:11px; color:var(--muted); }
+
 .sampler-advanced {
   display:none;
   margin:8px 0 0;
