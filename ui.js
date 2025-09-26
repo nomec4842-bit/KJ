@@ -5,6 +5,9 @@ import {
   removeModulator,
   getStepVelocity,
   setStepVelocity,
+  STEP_FX_TYPES,
+  STEP_FX_DEFAULTS,
+  normalizeStepFx,
 } from './tracks.js';
 import { SAMPLE_HOLD_INPUT_OPTIONS } from './mods.js';
 
@@ -420,12 +423,311 @@ function createStepParamsPanel(rootEl, track) {
   };
 }
 
-function createStepFxPanel(rootEl) {
+function createStepFxPanel(rootEl, track) {
   if (!rootEl) return null;
 
-  rootEl.classList.add('placeholder');
-  rootEl.innerHTML = '<span class="hint">Step effects are not available.</span>';
-  return null;
+  let onChange = null;
+  let selectedIndex = -1;
+  let suppressEvents = false;
+
+  let controlsWrap = null;
+  let typeSelect = null;
+  let delayControls = null;
+  let mixControl = null;
+  let feedbackControl = null;
+  let spacingControl = null;
+  let repeatsInput = null;
+
+  const showPlaceholder = (message) => {
+    rootEl.innerHTML = `<span class="hint">${message}</span>`;
+    rootEl.classList.add('placeholder');
+  };
+
+  const createDisplaySlider = (labelText, options = {}) => {
+    const {
+      min = 0,
+      max = 1,
+      step = 0.01,
+      format = (val) => formatSliderValue(val, 2),
+      aria = labelText,
+    } = options;
+
+    const field = document.createElement('label');
+    field.className = 'step-fx-field';
+
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    field.appendChild(label);
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = `${min}`;
+    slider.max = `${max}`;
+    slider.step = `${step}`;
+    slider.value = `${min}`;
+    slider.className = 'step-fx-slider';
+    slider.setAttribute('aria-label', aria);
+    field.appendChild(slider);
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'step-fx-readout';
+    valueEl.textContent = format(min);
+    field.appendChild(valueEl);
+
+    const update = (value) => {
+      const num = Number(value);
+      const safe = Number.isFinite(num) ? num : min;
+      valueEl.textContent = format(safe);
+    };
+
+    return { field, slider, valueEl, update };
+  };
+
+  const ensureControls = () => {
+    if (controlsWrap) {
+      if (!rootEl.contains(controlsWrap)) {
+        rootEl.innerHTML = '';
+        rootEl.appendChild(controlsWrap);
+      }
+      rootEl.classList.remove('placeholder');
+      return;
+    }
+
+    controlsWrap = document.createElement('div');
+    controlsWrap.className = 'step-fx-controls';
+
+    const typeField = document.createElement('div');
+    typeField.className = 'step-fx-field';
+    const typeLabel = document.createElement('span');
+    typeLabel.textContent = 'Effect';
+    typeField.appendChild(typeLabel);
+
+    typeSelect = document.createElement('select');
+    typeSelect.className = 'step-fx-select';
+    typeSelect.setAttribute('aria-label', 'Step effect type');
+    const typeOptions = [
+      { value: STEP_FX_TYPES.NONE, label: 'None' },
+      { value: STEP_FX_TYPES.DELAY, label: 'Delay' },
+    ];
+    typeOptions.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      typeSelect.appendChild(option);
+    });
+    typeField.appendChild(typeSelect);
+    controlsWrap.appendChild(typeField);
+
+    delayControls = document.createElement('div');
+    delayControls.className = 'step-fx-delay';
+    controlsWrap.appendChild(delayControls);
+
+    const formatPercent = (val) => `${Math.round(Math.max(0, Math.min(1, val)) * 100)}%`;
+    mixControl = createDisplaySlider('Mix', {
+      min: 0,
+      max: 1,
+      step: 0.01,
+      aria: 'Delay mix level',
+      format: formatPercent,
+    });
+    feedbackControl = createDisplaySlider('Feedback', {
+      min: 0,
+      max: 0.95,
+      step: 0.01,
+      aria: 'Delay feedback',
+      format: formatPercent,
+    });
+    spacingControl = createDisplaySlider('Spacing (steps)', {
+      min: 0.05,
+      max: 4,
+      step: 0.05,
+      aria: 'Delay spacing in steps',
+      format: (val) => `${formatSliderValue(val, 2)} st`,
+    });
+
+    delayControls.appendChild(mixControl.field);
+    delayControls.appendChild(feedbackControl.field);
+    delayControls.appendChild(spacingControl.field);
+
+    const repeatsField = document.createElement('label');
+    repeatsField.className = 'step-fx-field';
+    const repeatsLabel = document.createElement('span');
+    repeatsLabel.textContent = 'Repeats';
+    repeatsField.appendChild(repeatsLabel);
+    repeatsInput = document.createElement('input');
+    repeatsInput.type = 'number';
+    repeatsInput.min = '0';
+    repeatsInput.max = '8';
+    repeatsInput.step = '1';
+    repeatsInput.value = '0';
+    repeatsInput.className = 'step-fx-number';
+    repeatsInput.setAttribute('aria-label', 'Delay repeats');
+    repeatsField.appendChild(repeatsInput);
+    delayControls.appendChild(repeatsField);
+
+    const hint = document.createElement('span');
+    hint.className = 'step-fx-hint';
+    hint.textContent = 'Creates echoes after the main hit with adjustable mix, spacing, and feedback.';
+    delayControls.appendChild(hint);
+
+    rootEl.innerHTML = '';
+    rootEl.classList.remove('placeholder');
+    rootEl.appendChild(controlsWrap);
+
+    typeSelect.onchange = (ev) => {
+      if (suppressEvents) return;
+      const value = ev.target.value || STEP_FX_TYPES.NONE;
+      commitEffectType(value);
+    };
+
+    mixControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      mixControl.update(value);
+      if (suppressEvents) return;
+      commitDelayConfig({ mix: value });
+    });
+
+    feedbackControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      feedbackControl.update(value);
+      if (suppressEvents) return;
+      commitDelayConfig({ feedback: value });
+    });
+
+    spacingControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      spacingControl.update(value);
+      if (suppressEvents) return;
+      commitDelayConfig({ spacing: value });
+    });
+
+    repeatsInput.addEventListener('input', (ev) => {
+      if (suppressEvents) return;
+      const raw = Number.parseInt(ev.target.value, 10);
+      const clamped = Number.isFinite(raw) ? Math.max(0, Math.min(8, raw)) : 0;
+      if (!Number.isFinite(raw) || clamped !== raw) {
+        ev.target.value = String(clamped);
+      }
+      commitDelayConfig({ repeats: clamped });
+    });
+  };
+
+  const updateDelayVisibility = (type) => {
+    if (!delayControls) return;
+    const isDelay = type === STEP_FX_TYPES.DELAY;
+    delayControls.style.display = isDelay ? '' : 'none';
+  };
+
+  const syncDelayInputs = (config) => {
+    if (!mixControl || !feedbackControl || !spacingControl || !repeatsInput) return;
+    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
+    const cfg = config && typeof config === 'object' ? config : defaults;
+
+    const mixVal = Number.isFinite(cfg.mix) ? cfg.mix : (defaults.mix ?? 0.5);
+    const fbVal = Number.isFinite(cfg.feedback) ? cfg.feedback : (defaults.feedback ?? 0.45);
+    const spacingVal = Number.isFinite(cfg.spacing) ? cfg.spacing : (defaults.spacing ?? 0.5);
+    const repeatsVal = Number.isFinite(cfg.repeats) ? cfg.repeats : (defaults.repeats ?? 0);
+
+    mixControl.slider.value = `${mixVal}`;
+    mixControl.update(mixVal);
+    feedbackControl.slider.value = `${fbVal}`;
+    feedbackControl.update(fbVal);
+    spacingControl.slider.value = `${spacingVal}`;
+    spacingControl.update(spacingVal);
+    repeatsInput.value = `${Math.max(0, Math.min(8, Math.round(repeatsVal)))}`;
+  };
+
+  const commitEffectType = (type) => {
+    if (selectedIndex < 0) return;
+    const steps = track?.steps;
+    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
+    const step = steps[selectedIndex];
+    if (!step) return;
+
+    let nextFx;
+    if (type === STEP_FX_TYPES.DELAY) {
+      const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
+      const baseConfig = step.fx?.type === STEP_FX_TYPES.DELAY
+        ? step.fx.config
+        : defaults;
+      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DELAY, config: { ...baseConfig } });
+    } else {
+      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.NONE });
+    }
+
+    step.fx = nextFx;
+    suppressEvents = true;
+    typeSelect.value = nextFx.type || STEP_FX_TYPES.NONE;
+    updateDelayVisibility(nextFx.type);
+    syncDelayInputs(nextFx.config);
+    suppressEvents = false;
+
+    if (typeof onChange === 'function') onChange(selectedIndex, step);
+  };
+
+  const commitDelayConfig = (partial = {}) => {
+    if (selectedIndex < 0) return;
+    const steps = track?.steps;
+    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
+    const step = steps[selectedIndex];
+    if (!step) return;
+
+    const current = normalizeStepFx(step.fx);
+    if (current.type !== STEP_FX_TYPES.DELAY) return;
+
+    const merged = { ...current.config, ...partial };
+    const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DELAY, config: merged });
+    step.fx = nextFx;
+
+    suppressEvents = true;
+    syncDelayInputs(nextFx.config);
+    suppressEvents = false;
+
+    if (typeof onChange === 'function') onChange(selectedIndex, step);
+  };
+
+  const updateSelection = (index) => {
+    selectedIndex = Number.isInteger(index) ? index : -1;
+    if (!track || track.mode !== 'steps') {
+      showPlaceholder('Step effects are available in Steps mode.');
+      return;
+    }
+    const steps = track.steps;
+    if (!Array.isArray(steps) || selectedIndex < 0 || selectedIndex >= steps.length) {
+      showPlaceholder('Select a step to edit step effects.');
+      return;
+    }
+    const step = steps[selectedIndex];
+    if (!step) {
+      showPlaceholder('Select a step to edit step effects.');
+      return;
+    }
+
+    ensureControls();
+
+    const normalized = normalizeStepFx(step.fx);
+    if (step.fx !== normalized) {
+      step.fx = normalized;
+    }
+
+    suppressEvents = true;
+    typeSelect.value = normalized.type || STEP_FX_TYPES.NONE;
+    updateDelayVisibility(normalized.type);
+    syncDelayInputs(normalized.config);
+    suppressEvents = false;
+  };
+
+  showPlaceholder('Select a step to edit step effects.');
+
+  return {
+    updateSelection,
+    refresh() {
+      updateSelection(selectedIndex);
+    },
+    setOnChange(fn) {
+      onChange = typeof fn === 'function' ? fn : null;
+    },
+  };
 }
 
 
@@ -462,7 +764,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
   const stepFxPanel = `
     <div id="trk_stepFx" class="step-detail placeholder">
-      <span class="hint">Step effects are not available.</span>
+      <span class="hint">Select a step to edit step effects.</span>
     </div>`;
   html += field('Step Effects', stepFxPanel);
 

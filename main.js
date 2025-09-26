@@ -4,7 +4,7 @@ import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
 } from './tracks.js';
-import { normalizeStepFx } from './stepfx.js';
+import { STEP_FX_TYPES, STEP_FX_DEFAULTS, normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
@@ -49,6 +49,9 @@ const song = {
   chainPos: 0,
   followChain: false
 };
+
+const activeDelayTimers = new Set();
+let currentStepIntervalMs = 0;
 
 /* ---------- Track Normalization ---------- */
 function normalizeTrack(t) {
@@ -740,12 +743,110 @@ function mergeParamOffsets(target, offsets) {
   };
 }
 
-function evaluateStepFx() {
+function clearPendingDelayTriggers() {
+  if (!activeDelayTimers.size) return;
+  for (const id of activeDelayTimers) {
+    clearTimeout(id);
+  }
+  activeDelayTimers.clear();
+}
+
+function scheduleDelayedTrigger(track, velocity, delayMs) {
+  const vel = Number(velocity);
+  const ms = Number(delayMs);
+  if (!Number.isFinite(vel) || vel <= 0) return;
+  if (!Number.isFinite(ms) || ms <= 0) return;
+  const clampedVel = Math.max(0, Math.min(1, vel));
+  if (clampedVel <= 0) return;
+  const timerId = setTimeout(() => {
+    activeDelayTimers.delete(timerId);
+    if (!track) return;
+    triggerEngine?.(track, clampedVel);
+  }, ms);
+  activeDelayTimers.add(timerId);
+}
+
+function resolveDelayConfig(baseConfig = {}, offsets) {
+  const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
+  const resolved = { ...defaults, ...(baseConfig && typeof baseConfig === 'object' ? baseConfig : {}) };
+  const offsetSource = offsets && typeof offsets === 'object'
+    ? (offsets.config && typeof offsets.config === 'object' ? offsets.config : offsets)
+    : null;
+
+  if (offsetSource) {
+    const apply = (key) => {
+      const delta = Number(offsetSource[key]);
+      if (Number.isFinite(delta)) {
+        const current = resolved[key];
+        resolved[key] = Number.isFinite(current) ? current + delta : delta;
+      }
+    };
+    apply('mix');
+    apply('feedback');
+    apply('spacing');
+    apply('repeats');
+  }
+
+  const clamp = (value, min, max, fallback) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.min(max, Math.max(min, num));
+  };
+
+  const mix = clamp(resolved.mix, 0, 1, defaults.mix ?? 0.5);
+  const feedback = clamp(resolved.feedback, 0, 0.95, defaults.feedback ?? 0.45);
+  const spacing = clamp(resolved.spacing, 0.05, 4, defaults.spacing ?? 0.5);
+  const repeatsRaw = Number(resolved.repeats);
+  const repeatsNormalized = Number.isFinite(repeatsRaw) ? Math.round(repeatsRaw) : (defaults.repeats ?? 0);
+  const repeats = Math.max(0, Math.min(8, repeatsNormalized));
+
+  return { mix, feedback, spacing, repeats };
+}
+
+function evaluateDelayStepFx(track, step, baseConfig, offsets) {
+  if (!track || !step) return null;
+  if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return null;
+
+  const config = resolveDelayConfig(baseConfig, offsets);
+  if (config.repeats <= 0) return null;
+
+  const baseVelocity = getStepVelocity?.(step, step.on ? 1 : 0) ?? 0;
+  const wetLevel = baseVelocity * config.mix;
+  if (wetLevel <= 0) return null;
+
+  const stepDuration = currentStepIntervalMs;
+  for (let i = 0; i < config.repeats; i++) {
+    const repeatVelocity = wetLevel * Math.pow(config.feedback, i);
+    if (repeatVelocity <= 0.0001) break;
+    const delayMs = stepDuration * config.spacing * (i + 1);
+    if (!Number.isFinite(delayMs) || delayMs <= 0) continue;
+    scheduleDelayedTrigger(track, repeatVelocity, delayMs);
+  }
+
+  return null;
+}
+
+function evaluateStepFx(track, step, stepIndex, effectOffsets) {
+  if (!track || !step || !step.fx || typeof step.fx !== 'object') return null;
+  const rawType = typeof step.fx.type === 'string' ? step.fx.type.trim().toLowerCase() : '';
+  if (!rawType || rawType === 'none' || rawType === STEP_FX_TYPES.NONE) return null;
+
+  const offsets = effectOffsets && typeof effectOffsets === 'object'
+    ? (effectOffsets[rawType] || effectOffsets[STEP_FX_TYPES.DELAY])
+    : null;
+
+  if (rawType === STEP_FX_TYPES.DELAY) {
+    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
+    const baseConfig = { ...defaults, ...(step.fx.config && typeof step.fx.config === 'object' ? step.fx.config : {}) };
+    return evaluateDelayStepFx(track, step, baseConfig, offsets);
+  }
+
   return null;
 }
 
 function startScheduler(bpm, cb) {
   const interval = 60000 / (bpm * 4);
+  currentStepIntervalMs = interval;
   let next = performance.now();
   let alive = true;
   function loop() {
@@ -759,7 +860,11 @@ function startScheduler(bpm, cb) {
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
-  return () => { alive = false; };
+  return () => {
+    alive = false;
+    currentStepIntervalMs = 0;
+    clearPendingDelayTriggers();
+  };
 }
 
 let stopHandle = null;
@@ -826,6 +931,8 @@ playBtn.onclick = async () => {
 stopBtn.onclick = () => {
   stopHandle && stopHandle();
   stopHandle = null;
+  currentStepIntervalMs = 0;
+  clearPendingDelayTriggers();
   for (const t of tracks) t.pos = -1;
   paintPlayhead();
 };
