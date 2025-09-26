@@ -47,7 +47,8 @@ const song = {
   current: 0,
   chain: [{ pattern: 0, repeats: 1 }],
   chainPos: 0,
-  followChain: false
+  followChain: false,
+  chainRepeatsLeft: 0
 };
 
 const activeDelayTimers = new Set();
@@ -589,24 +590,33 @@ function renderChain() {
   if (chainStatus) chainStatus.textContent = statusParts.join(' • ');
 }
 
+function getSlotRepeatCount(slot) {
+  const rawRepeats = Number(slot?.repeats);
+  if (!Number.isFinite(rawRepeats) || rawRepeats <= 0) return 1;
+  return Math.floor(rawRepeats);
+}
+
 function gotoChainSlot(slotIndex) {
   saveCurrentPattern();
 
   if (!Array.isArray(song.chain) || !song.chain.length) {
     ensureChainPosition();
+    song.chainRepeatsLeft = 0;
     renderChain();
     return;
   }
 
   const clamped = Math.max(0, Math.min(song.chain.length - 1, slotIndex|0));
+  song.chainPos = clamped;
+
+  const slot = song.chain[clamped];
+  song.chainRepeatsLeft = getSlotRepeatCount(slot);
+
   if (!song.patterns.length) {
-    song.chainPos = clamped;
     renderChain();
     return;
   }
 
-  song.chainPos = clamped;
-  const slot = song.chain[clamped];
   const patIndex = clampPatternIndex(slot?.pattern ?? 0);
   song.current = patIndex;
   loadPattern(patIndex);
@@ -693,6 +703,7 @@ if (chainClearBtn) chainClearBtn.onclick = () => {
   if (!song.chain.length) return;
   song.chain.length = 0;
   song.chainPos = 0;
+  song.chainRepeatsLeft = 0;
   renderChain();
 };
 
@@ -708,6 +719,12 @@ if (chainNextBtn) chainNextBtn.onclick = () => {
 
 if (followChainToggle) followChainToggle.onchange = () => {
   song.followChain = followChainToggle.checked;
+  if (song.followChain) {
+    const slot = Array.isArray(song.chain) ? song.chain[song.chainPos] : null;
+    song.chainRepeatsLeft = getSlotRepeatCount(slot);
+  } else {
+    song.chainRepeatsLeft = 0;
+  }
   renderChain();
 };
 
@@ -875,10 +892,18 @@ playBtn.onclick = async () => {
   stopHandle = startScheduler(bpm, () => {
     applyMixer?.(tracks);
 
+    let patternCompleted = false;
+    const anchorTrack = tracks.length ? tracks[0] : null;
+
     for (const _t of tracks) {
       const t = normalizeTrack(_t);
       const L = t.length;
-      t.pos = ((t.pos|0) + 1) % L;
+      const previousPos = Number.isInteger(t.pos) ? t.pos : -1;
+      t.pos = ((previousPos) + 1) % L;
+
+      if (!patternCompleted && anchorTrack && _t === anchorTrack && L > 0 && t.pos === 0 && previousPos >= 0) {
+        patternCompleted = true;
+      }
 
       const restoreStack = [];
       const modResult = applyMods?.(t);
@@ -925,6 +950,20 @@ playBtn.onclick = async () => {
       }
     }
     paintPlayhead();
+
+    if (patternCompleted && song.followChain && Array.isArray(song.chain) && song.chain.length) {
+      if (!Number.isFinite(song.chainRepeatsLeft) || song.chainRepeatsLeft <= 0) {
+        const slot = song.chain[song.chainPos];
+        song.chainRepeatsLeft = getSlotRepeatCount(slot);
+      }
+
+      song.chainRepeatsLeft -= 1;
+
+      if (song.chainRepeatsLeft <= 0) {
+        gotoChainSlot(song.chainPos + 1);
+        renderChain();
+      }
+    }
   });
 };
 
