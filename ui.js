@@ -230,12 +230,12 @@ export function refreshTrackSelect(selectEl, tracks, selectedIndex) {
 function createInlineStepEditor(rootEl) {
   if (!rootEl) return null;
 
-  let onToggle = null;
+  let onSelect = null;
   let buttons = [];
 
   function handleClick(index) {
-    if (typeof onToggle === 'function') {
-      onToggle(index);
+    if (typeof onSelect === 'function') {
+      onSelect(index);
     }
   }
 
@@ -248,7 +248,7 @@ function createInlineStepEditor(rootEl) {
       btn.type = 'button';
       btn.className = 'mini-step';
       btn.dataset.index = String(i);
-      btn.setAttribute('aria-label', `Toggle step ${i + 1}`);
+      btn.setAttribute('aria-label', `Select step ${i + 1}`);
       btn.setAttribute('aria-pressed', 'false');
       btn.title = `Step ${i + 1}`;
       const velBar = document.createElement('div');
@@ -290,11 +290,11 @@ function createInlineStepEditor(rootEl) {
     }
   }
 
-  function setOnToggle(fn) {
-    onToggle = typeof fn === 'function' ? fn : null;
+  function setOnSelect(fn) {
+    onSelect = typeof fn === 'function' ? fn : null;
   }
 
-  return { rebuild, update, paint, setOnToggle };
+  return { rebuild, update, paint, setOnSelect };
 }
 
 function createStepParamsPanel(rootEl, track) {
@@ -553,7 +553,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepToggle, onStepParamsChange, onStepFxChange }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -563,21 +563,9 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     // Steps
     const sSel = document.getElementById('trk_steps');
     if (inlineStepEditor) {
-      inlineStepEditor.setOnToggle((index) => {
-        if (!t.steps || !Array.isArray(t.steps)) return;
-        const step = t.steps[index];
-        if (!step) return;
-        const previous = getStepVelocity(step, 1);
-        step.on = !step.on;
-        if (step.on) {
-          const nextVel = previous > 0 ? previous : 1;
-          setStepVelocity(step, nextVel);
-        } else {
-          setStepVelocity(step, previous);
-        }
-        inlineStepEditor.update(t.steps);
-        if (stepParamsEditor) stepParamsEditor.refresh();
-        if (typeof onStepToggle === 'function') onStepToggle(index, step);
+      inlineStepEditor.setOnSelect((index) => {
+        if (!Number.isInteger(index)) return;
+        if (typeof onStepSelect === 'function') onStepSelect(index);
       });
       inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
       inlineStepEditor.update(t.steps);

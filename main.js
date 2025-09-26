@@ -372,7 +372,7 @@ function renderParamsPanel(){
       setTrackSelectedStep(track, track.selectedStep, { force: true });
     },
     onSampleFile,
-    onStepToggle: (index) => {
+    onStepSelect: (index) => {
       if (index !== undefined && index !== null) {
         setTrackSelectedStep(track, index);
       }
