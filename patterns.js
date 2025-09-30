@@ -5,6 +5,8 @@ import {
   normalizeStep,
   getStepVelocity,
   setStepVelocity,
+  normalizeTrackEffects,
+  syncTrackEffects,
 } from './tracks.js';
 
 // structuredClone is not universally supported in all browsers, so fall back to
@@ -40,6 +42,7 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
       })),
       gain: t.gain, pan: t.pan, mute: t.mute, solo: t.solo,
       params: clone(t.params),
+      effects: clone(t.effects || {}),
       sampleName: t.sample?.name || '',
       mods: Array.isArray(t.mods) ? t.mods
         .filter(mod => mod && typeof mod === 'object')
@@ -79,6 +82,8 @@ export function instantiatePattern(pat, sampleCache = {}) {
     })) : [];
     t.gain = td.gain; t.pan = td.pan; t.mute = td.mute; t.solo = td.solo;
     t.params = clone(td.params);
+    t.effects = normalizeTrackEffects(td.effects);
+    syncTrackEffects(t);
     if (Array.isArray(td.mods)) {
       for (const mod of td.mods) {
         if (!mod || typeof mod !== 'object') continue;

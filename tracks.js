@@ -17,6 +17,27 @@ export const defaults = {
 
 const clone = o => JSON.parse(JSON.stringify(o));
 
+function clampNumber(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  if (num < min) return min;
+  if (num > max) return max;
+  return num;
+}
+
+const TRACK_COMPRESSION_DEFAULT = Object.freeze({
+  enabled: false,
+  threshold: -24,
+  knee: 30,
+  ratio: 4,
+  attack: 0.003,
+  release: 0.25,
+});
+
+export const TRACK_FX_DEFAULTS = Object.freeze({
+  compression: TRACK_COMPRESSION_DEFAULT,
+});
+
 export function getStepVelocity(step, fallback = 0) {
   if (!step || typeof step !== 'object') return fallback;
   const params = step.params;
@@ -55,15 +76,22 @@ const makeStep = () => normalizeStep({});
 const makeNote = (start=0, length=1, pitch=0, vel=1) => ({ start, length, pitch, vel });
 
 function makeBus(){
+  const input = ctx.createGain();
   const gain = ctx.createGain();
-  let pan = null; try { pan = ctx.createStereoPanner(); } catch {}
-  if (pan){ gain.connect(pan).connect(master); return { gain, pan, hasPan:true }; }
-  else   { gain.connect(master);               return { gain, pan:null, hasPan:false }; }
+  let pan = null;
+  try { pan = ctx.createStereoPanner(); } catch {}
+  if (pan){
+    gain.connect(pan).connect(master);
+  } else {
+    gain.connect(master);
+  }
+  input.connect(gain);
+  return { input, gain, pan, hasPan: !!pan };
 }
 
 export function createTrack(name, engine='synth', length=16){
   const bus = makeBus();
-  return {
+  const track = {
     name, engine,
     mode: 'steps',           // 'steps' | 'piano'
     length,
@@ -72,6 +100,7 @@ export function createTrack(name, engine='synth', length=16){
     notes: [],               // for piano roll
     mods: [],                // modulation definitions
 
+    inputNode: bus.input,
     gainNode: bus.gain,
     panNode: bus.pan,
     _hasPan: bus.hasPan,
@@ -87,7 +116,81 @@ export function createTrack(name, engine='synth', length=16){
     },
 
     sample: { buffer:null, name:'' },
+    effects: normalizeTrackEffects({}),
   };
+  ensureTrackFxNodes(track);
+  syncTrackEffects(track);
+  return track;
+}
+
+function ensureTrackFxNodes(track) {
+  if (!track) return;
+  if (!track._fxNodes || typeof track._fxNodes !== 'object') track._fxNodes = {};
+  if (!track._fxNodes.compression) {
+    try {
+      track._fxNodes.compression = ctx.createDynamicsCompressor();
+    } catch (err) {
+      track._fxNodes.compression = null;
+    }
+  }
+}
+
+function rebuildTrackFxChain(track) {
+  if (!track || !track.inputNode || !track.gainNode) return;
+  try { track.inputNode.disconnect(); } catch {}
+  const activeNodes = [];
+  const compressionEnabled = !!track?.effects?.compression?.enabled;
+  if (compressionEnabled && track?._fxNodes?.compression) {
+    activeNodes.push(track._fxNodes.compression);
+  }
+  for (const node of activeNodes) {
+    try { node.disconnect(); } catch {}
+  }
+  let previous = track.inputNode;
+  for (const node of activeNodes) {
+    try { previous.connect(node); } catch {}
+    previous = node;
+  }
+  try { previous.connect(track.gainNode); } catch {}
+}
+
+export function normalizeTrackEffects(effects = {}) {
+  const source = effects && typeof effects === 'object' ? effects : {};
+  const compressionSource = source.compression && typeof source.compression === 'object'
+    ? source.compression
+    : {};
+  const defaults = TRACK_COMPRESSION_DEFAULT;
+  const normalizedCompression = {
+    enabled: compressionSource.enabled === true,
+    threshold: clampNumber(compressionSource.threshold, -60, 0, defaults.threshold),
+    knee: clampNumber(compressionSource.knee, 0, 40, defaults.knee),
+    ratio: clampNumber(compressionSource.ratio, 1, 20, defaults.ratio),
+    attack: clampNumber(compressionSource.attack, 0.001, 1, defaults.attack),
+    release: clampNumber(compressionSource.release, 0.01, 2, defaults.release),
+  };
+  return { compression: normalizedCompression };
+}
+
+export function syncTrackEffects(track) {
+  if (!track) return null;
+  const normalized = normalizeTrackEffects(track.effects);
+  track.effects = normalized;
+  ensureTrackFxNodes(track);
+  const compressionNode = track._fxNodes?.compression || null;
+  const compression = normalized.compression;
+  if (compression && !compressionNode) {
+    compression.enabled = false;
+  }
+  if (compressionNode && compression) {
+    const now = ctx.currentTime;
+    try { compressionNode.threshold.setValueAtTime(compression.threshold, now); } catch {}
+    try { compressionNode.knee.setValueAtTime(compression.knee, now); } catch {}
+    try { compressionNode.ratio.setValueAtTime(compression.ratio, now); } catch {}
+    try { compressionNode.attack.setValueAtTime(compression.attack, now); } catch {}
+    try { compressionNode.release.setValueAtTime(compression.release, now); } catch {}
+  }
+  rebuildTrackFxChain(track);
+  return normalized;
 }
 
 let _modId = 0;
@@ -160,13 +263,14 @@ export function resizeTrackSteps(track, newLen){
 }
 
 export function triggerEngine(track, vel=1, semis=0){
+  const dest = track?.inputNode || track?.gainNode;
   switch(track.engine){
-    case 'synth':    return synthBlip(track.params.synth,    track.gainNode, vel, semis);
-    case 'kick808':  return kick808(track.params.kick808,    track.gainNode, vel);
-    case 'snare808': return snare808(track.params.snare808,  track.gainNode, vel);
-    case 'hat808':   return hat808(track.params.hat808,      track.gainNode, vel);
-    case 'clap909':  return clap909(track.params.clap909,    track.gainNode, vel);
-    case 'sampler':  return samplerPlay(track.params.sampler,track.gainNode, vel, track.sample, semis);
+    case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis);
+    case 'kick808':  return kick808(track.params.kick808,    dest, vel);
+    case 'snare808': return snare808(track.params.snare808,  dest, vel);
+    case 'hat808':   return hat808(track.params.hat808,      dest, vel);
+    case 'clap909':  return clap909(track.params.clap909,    dest, vel);
+    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, semis);
   }
 }
 
