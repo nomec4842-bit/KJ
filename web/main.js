@@ -1,5 +1,5 @@
 // main.js
-import { ctx, startTransport, stopTransport } from './core.js';
+import { ctx, startTransport, stopTransport, dspReady, ensureAudioReady } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
@@ -11,6 +11,8 @@ import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
 import { refreshTrackSelect, renderParams, makeField } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
+
+await dspReady;
 
 /* ---------- DOM ---------- */
 const tempoInput   = document.getElementById('tempo');
@@ -914,7 +916,7 @@ function startScheduler(bpm, cb) {
 let stopHandle = null;
 
 playBtn.onclick = async () => {
-  await ctx.resume();
+  await ensureAudioReady();
   const bpm = Math.min(300, Math.max(40, Number(tempoInput?.value) || 120));
   stopHandle = startScheduler(bpm, () => {
     applyMixer?.(tracks);
