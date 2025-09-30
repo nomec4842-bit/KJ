@@ -2,15 +2,13 @@ name: Build WebAssembly DSP
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v3
 
       - name: Setup Emscripten
@@ -18,13 +16,13 @@ jobs:
         with:
           version: latest
 
-      - name: Verify Emscripten version
+      - name: Verify emcc
         run: emcc -v
 
       - name: Build DSP module
         run: |
           mkdir -p dist
-          emcc src/*.cpp \
+          emcc src/**/*.cpp \
             -O3 \
             -std=c++17 \
             -s STANDALONE_WASM \
@@ -32,6 +30,7 @@ jobs:
             -s EXPORT_ES6=1 \
             -s ENVIRONMENT=web \
             -s ALLOW_MEMORY_GROWTH=1 \
+            -s EXPORTED_RUNTIME_METHODS='["cwrap","ccall"]' \
             -s EXPORTED_FUNCTIONS='["_malloc","_free","_kj_set_sample_rate","_kj_calculate_synth_samples","_kj_calculate_kick_samples","_kj_calculate_snare_samples","_kj_calculate_hat_samples","_kj_calculate_clap_samples","_kj_generate_synth","_kj_generate_kick","_kj_generate_snare","_kj_generate_hat","_kj_generate_clap"]' \
             -o dist/kj_dsp.js
           ls -lh dist
