@@ -6,6 +6,7 @@ KJ: web groovebox
 - `web/` contains the browser UI (HTML, CSS, JS).
 - `src/` contains the C++ DSP implementation that compiles to WebAssembly.
 - `dist/` is where the WebAssembly build outputs (`kj_dsp.wasm`, `kj_dsp.js`) will be written.
+- `web/dist/` is where the UI serves the compiled assets from; copy the build outputs here before running the browser app.
 
 ## Building the DSP module
 
@@ -24,14 +25,19 @@ emcc src/*.cpp \
   -o dist/kj_dsp.js
 ```
 
-The command generates `dist/kj_dsp.js` and `dist/kj_dsp.wasm`, which are then loaded by the UI at runtime.
+The command generates `dist/kj_dsp.js` and `dist/kj_dsp.wasm`. Copy both files into `web/dist/` so the UI can load them:
+
+```
+mkdir -p web/dist
+cp dist/kj_dsp.js dist/kj_dsp.wasm web/dist/
+```
 
 ## Running the UI
 
-Serve the `web/` directory with any static file server. For example:
+Serve the `web/` directory (which should now contain `web/dist/kj_dsp.js` and `web/dist/kj_dsp.wasm`) with any static file server. For example:
 
 ```
 npx serve web
 ```
 
-The UI expects the compiled WebAssembly files to be available at `dist/kj_dsp.js` and `dist/kj_dsp.wasm` relative to the project root.
+The UI expects the compiled WebAssembly files to be available at `web/dist/kj_dsp.js` and `web/dist/kj_dsp.wasm` relative to the `web/` directory root.
