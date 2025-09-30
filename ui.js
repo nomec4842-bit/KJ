@@ -8,6 +8,8 @@ import {
   STEP_FX_TYPES,
   STEP_FX_DEFAULTS,
   normalizeStepFx,
+  TRACK_FX_DEFAULTS,
+  normalizeTrackEffects,
 } from './tracks.js';
 import { SAMPLE_HOLD_INPUT_OPTIONS } from './mods.js';
 
@@ -730,6 +732,259 @@ function createStepFxPanel(rootEl, track) {
   };
 }
 
+function createTrackFxPanel(rootEl, track) {
+  if (!rootEl) return null;
+  if (!track) {
+    rootEl.innerHTML = '<span class="hint">Select a track to edit track effects.</span>';
+    rootEl.classList.add('placeholder');
+    return null;
+  }
+
+  let onChange = null;
+  let suppress = false;
+
+  const compressionDefaults = TRACK_FX_DEFAULTS?.compression || {};
+
+  const ensureCompressionState = () => {
+    const normalized = normalizeTrackEffects(track.effects);
+    if (track.effects !== normalized) {
+      track.effects = normalized;
+    }
+    return track.effects.compression;
+  };
+
+  const clamp = (value, min, max) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    if (num < min) return min;
+    if (num > max) return max;
+    return num;
+  };
+
+  const wrap = document.createElement('div');
+  wrap.className = 'track-fx-controls';
+
+  const toggleLabel = document.createElement('label');
+  toggleLabel.className = 'track-fx-toggle';
+  const toggleInput = document.createElement('input');
+  toggleInput.type = 'checkbox';
+  toggleInput.setAttribute('aria-label', 'Enable compression');
+  const toggleText = document.createElement('span');
+  toggleText.textContent = 'Compression';
+  toggleLabel.appendChild(toggleInput);
+  toggleLabel.appendChild(toggleText);
+  wrap.appendChild(toggleLabel);
+
+  const controls = document.createElement('div');
+  controls.className = 'track-fx-grid';
+  wrap.appendChild(controls);
+
+  const addControlRow = (labelText, sliderControl) => {
+    const row = document.createElement('div');
+    row.className = 'track-fx-row';
+    const label = document.createElement('span');
+    label.className = 'track-fx-label';
+    label.textContent = labelText;
+    row.appendChild(label);
+    row.appendChild(sliderControl.wrap);
+    controls.appendChild(row);
+    return row;
+  };
+
+  const thresholdControl = createSliderControl({
+    min: -60,
+    max: 0,
+    step: 1,
+    value: Number.isFinite(compressionDefaults.threshold) ? compressionDefaults.threshold : -24,
+    format: (val) => formatSliderValue(val, 1),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, -60, 0);
+    },
+  });
+  addControlRow('Threshold (dB)', thresholdControl);
+
+  const ratioControl = createSliderControl({
+    min: 1,
+    max: 20,
+    step: 0.1,
+    value: Number.isFinite(compressionDefaults.ratio) ? compressionDefaults.ratio : 4,
+    format: (val) => formatSliderValue(val, 2),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, 1, 20);
+    },
+  });
+  addControlRow('Ratio', ratioControl);
+
+  const attackControl = createSliderControl({
+    min: 0.001,
+    max: 1,
+    step: 0.001,
+    value: Number.isFinite(compressionDefaults.attack) ? compressionDefaults.attack : 0.003,
+    format: (val) => formatSliderValue(val, 3),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, 0.001, 1);
+    },
+  });
+  addControlRow('Attack (s)', attackControl);
+
+  const releaseControl = createSliderControl({
+    min: 0.01,
+    max: 2,
+    step: 0.01,
+    value: Number.isFinite(compressionDefaults.release) ? compressionDefaults.release : 0.25,
+    format: (val) => formatSliderValue(val, 3),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, 0.01, 2);
+    },
+  });
+  addControlRow('Release (s)', releaseControl);
+
+  const kneeControl = createSliderControl({
+    min: 0,
+    max: 40,
+    step: 0.5,
+    value: Number.isFinite(compressionDefaults.knee) ? compressionDefaults.knee : 30,
+    format: (val) => formatSliderValue(val, 1),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, 0, 40);
+    },
+  });
+  addControlRow('Knee (dB)', kneeControl);
+
+  const hint = document.createElement('span');
+  hint.className = 'track-fx-hint';
+  hint.textContent = 'Smooth out peaks and glue the track together with gentle compression.';
+  controls.appendChild(hint);
+
+  const sliderControls = [thresholdControl, ratioControl, attackControl, releaseControl, kneeControl];
+
+  const setControlsEnabled = (enabled) => {
+    sliderControls.forEach(ctrl => {
+      ctrl.input.disabled = !enabled;
+      ctrl.valueEl.contentEditable = enabled ? 'true' : 'false';
+      ctrl.valueEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    });
+    controls.classList.toggle('track-fx-disabled', !enabled);
+  };
+
+  const applyUpdate = (partial = {}) => {
+    const comp = ensureCompressionState();
+    let changed = false;
+
+    if (partial.enabled !== undefined) {
+      const enabled = !!partial.enabled;
+      if (comp.enabled !== enabled) {
+        comp.enabled = enabled;
+        changed = true;
+      }
+    }
+    if (partial.threshold !== undefined) {
+      const next = clamp(partial.threshold, -60, 0);
+      if (next !== null && comp.threshold !== next) {
+        comp.threshold = next;
+        changed = true;
+      }
+    }
+    if (partial.ratio !== undefined) {
+      const next = clamp(partial.ratio, 1, 20);
+      if (next !== null && comp.ratio !== next) {
+        comp.ratio = next;
+        changed = true;
+      }
+    }
+    if (partial.attack !== undefined) {
+      const next = clamp(partial.attack, 0.001, 1);
+      if (next !== null && comp.attack !== next) {
+        comp.attack = next;
+        changed = true;
+      }
+    }
+    if (partial.release !== undefined) {
+      const next = clamp(partial.release, 0.01, 2);
+      if (next !== null && comp.release !== next) {
+        comp.release = next;
+        changed = true;
+      }
+    }
+    if (partial.knee !== undefined) {
+      const next = clamp(partial.knee, 0, 40);
+      if (next !== null && comp.knee !== next) {
+        comp.knee = next;
+        changed = true;
+      }
+    }
+
+    suppress = true;
+    refresh();
+    suppress = false;
+
+    if (changed && typeof onChange === 'function') onChange();
+  };
+
+  const refresh = () => {
+    const comp = ensureCompressionState();
+    suppress = true;
+    const enabled = !!comp.enabled;
+    toggleInput.checked = enabled;
+    setControlsEnabled(enabled);
+    thresholdControl.setValue(comp.threshold, { silent: true });
+    ratioControl.setValue(comp.ratio, { silent: true });
+    attackControl.setValue(comp.attack, { silent: true });
+    releaseControl.setValue(comp.release, { silent: true });
+    kneeControl.setValue(comp.knee, { silent: true });
+    sliderControls.forEach(ctrl => ctrl.updateDisplay());
+    suppress = false;
+  };
+
+  toggleInput.addEventListener('change', () => {
+    if (suppress) return;
+    applyUpdate({ enabled: toggleInput.checked });
+  });
+  thresholdControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ threshold: val });
+  });
+  ratioControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ ratio: val });
+  });
+  attackControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ attack: val });
+  });
+  releaseControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ release: val });
+  });
+  kneeControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ knee: val });
+  });
+
+  rootEl.innerHTML = '';
+  rootEl.classList.remove('placeholder');
+  rootEl.appendChild(wrap);
+
+  refresh();
+
+  return {
+    refresh,
+    setOnChange(fn) {
+      onChange = typeof fn === 'function' ? fn : null;
+    },
+  };
+}
+
 
 export function renderParams(containerEl, track, makeFieldHtml) {
   const t = track;
@@ -767,6 +1022,12 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       <span class="hint">Select a step to edit step effects.</span>
     </div>`;
   html += field('Step Effects', stepFxPanel);
+
+  const trackFxPanel = `
+    <div id="trk_trackFx" class="step-detail track-fx placeholder">
+      <span class="hint">Track effects like compression appear here.</span>
+    </div>`;
+  html += field('Track Effects', trackFxPanel);
 
   // Instrument block
   html += `<div class="badge">Instrument • ${eng}</div>`;
@@ -852,10 +1113,18 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     delete containerEl._stepFxEditor;
   }
 
+  const trackFxRoot = containerEl.querySelector('#trk_trackFx');
+  const trackFxEditor = createTrackFxPanel(trackFxRoot, track);
+  if (trackFxEditor) {
+    containerEl._trackFxEditor = trackFxEditor;
+  } else if (containerEl._trackFxEditor) {
+    delete containerEl._trackFxEditor;
+  }
+
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange, onTrackFxChange }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -931,6 +1200,13 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       stepFxEditor.updateSelection(selectedIndex);
       stepFxEditor.setOnChange((index, step) => {
         if (typeof onStepFxChange === 'function') onStepFxChange(index, step);
+      });
+    }
+
+    const trackFxEditor = containerEl._trackFxEditor;
+    if (trackFxEditor) {
+      trackFxEditor.setOnChange(() => {
+        if (typeof onTrackFxChange === 'function') onTrackFxChange();
       });
     }
 

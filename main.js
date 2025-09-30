@@ -3,6 +3,7 @@ import { ctx, startTransport, stopTransport } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
+  syncTrackEffects,
 } from './tracks.js';
 import { STEP_FX_TYPES, STEP_FX_DEFAULTS, normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
@@ -126,6 +127,8 @@ function normalizeTrack(t) {
       if (mod.enabled === undefined) mod.enabled = true;
     }
   }
+
+  syncTrackEffects(t);
 
   if (!Array.isArray(t.chain) || !t.chain.length) {
     t.chain = [{ pattern: song.current ?? 0, repeats: 1 }];
@@ -391,6 +394,9 @@ function renderParamsPanel(){
     onStepFxChange: () => {
       renderCurrentEditor();
     },
+    onTrackFxChange: () => {
+      syncTrackEffects(track);
+    },
   });
   const inlineStep = paramsEl?._inlineStepEditor;
   if (inlineStep && track && Array.isArray(track.steps)) {
@@ -404,6 +410,10 @@ function renderParamsPanel(){
   const stepFx = paramsEl?._stepFxEditor;
   if (stepFx && typeof stepFx.refresh === 'function') {
     stepFx.refresh();
+  }
+  const trackFx = paramsEl?._trackFxEditor;
+  if (trackFx && typeof trackFx.refresh === 'function') {
+    trackFx.refresh();
   }
   setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
 }
