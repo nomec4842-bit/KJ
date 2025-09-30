@@ -24,13 +24,14 @@ const addPatternBtn    = document.getElementById('addPattern');
 const dupPatternBtn    = document.getElementById('dupPattern');
 const patLenInput      = document.getElementById('patLen');
 
-const chainAddBtn      = document.getElementById('chainAdd');
-const chainClearBtn    = document.getElementById('chainClear');
-const chainPrevBtn     = document.getElementById('chainPrev');
-const chainNextBtn     = document.getElementById('chainNext');
+const chainAddBtn       = document.getElementById('chainAdd');
+const chainClearBtn     = document.getElementById('chainClear');
+const chainPrevBtn      = document.getElementById('chainPrev');
+const chainNextBtn      = document.getElementById('chainNext');
 const followChainToggle = document.getElementById('followChain');
-const chainView        = document.getElementById('chainView');
-const chainStatus      = document.getElementById('chainStatus');
+const loopChainToggle   = document.getElementById('loopChain');
+const chainView         = document.getElementById('chainView');
+const chainStatus       = document.getElementById('chainStatus');
 
 const togglePiano  = document.getElementById('togglePiano');
 const playBtn      = document.getElementById('play');
@@ -48,6 +49,7 @@ const song = {
   chain: [{ pattern: 0, repeats: 1 }],
   chainPos: 0,
   followChain: false,
+  loopChain: false,
   chainRepeatsLeft: 0
 };
 
@@ -545,6 +547,7 @@ function renderChain() {
     if (chainNextBtn) chainNextBtn.disabled = true;
     if (chainClearBtn) chainClearBtn.disabled = true;
     if (followChainToggle) followChainToggle.checked = !!song.followChain;
+    if (loopChainToggle) loopChainToggle.checked = !!song.loopChain;
     return;
   }
 
@@ -580,13 +583,15 @@ function renderChain() {
 
   chainView.appendChild(frag);
 
-  if (chainPrevBtn) chainPrevBtn.disabled = song.chainPos <= 0;
-  if (chainNextBtn) chainNextBtn.disabled = song.chainPos >= total - 1;
+  if (chainPrevBtn) chainPrevBtn.disabled = !song.loopChain && song.chainPos <= 0;
+  if (chainNextBtn) chainNextBtn.disabled = !song.loopChain && song.chainPos >= total - 1;
   if (chainClearBtn) chainClearBtn.disabled = false;
   if (followChainToggle) followChainToggle.checked = !!song.followChain;
+  if (loopChainToggle) loopChainToggle.checked = !!song.loopChain;
 
   const statusParts = [`Slot ${song.chainPos + 1}/${total}`];
   if (song.followChain) statusParts.push('Auto');
+  if (song.loopChain) statusParts.push('Loop');
   if (chainStatus) chainStatus.textContent = statusParts.join(' • ');
 }
 
@@ -606,7 +611,14 @@ function gotoChainSlot(slotIndex) {
     return;
   }
 
-  const clamped = Math.max(0, Math.min(song.chain.length - 1, slotIndex|0));
+  const total = song.chain.length;
+  let targetIndex = slotIndex | 0;
+  if (song.loopChain && total > 0) {
+    targetIndex %= total;
+    if (targetIndex < 0) targetIndex += total;
+  }
+
+  const clamped = Math.max(0, Math.min(total - 1, targetIndex));
   song.chainPos = clamped;
 
   const slot = song.chain[clamped];
@@ -725,6 +737,11 @@ if (followChainToggle) followChainToggle.onchange = () => {
   } else {
     song.chainRepeatsLeft = 0;
   }
+  renderChain();
+};
+
+if (loopChainToggle) loopChainToggle.onchange = () => {
+  song.loopChain = loopChainToggle.checked;
   renderChain();
 };
 
