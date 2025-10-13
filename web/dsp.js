@@ -5,9 +5,9 @@ let currentSampleRate = 0;
 async function loadModule() {
   let imported;
   try {
-    imported = await import('../dist/kj_dsp.js');
+    imported = await import('./dist/kj_dsp.js');
   } catch (err) {
-    throw new Error('Unable to load dist/kj_dsp.js. Build the WebAssembly module before running the UI.');
+    throw new Error('Unable to load web/dist/kj_dsp.js. Build the WebAssembly module before running the UI.');
   }
   const factory = imported?.default;
   if (typeof factory !== 'function') {
