@@ -12,6 +12,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -32,6 +37,13 @@ jobs:
             -o dist/kj_dsp.js
           mkdir -p web/dist
           cp dist/kj_dsp.js dist/kj_dsp.wasm web/dist/
+
+      - name: Serve build output
+        run: |
+          npx serve dist --listen tcp://127.0.0.1:4173 --no-clipboard --single &
+          SERVE_PID=$!
+          sleep 5
+          kill $SERVE_PID
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
