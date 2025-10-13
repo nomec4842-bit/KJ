@@ -20,7 +20,7 @@ emcc src/*.cpp \
   -s EXPORT_ES6=1 \
   -s ENVIRONMENT='web' \
   -s ALLOW_MEMORY_GROWTH=1 \
-  -s EXPORTED_FUNCTIONS='[_malloc,_free,_kj_set_sample_rate,_kj_calculate_synth_samples,_kj_calculate_kick_samples,_kj_calculate_snare_samples,_kj_calculate_hat_samples,_kj_calculate_clap_samples,_kj_generate_synth,_kj_generate_kick,_kj_generate_snare,_kj_generate_hat,_kj_generate_clap]' \
+  -s EXPORTED_FUNCTIONS='["_malloc","_free","_kj_set_sample_rate","_kj_calculate_synth_samples","_kj_calculate_kick_samples","_kj_calculate_snare_samples","_kj_calculate_hat_samples","_kj_calculate_clap_samples","_kj_generate_synth","_kj_generate_kick","_kj_generate_snare","_kj_generate_hat","_kj_generate_clap"]' \
   -o dist/kj_dsp.js
 ```
 
