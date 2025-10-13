@@ -1,4 +1,4 @@
-name: Build WebAssembly DSP
+name: Build WebAssembly DSP (Main Branch Commit)
 
 on:
   push:
@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,15 +38,10 @@ jobs:
             -s EXPORTED_FUNCTIONS='["_malloc","_free","_kj_set_sample_rate","_kj_calculate_synth_samples","_kj_calculate_kick_samples","_kj_calculate_snare_samples","_kj_calculate_hat_samples","_kj_calculate_clap_samples","_kj_generate_synth","_kj_generate_kick","_kj_generate_snare","_kj_generate_hat","_kj_generate_clap"]' \
             -o dist/kj_dsp.js
 
-      - name: Serve build output
+      - name: Commit build artifacts to main
         run: |
-          npx serve dist --listen tcp://127.0.0.1:4173 --no-clipboard --single &
-          SERVE_PID=$!
-          sleep 5
-          kill $SERVE_PID
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: kj_dsp
-          path: dist
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist
+          git commit -m "Add WebAssembly build artifacts [skip ci]" || echo "No changes to commit"
+          git push origin main
