@@ -12,11 +12,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -24,6 +19,7 @@ jobs:
 
       - name: Build DSP module
         run: |
+          set -euo pipefail
           mkdir -p dist
           emcc src/*.cpp \
             -O3 \
