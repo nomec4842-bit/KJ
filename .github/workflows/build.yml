@@ -23,7 +23,27 @@ jobs:
           version: latest
 
       - name: Build DSP module
-        run: npx nerve dist
+        run: |
+          mkdir -p dist
+          emcc src/*.cpp \
+            -O3 \
+            -std=c++17 \
+            -s WASM=1 \
+            -s MODULARIZE=1 \
+            -s EXPORT_ES6=1 \
+            -s ENVIRONMENT='web' \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            -s EXPORTED_FUNCTIONS='["_malloc","_free","_kj_set_sample_rate","_kj_calculate_synth_samples","_kj_calculate_kick_samples","_kj_calculate_snare_samples","_kj_calculate_hat_samples","_kj_calculate_clap_samples","_kj_generate_synth","_kj_generate_kick","_kj_generate_snare","_kj_generate_hat","_kj_generate_clap"]' \
+            -o dist/kj_dsp.js
+          mkdir -p web/dist
+          cp dist/kj_dsp.js dist/kj_dsp.wasm web/dist/
+
+      - name: Serve build output
+        run: |
+          npx serve dist --listen tcp://127.0.0.1:4173 --no-clipboard --single &
+          SERVE_PID=$!
+          sleep 5
+          kill $SERVE_PID
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
