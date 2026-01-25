@@ -3,7 +3,7 @@ import { ctx, startTransport, stopTransport, dspReady, ensureAudioReady } from '
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
-  syncTrackEffects,
+  syncTrackEffects, defaults,
 } from './tracks.js';
 import { STEP_FX_TYPES, STEP_FX_DEFAULTS, normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
@@ -96,14 +96,29 @@ function normalizeTrack(t) {
   }
 
   if (!t.params || typeof t.params !== 'object') t.params = {};
+  const toNumber = (value, fallback) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  };
+  if (!t.params.synth || typeof t.params.synth !== 'object') {
+    t.params.synth = { ...defaults.synth };
+  } else {
+    const synth = t.params.synth;
+    synth.baseFreq = toNumber(synth.baseFreq, defaults.synth.baseFreq);
+    synth.cutoff = toNumber(synth.cutoff, defaults.synth.cutoff);
+    synth.q = toNumber(synth.q, defaults.synth.q);
+    synth.a = toNumber(synth.a, defaults.synth.a);
+    synth.d = toNumber(synth.d, defaults.synth.d);
+    synth.s = toNumber(synth.s, defaults.synth.s);
+    synth.r = toNumber(synth.r, defaults.synth.r);
+    synth.wavetable = !!synth.wavetable;
+    const morphValue = toNumber(synth.morph, defaults.synth.morph);
+    synth.morph = Math.max(0, Math.min(2048, Math.round(morphValue)));
+  }
   if (!t.params.sampler || typeof t.params.sampler !== 'object') {
     t.params.sampler = { start:0, end:1, semis:0, gain:1, loop:false, advanced:false };
   } else {
     const sampler = t.params.sampler;
-    const toNumber = (value, fallback) => {
-      const num = Number(value);
-      return Number.isFinite(num) ? num : fallback;
-    };
     sampler.start = toNumber(sampler.start, 0);
     sampler.end = toNumber(sampler.end, 1);
     sampler.semis = toNumber(sampler.semis, 0);

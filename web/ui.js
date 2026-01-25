@@ -1042,6 +1042,15 @@ export function renderParams(containerEl, track, makeFieldHtml) {
        <input id="p_s" type="range" min="0" max="1" step="0.01" value="${p.s}">
        <input id="p_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`,
       'A / D / S / R');
+    const wavetableEnabled = !!p.wavetable;
+    const morphValue = Number.isFinite(p.morph) ? p.morph : 0;
+    html += field('Wavetable',
+      `<button id="p_wavetable" class="toggle ${wavetableEnabled ? 'active' : ''}">${wavetableEnabled ? 'On' : 'Off'}</button>`,
+      'Enable wavetable morphing');
+    const morphField = field('Morph',
+      `<input id="p_morph" type="range" min="0" max="2048" step="1" value="${morphValue}">`,
+      '0–2048 samples');
+    html += `<div id="p_wavetablePanel" class="wavetable-morph ${wavetableEnabled ? 'visible' : ''}">${morphField}</div>`;
   }
 
   if (eng === 'kick808') {
@@ -1225,6 +1234,27 @@ export function renderParams(containerEl, track, makeFieldHtml) {
           p.r        = +document.getElementById('p_r').value;
         };
       });
+      const wavetableBtn = document.getElementById('p_wavetable');
+      const morphSlider = document.getElementById('p_morph');
+      const wavetablePanel = document.getElementById('p_wavetablePanel');
+
+      if (wavetableBtn) {
+        wavetableBtn.onclick = () => {
+          const p = t.params.synth;
+          p.wavetable = !p.wavetable;
+          wavetableBtn.classList.toggle('active', p.wavetable);
+          wavetableBtn.textContent = p.wavetable ? 'On' : 'Off';
+          if (wavetablePanel) wavetablePanel.classList.toggle('visible', p.wavetable);
+        };
+      }
+
+      if (morphSlider) {
+        morphSlider.oninput = (e) => {
+          const p = t.params.synth;
+          const value = Math.round(+e.target.value || 0);
+          p.morph = Math.max(0, Math.min(2048, value));
+        };
+      }
     }
 
     if (eng === 'kick808') {
