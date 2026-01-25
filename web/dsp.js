@@ -99,6 +99,35 @@ function clampBuffer(out) {
   }
 }
 
+const WAVE_SHAPES = ['sine', 'saw', 'triangle', 'square'];
+
+function waveSample(shape, phase) {
+  switch (shape) {
+    case 'sine':
+      return Math.sin(phase * 2 * PI);
+    case 'triangle':
+      return 1 - 4 * Math.abs(0.5 - (phase % 1));
+    case 'square':
+      return (phase % 1) < 0.5 ? 1 : -1;
+    case 'saw':
+    default:
+      return 2 * (phase - Math.floor(phase + 0.5));
+  }
+}
+
+function morphWaveSample(phase, morphValue) {
+  const safeMorph = clamp(toNumber(morphValue, 0), 0, 2048);
+  const span = WAVE_SHAPES.length - 1;
+  const position = (safeMorph / 2048) * span;
+  const index = Math.min(span - 1, Math.floor(position));
+  const blend = position - index;
+  const shapeA = WAVE_SHAPES[index];
+  const shapeB = WAVE_SHAPES[index + 1];
+  const sampleA = waveSample(shapeA, phase);
+  const sampleB = waveSample(shapeB, phase);
+  return sampleA + (sampleB - sampleA) * blend;
+}
+
 export function initDsp(sampleRate) {
   const sr = Number(sampleRate);
   currentSampleRate = Number.isFinite(sr) && sr > 0 ? sr : 44100;
@@ -126,6 +155,8 @@ export function renderSynthSamples(params, velocity = 1, semitoneOffset = 0) {
   const sustain = toNumber(params?.s, 0.6);
   const vel = toNumber(velocity, 1);
   const semis = toNumber(semitoneOffset, 0);
+  const useWavetable = !!params?.wavetable;
+  const morph = toNumber(params?.morph, 0);
 
   const out = new Float32Array(length);
   const sr = currentSampleRate > 0 ? currentSampleRate : 44100;
@@ -144,8 +175,8 @@ export function renderSynthSamples(params, velocity = 1, semitoneOffset = 0) {
     const env = envelopeValue(t, a, d, sustainLevel, sustainDuration, r);
     phase += freq * dt;
     if (phase >= 1) phase -= Math.floor(phase);
-    const saw = 2 * (phase - Math.floor(phase + 0.5));
-    const filtered = lpf.process(saw);
+    const osc = useWavetable ? morphWaveSample(phase, morph) : 2 * (phase - Math.floor(phase + 0.5));
+    const filtered = lpf.process(osc);
     out[i] = filtered * env * amp;
   }
 
