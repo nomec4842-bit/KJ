@@ -26,6 +26,8 @@ const LFO_SHAPE_OPTIONS = [
   { value: 'ramp', label: 'Ramp' },
 ];
 
+const SYNTH_MORPH_TARGET = { value: 'synth.morph', label: 'Morph' };
+
 const TARGETS_BY_ENGINE = {
   synth: [
     { value: 'synth.baseFreq', label: 'Base Freq' },
@@ -69,8 +71,16 @@ const FALLBACK_TARGETS = Object.freeze(
 );
 
 function getTargetOptionsForTrack(track) {
-  if (track?.engine && TARGETS_BY_ENGINE[track.engine]) {
-    return TARGETS_BY_ENGINE[track.engine];
+  const engine = track?.engine;
+  if (engine && TARGETS_BY_ENGINE[engine]) {
+    if (engine === 'synth') {
+      const options = [...TARGETS_BY_ENGINE.synth];
+      if (track?.params?.synth?.wavetable) {
+        options.push(SYNTH_MORPH_TARGET);
+      }
+      return options;
+    }
+    return TARGETS_BY_ENGINE[engine];
   }
   return FALLBACK_TARGETS;
 }
@@ -1245,6 +1255,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
           wavetableBtn.classList.toggle('active', p.wavetable);
           wavetableBtn.textContent = p.wavetable ? 'On' : 'Off';
           if (wavetablePanel) wavetablePanel.classList.toggle('visible', p.wavetable);
+          if (modRackEl) renderModulationRack(modRackEl, t);
         };
       }
 
