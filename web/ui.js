@@ -26,18 +26,20 @@ const LFO_SHAPE_OPTIONS = [
   { value: 'ramp', label: 'Ramp' },
 ];
 
+const SYNTH_BASE_TARGETS = [
+  { value: 'synth.baseFreq', label: 'Base Freq' },
+  { value: 'synth.cutoff', label: 'Filter Cutoff' },
+  { value: 'synth.q', label: 'Filter Q' },
+  { value: 'synth.a', label: 'Env Attack' },
+  { value: 'synth.d', label: 'Env Decay' },
+  { value: 'synth.s', label: 'Env Sustain' },
+  { value: 'synth.r', label: 'Env Release' },
+];
+
 const SYNTH_MORPH_TARGET = { value: 'synth.morph', label: 'Morph' };
 
 const TARGETS_BY_ENGINE = {
-  synth: [
-    { value: 'synth.baseFreq', label: 'Base Freq' },
-    { value: 'synth.cutoff', label: 'Filter Cutoff' },
-    { value: 'synth.q', label: 'Filter Q' },
-    { value: 'synth.a', label: 'Env Attack' },
-    { value: 'synth.d', label: 'Env Decay' },
-    { value: 'synth.s', label: 'Env Sustain' },
-    { value: 'synth.r', label: 'Env Release' },
-  ],
+  synth: [...SYNTH_BASE_TARGETS],
   kick808: [
     { value: 'kick808.freq', label: 'Pitch' },
     { value: 'kick808.pitchDecay', label: 'Pitch Decay' },
@@ -74,8 +76,31 @@ function getTargetOptionsForTrack(track) {
   const engine = track?.engine;
   if (engine && TARGETS_BY_ENGINE[engine]) {
     if (engine === 'synth') {
+      const synthParams = track?.params?.synth || {};
+      if (synthParams.threeOsc) {
+        const oscillators = Array.isArray(synthParams.oscillators) ? synthParams.oscillators : [];
+        const options = [];
+        oscillators.slice(0, 3).forEach((osc, index) => {
+          const prefix = `synth.oscillators.${index}`;
+          const labelPrefix = `Osc ${index + 1}`;
+          SYNTH_BASE_TARGETS.forEach((target) => {
+            const suffix = target.value.replace('synth.', '');
+            options.push({
+              value: `${prefix}.${suffix}`,
+              label: `${labelPrefix} ${target.label}`,
+            });
+          });
+          if (osc?.wavetable) {
+            options.push({
+              value: `${prefix}.morph`,
+              label: `${labelPrefix} ${SYNTH_MORPH_TARGET.label}`,
+            });
+          }
+        });
+        return options;
+      }
       const options = [...TARGETS_BY_ENGINE.synth];
-      if (track?.params?.synth?.wavetable) {
+      if (synthParams.wavetable) {
         options.push(SYNTH_MORPH_TARGET);
       }
       return options;
@@ -1043,24 +1068,54 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   html += `<div class="badge">Instrument • ${eng}</div>`;
 
   if (eng === 'synth') {
-    html += field('Base Freq', `<input id="p_base" type="number" min="50" max="2000" step="1" value="${p.baseFreq}">`, 'Hz');
-    html += field('Cutoff',    `<input id="p_cutoff" type="range" min="100" max="12000" step="1" value="${p.cutoff}">`, 'LPF Hz');
-    html += field('Q',         `<input id="p_q" type="range" min="0.1" max="20" step="0.1" value="${p.q}">`);
-    html += field('ADSR',
-      `<input id="p_a" type="range" min="0" max="1" step="0.01" value="${p.a}">
-       <input id="p_d" type="range" min="0" max="1.5" step="0.01" value="${p.d}">
-       <input id="p_s" type="range" min="0" max="1" step="0.01" value="${p.s}">
-       <input id="p_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`,
-      'A / D / S / R');
-    const wavetableEnabled = !!p.wavetable;
-    const morphValue = Number.isFinite(p.morph) ? p.morph : 0;
-    html += field('Wavetable',
-      `<button id="p_wavetable" class="toggle ${wavetableEnabled ? 'active' : ''}">${wavetableEnabled ? 'On' : 'Off'}</button>`,
-      'Enable wavetable morphing');
-    const morphField = field('Morph',
-      `<input id="p_morph" type="range" min="0" max="2048" step="1" value="${morphValue}">`,
-      '0–2048 samples');
-    html += `<div id="p_wavetablePanel" class="wavetable-morph ${wavetableEnabled ? 'visible' : ''}">${morphField}</div>`;
+    const synthFields = (prefix, osc) => {
+      let output = '';
+      output += field('Base Freq', `<input id="${prefix}_base" type="number" min="50" max="2000" step="1" value="${osc.baseFreq}">`, 'Hz');
+      output += field('Cutoff',    `<input id="${prefix}_cutoff" type="range" min="100" max="12000" step="1" value="${osc.cutoff}">`, 'LPF Hz');
+      output += field('Q',         `<input id="${prefix}_q" type="range" min="0.1" max="20" step="0.1" value="${osc.q}">`);
+      output += field('ADSR',
+        `<input id="${prefix}_a" type="range" min="0" max="1" step="0.01" value="${osc.a}">
+         <input id="${prefix}_d" type="range" min="0" max="1.5" step="0.01" value="${osc.d}">
+         <input id="${prefix}_s" type="range" min="0" max="1" step="0.01" value="${osc.s}">
+         <input id="${prefix}_r" type="range" min="0" max="2" step="0.01" value="${osc.r}">`,
+        'A / D / S / R');
+      const wavetableEnabled = !!osc.wavetable;
+      const morphValue = Number.isFinite(osc.morph) ? osc.morph : 0;
+      output += field('Wavetable',
+        `<button id="${prefix}_wavetable" class="toggle ${wavetableEnabled ? 'active' : ''}">${wavetableEnabled ? 'On' : 'Off'}</button>`,
+        'Enable wavetable morphing');
+      const morphField = field('Morph',
+        `<input id="${prefix}_morph" type="range" min="0" max="2048" step="1" value="${morphValue}">`,
+        '0–2048 samples');
+      output += `<div id="${prefix}_wavetablePanel" class="wavetable-morph ${wavetableEnabled ? 'visible' : ''}">${morphField}</div>`;
+      return output;
+    };
+
+    const threeOscEnabled = !!p.threeOsc;
+    html += field('3 Osc',
+      `<button id="p_threeOsc" class="toggle ${threeOscEnabled ? 'active' : ''}">${threeOscEnabled ? 'On' : 'Off'}</button>`,
+      'Enable three oscillators');
+
+    if (threeOscEnabled) {
+      const oscillators = Array.isArray(p.oscillators) ? p.oscillators : [];
+      const activeOsc = Number.isInteger(p.activeOsc) ? p.activeOsc : 0;
+      const tabs = [0, 1, 2].map((idx) => {
+        const isActive = idx === activeOsc;
+        return `<button class="synth-tab ${isActive ? 'active' : ''}" data-osc="${idx}" type="button">Osc ${idx + 1}</button>`;
+      }).join('');
+      html += `<div class="synth-tabs" role="tablist">${tabs}</div>`;
+      html += `<div class="synth-osc-panels">`;
+      [0, 1, 2].forEach((idx) => {
+        const osc = oscillators[idx] || p;
+        const isActive = idx === activeOsc;
+        html += `<div class="synth-osc-panel ${isActive ? 'active' : ''}" data-osc="${idx}" role="tabpanel">`;
+        html += synthFields(`p_osc${idx}`, osc);
+        html += `</div>`;
+      });
+      html += `</div>`;
+    } else {
+      html += synthFields('p', p);
+    }
   }
 
   if (eng === 'kick808') {
@@ -1143,7 +1198,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange, onTrackFxChange }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange, onTrackFxChange, onParamsRerender }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -1231,40 +1286,114 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
     // Engine params
     if (eng === 'synth') {
-      ['p_base','p_cutoff','p_q','p_a','p_d','p_s','p_r'].forEach(id=>{
-        const el=document.getElementById(id);
-        if (el) el.oninput = () => {
-          const p = t.params.synth;
-          p.baseFreq = +document.getElementById('p_base').value;
-          p.cutoff   = +document.getElementById('p_cutoff').value;
-          p.q        = +document.getElementById('p_q').value;
-          p.a        = +document.getElementById('p_a').value;
-          p.d        = +document.getElementById('p_d').value;
-          p.s        = +document.getElementById('p_s').value;
-          p.r        = +document.getElementById('p_r').value;
-        };
+      const synth = t.params.synth;
+      const cloneOsc = (osc) => ({
+        baseFreq: osc.baseFreq,
+        cutoff: osc.cutoff,
+        q: osc.q,
+        a: osc.a,
+        d: osc.d,
+        s: osc.s,
+        r: osc.r,
+        wavetable: !!osc.wavetable,
+        morph: osc.morph ?? 0,
       });
-      const wavetableBtn = document.getElementById('p_wavetable');
-      const morphSlider = document.getElementById('p_morph');
-      const wavetablePanel = document.getElementById('p_wavetablePanel');
+      const ensureOscillators = () => {
+        const existing = Array.isArray(synth.oscillators) ? synth.oscillators : [];
+        const baseOsc = cloneOsc(synth);
+        synth.oscillators = Array.from({ length: 3 }, (_, idx) => existing[idx] ? existing[idx] : cloneOsc(idx === 0 ? baseOsc : baseOsc));
+      };
+      const syncSingleFromOsc = () => {
+        const osc = Array.isArray(synth.oscillators) ? synth.oscillators[0] : null;
+        if (!osc) return;
+        synth.baseFreq = osc.baseFreq;
+        synth.cutoff = osc.cutoff;
+        synth.q = osc.q;
+        synth.a = osc.a;
+        synth.d = osc.d;
+        synth.s = osc.s;
+        synth.r = osc.r;
+        synth.wavetable = !!osc.wavetable;
+        synth.morph = osc.morph ?? 0;
+      };
+      const bindOscInputs = (prefix, osc) => {
+        const base = document.getElementById(`${prefix}_base`);
+        const cutoff = document.getElementById(`${prefix}_cutoff`);
+        const q = document.getElementById(`${prefix}_q`);
+        const a = document.getElementById(`${prefix}_a`);
+        const d = document.getElementById(`${prefix}_d`);
+        const s = document.getElementById(`${prefix}_s`);
+        const r = document.getElementById(`${prefix}_r`);
+        if (base) base.oninput = (e) => { osc.baseFreq = +e.target.value; };
+        if (cutoff) cutoff.oninput = (e) => { osc.cutoff = +e.target.value; };
+        if (q) q.oninput = (e) => { osc.q = +e.target.value; };
+        if (a) a.oninput = (e) => { osc.a = +e.target.value; };
+        if (d) d.oninput = (e) => { osc.d = +e.target.value; };
+        if (s) s.oninput = (e) => { osc.s = +e.target.value; };
+        if (r) r.oninput = (e) => { osc.r = +e.target.value; };
+        const wavetableBtn = document.getElementById(`${prefix}_wavetable`);
+        const morphSlider = document.getElementById(`${prefix}_morph`);
+        const wavetablePanel = document.getElementById(`${prefix}_wavetablePanel`);
 
-      if (wavetableBtn) {
-        wavetableBtn.onclick = () => {
-          const p = t.params.synth;
-          p.wavetable = !p.wavetable;
-          wavetableBtn.classList.toggle('active', p.wavetable);
-          wavetableBtn.textContent = p.wavetable ? 'On' : 'Off';
-          if (wavetablePanel) wavetablePanel.classList.toggle('visible', p.wavetable);
-          if (modRackEl) renderModulationRack(modRackEl, t);
+        if (wavetableBtn) {
+          wavetableBtn.onclick = () => {
+            osc.wavetable = !osc.wavetable;
+            wavetableBtn.classList.toggle('active', osc.wavetable);
+            wavetableBtn.textContent = osc.wavetable ? 'On' : 'Off';
+            if (wavetablePanel) wavetablePanel.classList.toggle('visible', osc.wavetable);
+            if (modRackEl) renderModulationRack(modRackEl, t);
+          };
+        }
+
+        if (morphSlider) {
+          morphSlider.oninput = (e) => {
+            const value = Math.round(+e.target.value || 0);
+            osc.morph = Math.max(0, Math.min(2048, value));
+          };
+        }
+      };
+
+      const threeOscToggle = document.getElementById('p_threeOsc');
+      if (threeOscToggle) {
+        threeOscToggle.onclick = () => {
+          synth.threeOsc = !synth.threeOsc;
+          if (synth.threeOsc) {
+            ensureOscillators();
+          } else {
+            syncSingleFromOsc();
+          }
+          if (typeof onParamsRerender === 'function') onParamsRerender();
         };
       }
 
-      if (morphSlider) {
-        morphSlider.oninput = (e) => {
-          const p = t.params.synth;
-          const value = Math.round(+e.target.value || 0);
-          p.morph = Math.max(0, Math.min(2048, value));
+      if (synth.threeOsc) {
+        ensureOscillators();
+        synth.activeOsc = Number.isInteger(synth.activeOsc) ? synth.activeOsc : 0;
+        const tabs = Array.from(containerEl.querySelectorAll('.synth-tab'));
+        const panels = Array.from(containerEl.querySelectorAll('.synth-osc-panel'));
+        const setActiveTab = (index) => {
+          synth.activeOsc = index;
+          tabs.forEach((btn) => {
+            const btnIndex = Number(btn.dataset.osc);
+            btn.classList.toggle('active', btnIndex === index);
+          });
+          panels.forEach((panel) => {
+            const panelIndex = Number(panel.dataset.osc);
+            panel.classList.toggle('active', panelIndex === index);
+          });
         };
+        tabs.forEach((btn) => {
+          btn.onclick = () => {
+            const idx = Number(btn.dataset.osc);
+            if (!Number.isNaN(idx)) setActiveTab(idx);
+          };
+        });
+        setActiveTab(Math.max(0, Math.min(2, synth.activeOsc)));
+        synth.oscillators.forEach((osc, idx) => {
+          bindOscInputs(`p_osc${idx}`, osc);
+        });
+      } else {
+        bindOscInputs('p', synth);
       }
     }
 

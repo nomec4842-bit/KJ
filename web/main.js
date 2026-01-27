@@ -101,19 +101,48 @@ function normalizeTrack(t) {
     return Number.isFinite(num) ? num : fallback;
   };
   if (!t.params.synth || typeof t.params.synth !== 'object') {
-    t.params.synth = { ...defaults.synth };
+    t.params.synth = JSON.parse(JSON.stringify(defaults.synth));
   } else {
     const synth = t.params.synth;
-    synth.baseFreq = toNumber(synth.baseFreq, defaults.synth.baseFreq);
-    synth.cutoff = toNumber(synth.cutoff, defaults.synth.cutoff);
-    synth.q = toNumber(synth.q, defaults.synth.q);
-    synth.a = toNumber(synth.a, defaults.synth.a);
-    synth.d = toNumber(synth.d, defaults.synth.d);
-    synth.s = toNumber(synth.s, defaults.synth.s);
-    synth.r = toNumber(synth.r, defaults.synth.r);
-    synth.wavetable = !!synth.wavetable;
-    const morphValue = toNumber(synth.morph, defaults.synth.morph);
-    synth.morph = Math.max(0, Math.min(2048, Math.round(morphValue)));
+    const oscDefaults = defaults.synth.oscillators?.[0] || defaults.synth;
+    const normalizeOsc = (osc, fallback) => {
+      const source = osc && typeof osc === 'object' ? osc : {};
+      const base = fallback || oscDefaults;
+      const normalized = {
+        baseFreq: toNumber(source.baseFreq, base.baseFreq),
+        cutoff: toNumber(source.cutoff, base.cutoff),
+        q: toNumber(source.q, base.q),
+        a: toNumber(source.a, base.a),
+        d: toNumber(source.d, base.d),
+        s: toNumber(source.s, base.s),
+        r: toNumber(source.r, base.r),
+        wavetable: !!source.wavetable,
+        morph: 0,
+      };
+      const morphValue = toNumber(source.morph, base.morph);
+      normalized.morph = Math.max(0, Math.min(2048, Math.round(morphValue)));
+      return normalized;
+    };
+
+    const baseOsc = normalizeOsc(synth, oscDefaults);
+    synth.baseFreq = baseOsc.baseFreq;
+    synth.cutoff = baseOsc.cutoff;
+    synth.q = baseOsc.q;
+    synth.a = baseOsc.a;
+    synth.d = baseOsc.d;
+    synth.s = baseOsc.s;
+    synth.r = baseOsc.r;
+    synth.wavetable = baseOsc.wavetable;
+    synth.morph = baseOsc.morph;
+    synth.threeOsc = !!synth.threeOsc;
+    const activeOsc = Number.isFinite(Number(synth.activeOsc)) ? Number(synth.activeOsc) : 0;
+    synth.activeOsc = Math.max(0, Math.min(2, Math.round(activeOsc)));
+
+    const oscList = Array.isArray(synth.oscillators) ? synth.oscillators : [];
+    synth.oscillators = Array.from({ length: 3 }, (_, index) => {
+      const fallback = index === 0 ? baseOsc : oscDefaults;
+      return normalizeOsc(oscList[index], fallback);
+    });
   }
   if (!t.params.sampler || typeof t.params.sampler !== 'object') {
     t.params.sampler = { start:0, end:1, semis:0, gain:1, loop:false, advanced:false };
@@ -413,6 +442,9 @@ function renderParamsPanel(){
     },
     onTrackFxChange: () => {
       syncTrackEffects(track);
+    },
+    onParamsRerender: () => {
+      renderParamsPanel();
     },
   });
   const inlineStep = paramsEl?._inlineStepEditor;

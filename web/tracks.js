@@ -6,8 +6,25 @@ export { STEP_FX_TYPES, STEP_FX_DEFAULTS, createStepFx, normalizeStepFx } from '
 
 export const STEP_CHOICES = [4, 8, 12, 16, 24, 32];
 
+const SYNTH_OSC_DEFAULT = Object.freeze({
+  cutoff: 2000,
+  q: 1,
+  a: 0.01,
+  d: 0.2,
+  s: 0.6,
+  r: 0.2,
+  baseFreq: 220,
+  wavetable: false,
+  morph: 0,
+});
+
 export const defaults = {
-  synth:   { cutoff:2000, q:1, a:0.01, d:0.2, s:0.6, r:0.2, baseFreq:220, wavetable:false, morph:0 },
+  synth:   {
+    ...SYNTH_OSC_DEFAULT,
+    threeOsc: false,
+    activeOsc: 0,
+    oscillators: Array.from({ length: 3 }, () => ({ ...SYNTH_OSC_DEFAULT })),
+  },
   kick808: { freq:55, pitchDecay:0.08, ampDecay:0.45, click:0.12 },
   snare808:{ tone:180, noise:0.6, decay:0.22 },
   hat808:  { decay:0.06, hpf:8000 },
