@@ -144,7 +144,7 @@ function toNumber(value, fallback) {
   return Number.isFinite(num) ? num : fallback;
 }
 
-export function renderSynthSamples(params, velocity = 1, semitoneOffset = 0) {
+function renderSynthOscSamples(params, velocity = 1, semitoneOffset = 0) {
   const a = toNumber(params?.a, 0.01);
   const d = toNumber(params?.d, 0.2);
   const r = toNumber(params?.r, 0.2);
@@ -180,6 +180,31 @@ export function renderSynthSamples(params, velocity = 1, semitoneOffset = 0) {
     out[i] = filtered * env * amp;
   }
 
+  clampBuffer(out);
+  return out;
+}
+
+export function renderSynthSamples(params, velocity = 1, semitoneOffset = 0) {
+  const oscillators = params?.threeOsc && Array.isArray(params?.oscillators)
+    ? params.oscillators.filter(Boolean).slice(0, 3)
+    : null;
+
+  if (!oscillators || !oscillators.length) {
+    return renderSynthOscSamples(params, velocity, semitoneOffset);
+  }
+
+  const rendered = oscillators.map((osc) => renderSynthOscSamples(osc, velocity, semitoneOffset));
+  const length = Math.max(1, ...rendered.map((arr) => arr.length));
+  const out = new Float32Array(length);
+  for (const buffer of rendered) {
+    for (let i = 0; i < buffer.length; i += 1) {
+      out[i] += buffer[i];
+    }
+  }
+  const scale = 1 / Math.max(1, rendered.length);
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] *= scale;
+  }
   clampBuffer(out);
   return out;
 }
