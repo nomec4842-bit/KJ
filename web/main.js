@@ -141,7 +141,13 @@ function normalizeTrack(t) {
     const oscList = Array.isArray(synth.oscillators) ? synth.oscillators : [];
     synth.oscillators = Array.from({ length: 3 }, (_, index) => {
       const fallback = index === 0 ? baseOsc : oscDefaults;
-      return normalizeOsc(oscList[index], fallback);
+      const source = oscList[index];
+      const normalized = normalizeOsc(source, fallback);
+      if (source && typeof source === 'object') {
+        Object.assign(source, normalized);
+        return source;
+      }
+      return normalized;
     });
   }
   if (!t.params.sampler || typeof t.params.sampler !== 'object') {
