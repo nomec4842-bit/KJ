@@ -1,5 +1,5 @@
 import { ctx, master, clampInt } from './core.js';
-import { synthBlip, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
+import { synthBlip, noiseSynth, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
 import { normalizeStepFx } from './stepfx.js';
 
 export { STEP_FX_TYPES, STEP_FX_DEFAULTS, createStepFx, normalizeStepFx } from './stepfx.js';
@@ -18,6 +18,16 @@ const SYNTH_OSC_DEFAULT = Object.freeze({
   morph: 0,
 });
 
+const NOISE_DEFAULT = Object.freeze({
+  cutoff: 4000,
+  q: 0.8,
+  a: 0.01,
+  d: 0.2,
+  s: 0.3,
+  r: 0.2,
+  gain: 0.8,
+});
+
 export const defaults = {
   synth:   {
     ...SYNTH_OSC_DEFAULT,
@@ -25,6 +35,7 @@ export const defaults = {
     activeOsc: 0,
     oscillators: Array.from({ length: 3 }, () => ({ ...SYNTH_OSC_DEFAULT })),
   },
+  noise:  { ...NOISE_DEFAULT },
   kick808: { freq:55, pitchDecay:0.08, ampDecay:0.45, click:0.12 },
   snare808:{ tone:180, noise:0.6, decay:0.22 },
   hat808:  { decay:0.06, hpf:8000 },
@@ -125,6 +136,7 @@ export function createTrack(name, engine='synth', length=16){
 
     params: {
       synth:   clone(defaults.synth),
+      noise:   clone(defaults.noise),
       kick808: clone(defaults.kick808),
       snare808:clone(defaults.snare808),
       hat808:  clone(defaults.hat808),
@@ -283,6 +295,7 @@ export function triggerEngine(track, vel=1, semis=0, when){
   const dest = track?.inputNode || track?.gainNode;
   switch(track.engine){
     case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when);
+    case 'noise':    return noiseSynth(track.params.noise,   dest, vel, semis, when);
     case 'kick808':  return kick808(track.params.kick808,    dest, vel, when);
     case 'snare808': return snare808(track.params.snare808,  dest, vel, when);
     case 'hat808':   return hat808(track.params.hat808,      dest, vel, when);

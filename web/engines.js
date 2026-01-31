@@ -2,6 +2,7 @@ import { ctx } from './core.js';
 import {
   isDspReady,
   renderSynthSamples,
+  renderNoiseSamples,
   renderKickSamples,
   renderSnareSamples,
   renderHatSamples,
@@ -36,6 +37,15 @@ function playSamples(samples, dest, when) {
 export function synthBlip(p, dest, vel = 1, semis = 0, when) {
   if (!isDspReady()) return;
   const samples = renderSynthSamples(p, vel, semis);
+  playSamples(samples, dest, when);
+}
+
+/* ===========================
+   Noise Synth (polyphonic)
+   =========================== */
+export function noiseSynth(p, dest, vel = 1, semis = 0, when) {
+  if (!isDspReady()) return;
+  const samples = renderNoiseSamples(p, vel, semis);
   playSamples(samples, dest, when);
 }
 
