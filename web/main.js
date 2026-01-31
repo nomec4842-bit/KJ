@@ -61,7 +61,6 @@ const song = {
   chainRepeatsLeft: 0
 };
 
-const activeDelayTimers = new Set();
 let currentStepIntervalMs = 0;
 const PROJECT_STORAGE_KEY = 'kj.project.v1';
 
@@ -1055,26 +1054,20 @@ function mergeParamOffsets(target, offsets) {
 }
 
 function clearPendingDelayTriggers() {
-  if (!activeDelayTimers.size) return;
-  for (const id of activeDelayTimers) {
-    clearTimeout(id);
-  }
-  activeDelayTimers.clear();
+  // Placeholder for any pending scheduling cleanup.
 }
 
-function scheduleDelayedTrigger(track, velocity, delayMs) {
+function scheduleDelayedTrigger(track, velocity, delayMs, scheduledTime) {
   const vel = Number(velocity);
   const ms = Number(delayMs);
   if (!Number.isFinite(vel) || vel <= 0) return;
   if (!Number.isFinite(ms) || ms <= 0) return;
   const clampedVel = Math.max(0, Math.min(1, vel));
   if (clampedVel <= 0) return;
-  const timerId = setTimeout(() => {
-    activeDelayTimers.delete(timerId);
-    if (!track) return;
-    triggerEngine?.(track, clampedVel);
-  }, ms);
-  activeDelayTimers.add(timerId);
+  const baseTime = Number.isFinite(scheduledTime) ? scheduledTime : ctx.currentTime;
+  const startTime = baseTime + (ms / 1000);
+  if (!track) return;
+  triggerEngine?.(track, clampedVel, 0, startTime);
 }
 
 function resolveDelayConfig(baseConfig = {}, offsets) {
@@ -1114,7 +1107,7 @@ function resolveDelayConfig(baseConfig = {}, offsets) {
   return { mix, feedback, spacing, repeats };
 }
 
-function evaluateDelayStepFx(track, step, baseConfig, offsets) {
+function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime) {
   if (!track || !step) return null;
   if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return null;
 
@@ -1131,13 +1124,13 @@ function evaluateDelayStepFx(track, step, baseConfig, offsets) {
     if (repeatVelocity <= 0.0001) break;
     const delayMs = stepDuration * config.spacing * (i + 1);
     if (!Number.isFinite(delayMs) || delayMs <= 0) continue;
-    scheduleDelayedTrigger(track, repeatVelocity, delayMs);
+    scheduleDelayedTrigger(track, repeatVelocity, delayMs, scheduledTime);
   }
 
   return null;
 }
 
-function evaluateStepFx(track, step, stepIndex, effectOffsets) {
+function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime) {
   if (!track || !step || !step.fx || typeof step.fx !== 'object') return null;
   const rawType = typeof step.fx.type === 'string' ? step.fx.type.trim().toLowerCase() : '';
   if (!rawType || rawType === 'none' || rawType === STEP_FX_TYPES.NONE) return null;
@@ -1149,33 +1142,10 @@ function evaluateStepFx(track, step, stepIndex, effectOffsets) {
   if (rawType === STEP_FX_TYPES.DELAY) {
     const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
     const baseConfig = { ...defaults, ...(step.fx.config && typeof step.fx.config === 'object' ? step.fx.config : {}) };
-    return evaluateDelayStepFx(track, step, baseConfig, offsets);
+    return evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime);
   }
 
   return null;
-}
-
-function startScheduler(bpm, cb) {
-  const interval = 60000 / (bpm * 4);
-  currentStepIntervalMs = interval;
-  let next = performance.now();
-  let alive = true;
-  function loop() {
-    if (!alive) return;
-    const now = performance.now();
-    if (now >= next) {
-      next += interval;
-      cb();
-      while (now > next + interval) next += interval;
-    }
-    requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
-  return () => {
-    alive = false;
-    currentStepIntervalMs = 0;
-    clearPendingDelayTriggers();
-  };
 }
 
 let stopHandle = null;
@@ -1183,7 +1153,8 @@ let stopHandle = null;
 playBtn.onclick = async () => {
   await ensureAudioReady();
   const bpm = Math.min(300, Math.max(40, Number(tempoInput?.value) || 120));
-  stopHandle = startScheduler(bpm, () => {
+  currentStepIntervalMs = 60000 / (bpm * 4);
+  startTransport(bpm, (stepIndex, scheduledTime) => {
     applyMixer?.(tracks);
 
     let patternCompleted = false;
@@ -1193,7 +1164,7 @@ playBtn.onclick = async () => {
       const t = normalizeTrack(_t);
       const L = t.length;
       const previousPos = Number.isInteger(t.pos) ? t.pos : -1;
-      t.pos = ((previousPos) + 1) % L;
+      t.pos = L > 0 ? (stepIndex % L) : 0;
 
       if (!patternCompleted && anchorTrack && _t === anchorTrack && L > 0 && t.pos === 0 && previousPos >= 0) {
         patternCompleted = true;
@@ -1221,11 +1192,11 @@ playBtn.onclick = async () => {
       try {
         if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
-          for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch);
+          for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch, scheduledTime);
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets);
+            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime);
             let vel = getStepVelocity(st, 1);
             if (fxResult && typeof fxResult === 'object') {
               if (Number.isFinite(fxResult.velocityOffset)) {
@@ -1233,7 +1204,7 @@ playBtn.onclick = async () => {
               }
             }
             vel = Math.max(0, Math.min(1, vel));
-            if (vel > 0) triggerEngine?.(t, vel);
+            if (vel > 0) triggerEngine?.(t, vel, 0, scheduledTime);
           }
         }
       } finally {
@@ -1259,6 +1230,11 @@ playBtn.onclick = async () => {
       }
     }
   });
+  stopHandle = () => {
+    stopTransport();
+    currentStepIntervalMs = 0;
+    clearPendingDelayTriggers();
+  };
 };
 
 stopBtn.onclick = () => {

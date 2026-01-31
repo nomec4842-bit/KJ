@@ -279,15 +279,15 @@ export function resizeTrackSteps(track, newLen){
     .filter(n => n.length > 0);
 }
 
-export function triggerEngine(track, vel=1, semis=0){
+export function triggerEngine(track, vel=1, semis=0, when){
   const dest = track?.inputNode || track?.gainNode;
   switch(track.engine){
-    case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis);
-    case 'kick808':  return kick808(track.params.kick808,    dest, vel);
-    case 'snare808': return snare808(track.params.snare808,  dest, vel);
-    case 'hat808':   return hat808(track.params.hat808,      dest, vel);
-    case 'clap909':  return clap909(track.params.clap909,    dest, vel);
-    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, semis);
+    case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when);
+    case 'kick808':  return kick808(track.params.kick808,    dest, vel, when);
+    case 'snare808': return snare808(track.params.snare808,  dest, vel, when);
+    case 'hat808':   return hat808(track.params.hat808,      dest, vel, when);
+    case 'clap909':  return clap909(track.params.clap909,    dest, vel, when);
+    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, semis, when);
   }
 }
 
