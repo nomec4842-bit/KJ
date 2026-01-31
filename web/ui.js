@@ -40,6 +40,15 @@ const SYNTH_MORPH_TARGET = { value: 'synth.morph', label: 'Morph' };
 
 const TARGETS_BY_ENGINE = {
   synth: [...SYNTH_BASE_TARGETS],
+  noise: [
+    { value: 'noise.cutoff', label: 'Filter Cutoff' },
+    { value: 'noise.q', label: 'Filter Q' },
+    { value: 'noise.a', label: 'Env Attack' },
+    { value: 'noise.d', label: 'Env Decay' },
+    { value: 'noise.s', label: 'Env Sustain' },
+    { value: 'noise.r', label: 'Env Release' },
+    { value: 'noise.gain', label: 'Gain' },
+  ],
   kick808: [
     { value: 'kick808.freq', label: 'Pitch' },
     { value: 'kick808.pitchDecay', label: 'Pitch Decay' },
@@ -1125,6 +1134,18 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     html += field('Click',        `<input id="k_click" type="range" min="0" max="1" step="0.01" value="${p.click}">`);
   }
 
+  if (eng === 'noise') {
+    html += field('Cutoff', `<input id="nz_cutoff" type="range" min="40" max="12000" step="10" value="${p.cutoff}">`, 'LPF Hz');
+    html += field('Q', `<input id="nz_q" type="range" min="0.1" max="20" step="0.1" value="${p.q}">`);
+    html += field('ADSR',
+      `<input id="nz_a" type="range" min="0" max="1" step="0.01" value="${p.a}">
+       <input id="nz_d" type="range" min="0" max="1.5" step="0.01" value="${p.d}">
+       <input id="nz_s" type="range" min="0" max="1" step="0.01" value="${p.s}">
+       <input id="nz_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`,
+      'A / D / S / R');
+    html += field('Gain', `<input id="nz_gain" type="range" min="0" max="2" step="0.01" value="${p.gain}">`);
+  }
+
   if (eng === 'snare808') {
     html += field('Tone (Hz)', `<input id="n_tone" type="range" min="100" max="400" step="1" value="${p.tone}">`);
     html += field('Noise',     `<input id="n_noise" type="range" min="0" max="1" step="0.01" value="${p.noise}">`);
@@ -1406,6 +1427,22 @@ export function renderParams(containerEl, track, makeFieldHtml) {
           p.pitchDecay = +document.getElementById('k_pdec').value;
           p.ampDecay   = +document.getElementById('k_adec').value;
           p.click      = +document.getElementById('k_click').value;
+        };
+      });
+    }
+
+    if (eng === 'noise') {
+      ['nz_cutoff','nz_q','nz_a','nz_d','nz_s','nz_r','nz_gain'].forEach(id=>{
+        const el=document.getElementById(id);
+        if (el) el.oninput = () => {
+          const p = t.params.noise;
+          p.cutoff = +document.getElementById('nz_cutoff').value;
+          p.q = +document.getElementById('nz_q').value;
+          p.a = +document.getElementById('nz_a').value;
+          p.d = +document.getElementById('nz_d').value;
+          p.s = +document.getElementById('nz_s').value;
+          p.r = +document.getElementById('nz_r').value;
+          p.gain = +document.getElementById('nz_gain').value;
         };
       });
     }

@@ -290,6 +290,18 @@ function normalizeTrack(t) {
       return normalized;
     });
   }
+  if (!t.params.noise || typeof t.params.noise !== 'object') {
+    t.params.noise = JSON.parse(JSON.stringify(defaults.noise));
+  } else {
+    const noise = t.params.noise;
+    noise.cutoff = toNumber(noise.cutoff, defaults.noise.cutoff);
+    noise.q = toNumber(noise.q, defaults.noise.q);
+    noise.a = toNumber(noise.a, defaults.noise.a);
+    noise.d = toNumber(noise.d, defaults.noise.d);
+    noise.s = toNumber(noise.s, defaults.noise.s);
+    noise.r = toNumber(noise.r, defaults.noise.r);
+    noise.gain = toNumber(noise.gain, defaults.noise.gain);
+  }
   if (!t.params.sampler || typeof t.params.sampler !== 'object') {
     t.params.sampler = { start:0, end:1, semis:0, gain:1, loop:false, advanced:false };
   } else {

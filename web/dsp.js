@@ -209,6 +209,42 @@ export function renderSynthSamples(params, velocity = 1, semitoneOffset = 0) {
   return out;
 }
 
+export function renderNoiseSamples(params, velocity = 1, semitoneOffset = 0) {
+  const a = toNumber(params?.a, 0.01);
+  const d = toNumber(params?.d, 0.2);
+  const r = toNumber(params?.r, 0.2);
+  const length = calculateNoiseSamples(a, d, r);
+  const cutoff = toNumber(params?.cutoff, 4000);
+  const q = toNumber(params?.q, 0.8);
+  const sustain = toNumber(params?.s, 0.3);
+  const gain = toNumber(params?.gain, 0.8);
+  const vel = toNumber(velocity, 1);
+  const semis = toNumber(semitoneOffset, 0);
+
+  const out = new Float32Array(length);
+  const sr = currentSampleRate > 0 ? currentSampleRate : 44100;
+  const dt = 1 / sr;
+  const sustainDuration = 0.3;
+  const sustainLevel = clamp(sustain, 0, 1);
+  const velClamped = clamp(vel, 0, 2);
+  const amp = clamp(gain, 0, 2) * velClamped;
+  const baseCutoff = clamp(cutoff, 40, sr * 0.49);
+  const cutoffHz = clamp(baseCutoff * Math.pow(2, semis / 12), 40, sr * 0.49);
+
+  const lpf = new Biquad();
+  lpf.configureLowpass(cutoffHz, q);
+
+  for (let i = 0; i < length; i += 1) {
+    const t = i * dt;
+    const env = envelopeValue(t, a, d, sustainLevel, sustainDuration, r);
+    const noise = randomNoise();
+    out[i] = lpf.process(noise) * env * amp;
+  }
+
+  clampBuffer(out);
+  return out;
+}
+
 export function renderKickSamples(params, velocity = 1) {
   const ampDecay = toNumber(params?.ampDecay, 0.45);
   const length = calculateKickSamples(ampDecay);
@@ -366,6 +402,11 @@ export function renderClapSamples(params, velocity = 1) {
 
 function calculateSynthSamples(attack, decay, release) {
   const total = Math.max(0.25, attack) + Math.max(0, decay) + 0.35 + Math.max(0.05, release);
+  return Math.max(1, Math.ceil(timeToSamples(total)));
+}
+
+function calculateNoiseSamples(attack, decay, release) {
+  const total = Math.max(0.2, attack) + Math.max(0, decay) + 0.4 + Math.max(0.05, release);
   return Math.max(1, Math.ceil(timeToSamples(total)));
 }
 
