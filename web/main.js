@@ -40,6 +40,11 @@ const togglePiano  = document.getElementById('togglePiano');
 const playBtn      = document.getElementById('play');
 const stopBtn      = document.getElementById('stop');
 
+const saveProjectBtn = document.getElementById('saveProject');
+const loadProjectBtn = document.getElementById('loadProject');
+const loadProjectInput = document.getElementById('loadProjectFile');
+const resetProjectBtn = document.getElementById('resetProject');
+
 /* ---------- State ---------- */
 const tracks = [];
 let selectedTrackIndex = 0;
@@ -58,6 +63,142 @@ const song = {
 
 const activeDelayTimers = new Set();
 let currentStepIntervalMs = 0;
+const PROJECT_STORAGE_KEY = 'kj.project.v1';
+
+function createDefaultTracks() {
+  return [
+    normalizeTrack(createTrack('Kick', 'kick808', 16)),
+    normalizeTrack(createTrack('Hat', 'hat808', 16)),
+    normalizeTrack(createTrack('Snare', 'snare808', 16)),
+  ];
+}
+
+function createDefaultProject() {
+  const baseTracks = createDefaultTracks();
+  return {
+    version: 1,
+    patterns: [serializePattern('P1', baseTracks, 16)],
+    current: 0,
+    chain: [{ pattern: 0, repeats: 1 }],
+    followChain: false,
+    loopChain: false,
+    selectedTrackIndex: 0,
+    tempo: 120,
+  };
+}
+
+function serializeProject() {
+  saveCurrentPattern();
+  const tempo = Number(tempoInput?.value);
+  return {
+    version: 1,
+    patterns: Array.isArray(song.patterns) ? song.patterns.map(p => clonePatternData(p)) : [],
+    current: Number.isInteger(song.current) ? song.current : 0,
+    chain: Array.isArray(song.chain) ? song.chain.map(slot => ({
+      pattern: Number.isInteger(slot?.pattern) ? slot.pattern : 0,
+      repeats: Math.max(1, slot?.repeats ?? 1),
+    })) : [],
+    followChain: !!song.followChain,
+    loopChain: !!song.loopChain,
+    selectedTrackIndex: Number.isInteger(selectedTrackIndex) ? selectedTrackIndex : 0,
+    tempo: Number.isFinite(tempo) && tempo > 0 ? tempo : 120,
+  };
+}
+
+function applyProjectData(rawProject) {
+  const data = rawProject && typeof rawProject === 'object' ? rawProject : {};
+  const patternsRaw = Array.isArray(data.patterns)
+    ? data.patterns
+    : (Array.isArray(data.song?.patterns) ? data.song.patterns : []);
+
+  const normalizedPatterns = patternsRaw
+    .map((pat, index) => {
+      if (!pat || typeof pat !== 'object') return null;
+      const safeTracks = Array.isArray(pat.tracks) ? pat.tracks : [];
+      return {
+        ...pat,
+        name: pat.name || `P${index + 1}`,
+        len16: Math.max(1, Number(pat.len16) || 16),
+        tracks: safeTracks,
+      };
+    })
+    .filter(Boolean);
+
+  let patterns = normalizedPatterns;
+  if (!patterns.length) {
+    const fallback = createDefaultProject();
+    patterns = fallback.patterns;
+  }
+
+  const currentIndexRaw = Number.isInteger(data.current)
+    ? data.current
+    : (Number.isInteger(data.song?.current) ? data.song.current : 0);
+  const currentIndex = Math.max(0, Math.min(patterns.length - 1, currentIndexRaw));
+
+  const chainRaw = Array.isArray(data.chain)
+    ? data.chain
+    : (Array.isArray(data.song?.chain) ? data.song.chain : []);
+  const chain = chainRaw
+    .map((slot) => {
+      if (!slot || typeof slot !== 'object') return null;
+      return {
+        pattern: Number.isInteger(slot.pattern) ? slot.pattern : currentIndex,
+        repeats: Math.max(1, Number(slot.repeats) || 1),
+      };
+    })
+    .filter(Boolean);
+
+  song.patterns = patterns;
+  song.current = currentIndex;
+  song.chain = chain.length ? chain : [{ pattern: currentIndex, repeats: 1 }];
+  song.chainPos = 0;
+  song.followChain = !!(data.followChain ?? data.song?.followChain);
+  song.loopChain = !!(data.loopChain ?? data.song?.loopChain);
+  song.chainRepeatsLeft = 0;
+
+  const tempo = Number(data.tempo);
+  if (tempoInput && Number.isFinite(tempo) && tempo > 0) {
+    tempoInput.value = String(Math.min(300, Math.max(40, tempo)));
+  }
+
+  const storedSelected = Number.isInteger(data.selectedTrackIndex)
+    ? data.selectedTrackIndex
+    : (Number.isInteger(data.song?.selectedTrackIndex) ? data.song.selectedTrackIndex : 0);
+  selectedTrackIndex = Math.max(0, storedSelected);
+
+  loadPattern(song.current);
+  renderChain();
+}
+
+function saveProjectToStorage() {
+  try {
+    const data = serializeProject();
+    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(data));
+  } catch (err) {
+    console.warn('Failed to autosave project', err);
+  }
+}
+
+function clearProjectStorage() {
+  try {
+    localStorage.removeItem(PROJECT_STORAGE_KEY);
+  } catch (err) {
+    console.warn('Failed to clear autosave', err);
+  }
+}
+
+function loadProjectFromStorage() {
+  try {
+    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    applyProjectData(parsed);
+    return true;
+  } catch (err) {
+    console.warn('Failed to load autosave', err);
+    return false;
+  }
+}
 
 /* ---------- Track Normalization ---------- */
 function normalizeTrack(t) {
@@ -206,6 +347,7 @@ const stepGrid = createGrid(
       setStepVelocity(st, prevVel);
     }
     renderCurrentEditor();
+    saveProjectToStorage();
   },
   undefined,
   (i) => {
@@ -404,6 +546,8 @@ async function onSampleFile(file) {
   if (track === currentTrack()) {
     renderParamsPanel();
   }
+
+  saveProjectToStorage();
 }
 
 function renderParamsPanel(){
@@ -431,6 +575,7 @@ function renderParamsPanel(){
         inlineStep.paint(track.pos ?? -1);
       }
       setTrackSelectedStep(track, track.selectedStep, { force: true });
+      saveProjectToStorage();
     },
     onSampleFile,
     onStepSelect: (index) => {
@@ -442,15 +587,19 @@ function renderParamsPanel(){
     },
     onStepParamsChange: () => {
       renderCurrentEditor();
+      saveProjectToStorage();
     },
     onStepFxChange: () => {
       renderCurrentEditor();
+      saveProjectToStorage();
     },
     onTrackFxChange: () => {
       syncTrackEffects(track);
+      saveProjectToStorage();
     },
     onParamsRerender: () => {
       renderParamsPanel();
+      saveProjectToStorage();
     },
   });
   const inlineStep = paramsEl?._inlineStepEditor;
@@ -490,11 +639,13 @@ function refreshAndSelect(i = selectedTrackIndex){
 trackSel.onchange = () => {
   selectedTrackIndex = parseInt(trackSel.value, 10);
   refreshAndSelect(selectedTrackIndex);
+  saveProjectToStorage();
 };
 
 engineSel.onchange = () => {
   currentTrack().engine = engineSel.value;
   refreshAndSelect(selectedTrackIndex);
+  saveProjectToStorage();
 };
 
 togglePiano.onchange = () => {
@@ -504,6 +655,7 @@ togglePiano.onchange = () => {
   showEditorForTrack();
   paintPlayhead();
   broadcastSelection(track);
+  saveProjectToStorage();
 };
 
 addTrackBtn.onclick = () => {
@@ -513,6 +665,7 @@ addTrackBtn.onclick = () => {
   selectedTrackIndex = tracks.length - 1;
   applyMixer(tracks);
   refreshAndSelect(selectedTrackIndex);
+  saveProjectToStorage();
 };
 
 /* ---------- Patterns ---------- */
@@ -728,6 +881,7 @@ if (patternSel) patternSel.onchange = () => {
   const selected = clampPatternIndex(patternSel.value);
   song.current = selected;
   loadPattern(selected);
+  saveProjectToStorage();
 };
 
 if (addPatternBtn) addPatternBtn.onclick = () => {
@@ -743,6 +897,7 @@ if (addPatternBtn) addPatternBtn.onclick = () => {
   song.patterns.push(serialized);
   song.current = song.patterns.length - 1;
   loadPattern(song.current);
+  saveProjectToStorage();
 };
 
 if (dupPatternBtn) dupPatternBtn.onclick = () => {
@@ -764,6 +919,7 @@ if (dupPatternBtn) dupPatternBtn.onclick = () => {
   song.patterns.push(clone);
   song.current = song.patterns.length - 1;
   loadPattern(song.current);
+  saveProjectToStorage();
 };
 
 if (chainAddBtn) chainAddBtn.onclick = () => {
@@ -774,6 +930,7 @@ if (chainAddBtn) chainAddBtn.onclick = () => {
   const patIndex = clampPatternIndex(target);
   song.chain.push({ pattern: patIndex, repeats: 1 });
   renderChain();
+  saveProjectToStorage();
 };
 
 if (chainClearBtn) chainClearBtn.onclick = () => {
@@ -782,6 +939,7 @@ if (chainClearBtn) chainClearBtn.onclick = () => {
   song.chainPos = 0;
   song.chainRepeatsLeft = 0;
   renderChain();
+  saveProjectToStorage();
 };
 
 if (chainPrevBtn) chainPrevBtn.onclick = () => {
@@ -803,14 +961,68 @@ if (followChainToggle) followChainToggle.onchange = () => {
     song.chainRepeatsLeft = 0;
   }
   renderChain();
+  saveProjectToStorage();
 };
 
 if (loopChainToggle) loopChainToggle.onchange = () => {
   song.loopChain = loopChainToggle.checked;
   renderChain();
+  saveProjectToStorage();
 };
 
 renderChain();
+
+/* ---------- Project I/O ---------- */
+function downloadProjectJSON() {
+  const data = serializeProject();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `kj-project-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+if (saveProjectBtn) saveProjectBtn.onclick = () => {
+  downloadProjectJSON();
+};
+
+if (loadProjectBtn) loadProjectBtn.onclick = () => {
+  loadProjectInput?.click();
+};
+
+if (loadProjectInput) {
+  loadProjectInput.onchange = async (event) => {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      applyProjectData(parsed);
+      saveProjectToStorage();
+    } catch (err) {
+      console.error('Failed to load project file', err);
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert('Unable to load project JSON.');
+      }
+    } finally {
+      loadProjectInput.value = '';
+    }
+  };
+}
+
+if (resetProjectBtn) resetProjectBtn.onclick = () => {
+  stopHandle && stopHandle();
+  stopHandle = null;
+  currentStepIntervalMs = 0;
+  clearPendingDelayTriggers();
+  for (const t of tracks) t.pos = -1;
+  paintPlayhead();
+  applyProjectData(createDefaultProject());
+  clearProjectStorage();
+  saveProjectToStorage();
+};
 
 /* ---------- Transport ---------- */
 function mergeParamOffsets(target, offsets) {
@@ -1059,13 +1271,6 @@ stopBtn.onclick = () => {
 };
 
 /* ---------- Boot ---------- */
-tracks.push(normalizeTrack(createTrack('Kick','kick808',16)));
-tracks.push(normalizeTrack(createTrack('Hat','hat808',16)));
-tracks.push(normalizeTrack(createTrack('Snare','snare808',16)));
-selectedTrackIndex = 0;
-
-song.patterns.push(serializePattern('P1', tracks, 16));
-song.current = 0;
-
-refreshAndSelect(selectedTrackIndex);
-refreshPatternSelect();
+const defaultProject = createDefaultProject();
+applyProjectData(defaultProject);
+loadProjectFromStorage();
