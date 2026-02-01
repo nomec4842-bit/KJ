@@ -105,6 +105,23 @@ const makeNote = (start=0, length=1, pitch=0, vel=1) => ({ start, length, pitch,
 
 function makeBus(){
   const input = ctx.createGain();
+  const duckLow = ctx.createBiquadFilter();
+  duckLow.type = 'lowshelf';
+  duckLow.frequency.value = 200;
+  duckLow.Q.value = 0.707;
+  duckLow.gain.value = 0;
+  const duckMid = ctx.createBiquadFilter();
+  duckMid.type = 'peaking';
+  duckMid.frequency.value = 1000;
+  duckMid.Q.value = 1;
+  duckMid.gain.value = 0;
+  const duckHigh = ctx.createBiquadFilter();
+  duckHigh.type = 'highshelf';
+  duckHigh.frequency.value = 2000;
+  duckHigh.Q.value = 0.707;
+  duckHigh.gain.value = 0;
+  const duckGain = ctx.createGain();
+  duckGain.gain.value = 1;
   const gain = ctx.createGain();
   let pan = null;
   try { pan = ctx.createStereoPanner(); } catch {}
@@ -113,8 +130,19 @@ function makeBus(){
   } else {
     gain.connect(master);
   }
-  input.connect(gain);
-  return { input, gain, pan, hasPan: !!pan };
+  input.connect(duckLow);
+  duckLow.connect(duckMid);
+  duckMid.connect(duckHigh);
+  duckHigh.connect(duckGain);
+  duckGain.connect(gain);
+  return {
+    input,
+    duckGain,
+    duckFilters: { low: duckLow, mid: duckMid, high: duckHigh },
+    gain,
+    pan,
+    hasPan: !!pan,
+  };
 }
 
 export function createTrack(name, engine='synth', length=16){
@@ -129,6 +157,8 @@ export function createTrack(name, engine='synth', length=16){
     mods: [],                // modulation definitions
 
     inputNode: bus.input,
+    duckGainNode: bus.duckGain,
+    duckFilters: bus.duckFilters,
     gainNode: bus.gain,
     panNode: bus.pan,
     _hasPan: bus.hasPan,
