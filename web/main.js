@@ -1225,13 +1225,10 @@ function scheduleDucking(tracks, sourceTrack, config, scheduledTime) {
   if (config.depthDb <= 0 || (!attackSec && !holdSec && !releaseSec)) return;
   const targetGain = Math.pow(10, -config.depthDb / 20);
 
-  for (const t of tracks) {
-    if (!t) continue;
-    if (!config.includeSelf && t === sourceTrack) continue;
-    const duckGain = t.duckGainNode?.gain;
-    if (!duckGain) continue;
-    scheduleEnvelope(duckGain, 1, targetGain, attackSec, holdSec, releaseSec, startTime);
-  }
+  if (!sourceTrack) return;
+  const duckGain = sourceTrack.duckGainNode?.gain;
+  if (!duckGain) return;
+  scheduleEnvelope(duckGain, 1, targetGain, attackSec, holdSec, releaseSec, startTime);
 }
 
 function scheduleMultibandDucking(tracks, sourceTrack, config, scheduledTime) {
@@ -1250,20 +1247,17 @@ function scheduleMultibandDucking(tracks, sourceTrack, config, scheduledTime) {
   const highDb = -Math.max(0, Number(config.highDepthDb) || 0);
   if ((!lowDb && !midDb && !highDb) || (!attackSec && !holdSec && !releaseSec)) return;
 
-  for (const t of tracks) {
-    if (!t) continue;
-    if (!config.includeSelf && t === sourceTrack) continue;
-    const filters = t.duckFilters;
-    if (!filters) continue;
-    if (filters.low?.gain) {
-      scheduleEnvelope(filters.low.gain, 0, lowDb, attackSec, holdSec, releaseSec, startTime);
-    }
-    if (filters.mid?.gain) {
-      scheduleEnvelope(filters.mid.gain, 0, midDb, attackSec, holdSec, releaseSec, startTime);
-    }
-    if (filters.high?.gain) {
-      scheduleEnvelope(filters.high.gain, 0, highDb, attackSec, holdSec, releaseSec, startTime);
-    }
+  if (!sourceTrack) return;
+  const filters = sourceTrack.duckFilters;
+  if (!filters) return;
+  if (filters.low?.gain) {
+    scheduleEnvelope(filters.low.gain, 0, lowDb, attackSec, holdSec, releaseSec, startTime);
+  }
+  if (filters.mid?.gain) {
+    scheduleEnvelope(filters.mid.gain, 0, midDb, attackSec, holdSec, releaseSec, startTime);
+  }
+  if (filters.high?.gain) {
+    scheduleEnvelope(filters.high.gain, 0, highDb, attackSec, holdSec, releaseSec, startTime);
   }
 }
 
