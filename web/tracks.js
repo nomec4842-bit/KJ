@@ -196,7 +196,18 @@ function ensureTrackFxNodes(track) {
 
 function rebuildTrackFxChain(track) {
   if (!track || !track.inputNode || !track.gainNode) return;
+  const duckFilters = track.duckFilters || {};
+  const duckLow = duckFilters.low || null;
+  const duckMid = duckFilters.mid || null;
+  const duckHigh = duckFilters.high || null;
+  const duckGain = track.duckGainNode || null;
+
   try { track.inputNode.disconnect(); } catch {}
+  for (const node of [duckLow, duckMid, duckHigh, duckGain]) {
+    if (!node) continue;
+    try { node.disconnect(); } catch {}
+  }
+
   const activeNodes = [];
   const compressionEnabled = !!track?.effects?.compression?.enabled;
   if (compressionEnabled && track?._fxNodes?.compression) {
@@ -205,11 +216,24 @@ function rebuildTrackFxChain(track) {
   for (const node of activeNodes) {
     try { node.disconnect(); } catch {}
   }
+
   let previous = track.inputNode;
   for (const node of activeNodes) {
     try { previous.connect(node); } catch {}
     previous = node;
   }
+
+  if (duckLow && duckMid && duckHigh && duckGain) {
+    try { previous.connect(duckLow); } catch {}
+    try { duckLow.connect(duckMid); } catch {}
+    try { duckMid.connect(duckHigh); } catch {}
+    try { duckHigh.connect(duckGain); } catch {}
+    previous = duckGain;
+  } else if (duckGain) {
+    try { previous.connect(duckGain); } catch {}
+    previous = duckGain;
+  }
+
   try { previous.connect(track.gainNode); } catch {}
 }
 
