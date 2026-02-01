@@ -673,7 +673,7 @@ function createStepFxPanel(rootEl, track) {
     duckControls.appendChild(duckReleaseControl.field);
     duckHint = document.createElement('span');
     duckHint.className = 'step-fx-hint';
-    duckHint.textContent = 'Reduces the level of other tracks when this step hits.';
+    duckHint.textContent = 'Reduces the level of this track when the step hits.';
     duckControls.appendChild(duckHint);
 
     multibandControls = document.createElement('div');
