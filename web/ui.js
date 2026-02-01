@@ -479,10 +479,24 @@ function createStepFxPanel(rootEl, track) {
   let controlsWrap = null;
   let typeSelect = null;
   let delayControls = null;
+  let duckControls = null;
+  let multibandControls = null;
   let mixControl = null;
   let feedbackControl = null;
   let spacingControl = null;
   let repeatsInput = null;
+  let duckDepthControl = null;
+  let duckAttackControl = null;
+  let duckHoldControl = null;
+  let duckReleaseControl = null;
+  let duckHint = null;
+  let mbLowControl = null;
+  let mbMidControl = null;
+  let mbHighControl = null;
+  let mbAttackControl = null;
+  let mbHoldControl = null;
+  let mbReleaseControl = null;
+  let mbHint = null;
 
   const showPlaceholder = (message) => {
     rootEl.innerHTML = `<span class="hint">${message}</span>`;
@@ -554,6 +568,8 @@ function createStepFxPanel(rootEl, track) {
     const typeOptions = [
       { value: STEP_FX_TYPES.NONE, label: 'None' },
       { value: STEP_FX_TYPES.DELAY, label: 'Delay' },
+      { value: STEP_FX_TYPES.DUCK, label: 'Ducking' },
+      { value: STEP_FX_TYPES.MULTIBAND_DUCK, label: 'Multiband Duck' },
     ];
     typeOptions.forEach(opt => {
       const option = document.createElement('option');
@@ -569,6 +585,8 @@ function createStepFxPanel(rootEl, track) {
     controlsWrap.appendChild(delayControls);
 
     const formatPercent = (val) => `${Math.round(Math.max(0, Math.min(1, val)) * 100)}%`;
+    const formatDb = (val) => `${formatSliderValue(val, 1)} dB`;
+    const formatSteps = (val) => `${formatSliderValue(val, 2)} st`;
     mixControl = createDisplaySlider('Mix', {
       min: 0,
       max: 1,
@@ -588,7 +606,7 @@ function createStepFxPanel(rootEl, track) {
       max: 4,
       step: 0.05,
       aria: 'Delay spacing in steps',
-      format: (val) => `${formatSliderValue(val, 2)} st`,
+      format: formatSteps,
     });
 
     delayControls.appendChild(mixControl.field);
@@ -615,6 +633,106 @@ function createStepFxPanel(rootEl, track) {
     hint.className = 'step-fx-hint';
     hint.textContent = 'Creates echoes after the main hit with adjustable mix, spacing, and feedback.';
     delayControls.appendChild(hint);
+
+    duckControls = document.createElement('div');
+    duckControls.className = 'step-fx-duck';
+    controlsWrap.appendChild(duckControls);
+
+    duckDepthControl = createDisplaySlider('Depth', {
+      min: 0,
+      max: 36,
+      step: 0.5,
+      aria: 'Ducking depth in decibels',
+      format: formatDb,
+    });
+    duckAttackControl = createDisplaySlider('Attack (steps)', {
+      min: 0,
+      max: 4,
+      step: 0.05,
+      aria: 'Ducking attack in steps',
+      format: formatSteps,
+    });
+    duckHoldControl = createDisplaySlider('Hold (steps)', {
+      min: 0,
+      max: 8,
+      step: 0.05,
+      aria: 'Ducking hold in steps',
+      format: formatSteps,
+    });
+    duckReleaseControl = createDisplaySlider('Release (steps)', {
+      min: 0,
+      max: 8,
+      step: 0.05,
+      aria: 'Ducking release in steps',
+      format: formatSteps,
+    });
+
+    duckControls.appendChild(duckDepthControl.field);
+    duckControls.appendChild(duckAttackControl.field);
+    duckControls.appendChild(duckHoldControl.field);
+    duckControls.appendChild(duckReleaseControl.field);
+    duckHint = document.createElement('span');
+    duckHint.className = 'step-fx-hint';
+    duckHint.textContent = 'Reduces the level of other tracks when this step hits.';
+    duckControls.appendChild(duckHint);
+
+    multibandControls = document.createElement('div');
+    multibandControls.className = 'step-fx-multiband';
+    controlsWrap.appendChild(multibandControls);
+
+    mbLowControl = createDisplaySlider('Low Depth', {
+      min: 0,
+      max: 36,
+      step: 0.5,
+      aria: 'Low band ducking depth in decibels',
+      format: formatDb,
+    });
+    mbMidControl = createDisplaySlider('Mid Depth', {
+      min: 0,
+      max: 36,
+      step: 0.5,
+      aria: 'Mid band ducking depth in decibels',
+      format: formatDb,
+    });
+    mbHighControl = createDisplaySlider('High Depth', {
+      min: 0,
+      max: 36,
+      step: 0.5,
+      aria: 'High band ducking depth in decibels',
+      format: formatDb,
+    });
+    mbAttackControl = createDisplaySlider('Attack (steps)', {
+      min: 0,
+      max: 4,
+      step: 0.05,
+      aria: 'Multiband ducking attack in steps',
+      format: formatSteps,
+    });
+    mbHoldControl = createDisplaySlider('Hold (steps)', {
+      min: 0,
+      max: 8,
+      step: 0.05,
+      aria: 'Multiband ducking hold in steps',
+      format: formatSteps,
+    });
+    mbReleaseControl = createDisplaySlider('Release (steps)', {
+      min: 0,
+      max: 8,
+      step: 0.05,
+      aria: 'Multiband ducking release in steps',
+      format: formatSteps,
+    });
+
+    multibandControls.appendChild(mbLowControl.field);
+    multibandControls.appendChild(mbMidControl.field);
+    multibandControls.appendChild(mbHighControl.field);
+    multibandControls.appendChild(mbAttackControl.field);
+    multibandControls.appendChild(mbHoldControl.field);
+    multibandControls.appendChild(mbReleaseControl.field);
+    mbHint = document.createElement('span');
+    mbHint.className = 'step-fx-hint';
+    mbHint.textContent = 'Applies per-band gain reduction for more transparent sidechaining.';
+    multibandControls.appendChild(mbHint);
 
     rootEl.innerHTML = '';
     rootEl.classList.remove('placeholder');
@@ -656,12 +774,91 @@ function createStepFxPanel(rootEl, track) {
       }
       commitDelayConfig({ repeats: clamped });
     });
+
+    duckDepthControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      duckDepthControl.update(value);
+      if (suppressEvents) return;
+      commitDuckingConfig({ depthDb: value });
+    });
+
+    duckAttackControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      duckAttackControl.update(value);
+      if (suppressEvents) return;
+      commitDuckingConfig({ attack: value });
+    });
+
+    duckHoldControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      duckHoldControl.update(value);
+      if (suppressEvents) return;
+      commitDuckingConfig({ hold: value });
+    });
+
+    duckReleaseControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      duckReleaseControl.update(value);
+      if (suppressEvents) return;
+      commitDuckingConfig({ release: value });
+    });
+
+    mbLowControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      mbLowControl.update(value);
+      if (suppressEvents) return;
+      commitMultibandConfig({ lowDepthDb: value });
+    });
+
+    mbMidControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      mbMidControl.update(value);
+      if (suppressEvents) return;
+      commitMultibandConfig({ midDepthDb: value });
+    });
+
+    mbHighControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      mbHighControl.update(value);
+      if (suppressEvents) return;
+      commitMultibandConfig({ highDepthDb: value });
+    });
+
+    mbAttackControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      mbAttackControl.update(value);
+      if (suppressEvents) return;
+      commitMultibandConfig({ attack: value });
+    });
+
+    mbHoldControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      mbHoldControl.update(value);
+      if (suppressEvents) return;
+      commitMultibandConfig({ hold: value });
+    });
+
+    mbReleaseControl.slider.addEventListener('input', (ev) => {
+      const value = Number(ev.target.value);
+      mbReleaseControl.update(value);
+      if (suppressEvents) return;
+      commitMultibandConfig({ release: value });
+    });
   };
 
-  const updateDelayVisibility = (type) => {
-    if (!delayControls) return;
-    const isDelay = type === STEP_FX_TYPES.DELAY;
-    delayControls.style.display = isDelay ? '' : 'none';
+  const updateEffectVisibility = (type) => {
+    if (delayControls) {
+      const isDelay = type === STEP_FX_TYPES.DELAY;
+      delayControls.style.display = isDelay ? '' : 'none';
+    }
+    if (duckControls) {
+      const isDuck = type === STEP_FX_TYPES.DUCK;
+      duckControls.style.display = isDuck ? '' : 'none';
+    }
+    if (multibandControls) {
+      const isMultiband = type === STEP_FX_TYPES.MULTIBAND_DUCK;
+      multibandControls.style.display = isMultiband ? '' : 'none';
+    }
   };
 
   const syncDelayInputs = (config) => {
@@ -683,6 +880,52 @@ function createStepFxPanel(rootEl, track) {
     repeatsInput.value = `${Math.max(0, Math.min(8, Math.round(repeatsVal)))}`;
   };
 
+  const syncDuckingInputs = (config) => {
+    if (!duckDepthControl || !duckAttackControl || !duckHoldControl || !duckReleaseControl) return;
+    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
+    const cfg = config && typeof config === 'object' ? config : defaults;
+
+    const depthVal = Number.isFinite(cfg.depthDb) ? cfg.depthDb : (defaults.depthDb ?? 12);
+    const attackVal = Number.isFinite(cfg.attack) ? cfg.attack : (defaults.attack ?? 0.05);
+    const holdVal = Number.isFinite(cfg.hold) ? cfg.hold : (defaults.hold ?? 0.2);
+    const releaseVal = Number.isFinite(cfg.release) ? cfg.release : (defaults.release ?? 0.3);
+
+    duckDepthControl.slider.value = `${depthVal}`;
+    duckDepthControl.update(depthVal);
+    duckAttackControl.slider.value = `${attackVal}`;
+    duckAttackControl.update(attackVal);
+    duckHoldControl.slider.value = `${holdVal}`;
+    duckHoldControl.update(holdVal);
+    duckReleaseControl.slider.value = `${releaseVal}`;
+    duckReleaseControl.update(releaseVal);
+  };
+
+  const syncMultibandInputs = (config) => {
+    if (!mbLowControl || !mbMidControl || !mbHighControl || !mbAttackControl || !mbHoldControl || !mbReleaseControl) return;
+    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.MULTIBAND_DUCK] || {};
+    const cfg = config && typeof config === 'object' ? config : defaults;
+
+    const lowVal = Number.isFinite(cfg.lowDepthDb) ? cfg.lowDepthDb : (defaults.lowDepthDb ?? 14);
+    const midVal = Number.isFinite(cfg.midDepthDb) ? cfg.midDepthDb : (defaults.midDepthDb ?? 8);
+    const highVal = Number.isFinite(cfg.highDepthDb) ? cfg.highDepthDb : (defaults.highDepthDb ?? 4);
+    const attackVal = Number.isFinite(cfg.attack) ? cfg.attack : (defaults.attack ?? 0.05);
+    const holdVal = Number.isFinite(cfg.hold) ? cfg.hold : (defaults.hold ?? 0.2);
+    const releaseVal = Number.isFinite(cfg.release) ? cfg.release : (defaults.release ?? 0.3);
+
+    mbLowControl.slider.value = `${lowVal}`;
+    mbLowControl.update(lowVal);
+    mbMidControl.slider.value = `${midVal}`;
+    mbMidControl.update(midVal);
+    mbHighControl.slider.value = `${highVal}`;
+    mbHighControl.update(highVal);
+    mbAttackControl.slider.value = `${attackVal}`;
+    mbAttackControl.update(attackVal);
+    mbHoldControl.slider.value = `${holdVal}`;
+    mbHoldControl.update(holdVal);
+    mbReleaseControl.slider.value = `${releaseVal}`;
+    mbReleaseControl.update(releaseVal);
+  };
+
   const commitEffectType = (type) => {
     if (selectedIndex < 0) return;
     const steps = track?.steps;
@@ -697,6 +940,18 @@ function createStepFxPanel(rootEl, track) {
         ? step.fx.config
         : defaults;
       nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DELAY, config: { ...baseConfig } });
+    } else if (type === STEP_FX_TYPES.DUCK) {
+      const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
+      const baseConfig = step.fx?.type === STEP_FX_TYPES.DUCK
+        ? step.fx.config
+        : defaults;
+      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DUCK, config: { ...baseConfig } });
+    } else if (type === STEP_FX_TYPES.MULTIBAND_DUCK) {
+      const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.MULTIBAND_DUCK] || {};
+      const baseConfig = step.fx?.type === STEP_FX_TYPES.MULTIBAND_DUCK
+        ? step.fx.config
+        : defaults;
+      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.MULTIBAND_DUCK, config: { ...baseConfig } });
     } else {
       nextFx = normalizeStepFx({ type: STEP_FX_TYPES.NONE });
     }
@@ -704,8 +959,10 @@ function createStepFxPanel(rootEl, track) {
     step.fx = nextFx;
     suppressEvents = true;
     typeSelect.value = nextFx.type || STEP_FX_TYPES.NONE;
-    updateDelayVisibility(nextFx.type);
+    updateEffectVisibility(nextFx.type);
     syncDelayInputs(nextFx.config);
+    syncDuckingInputs(nextFx.config);
+    syncMultibandInputs(nextFx.config);
     suppressEvents = false;
 
     if (typeof onChange === 'function') onChange(selectedIndex, step);
@@ -727,6 +984,48 @@ function createStepFxPanel(rootEl, track) {
 
     suppressEvents = true;
     syncDelayInputs(nextFx.config);
+    suppressEvents = false;
+
+    if (typeof onChange === 'function') onChange(selectedIndex, step);
+  };
+
+  const commitDuckingConfig = (partial = {}) => {
+    if (selectedIndex < 0) return;
+    const steps = track?.steps;
+    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
+    const step = steps[selectedIndex];
+    if (!step) return;
+
+    const current = normalizeStepFx(step.fx);
+    if (current.type !== STEP_FX_TYPES.DUCK) return;
+
+    const merged = { ...current.config, ...partial };
+    const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DUCK, config: merged });
+    step.fx = nextFx;
+
+    suppressEvents = true;
+    syncDuckingInputs(nextFx.config);
+    suppressEvents = false;
+
+    if (typeof onChange === 'function') onChange(selectedIndex, step);
+  };
+
+  const commitMultibandConfig = (partial = {}) => {
+    if (selectedIndex < 0) return;
+    const steps = track?.steps;
+    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
+    const step = steps[selectedIndex];
+    if (!step) return;
+
+    const current = normalizeStepFx(step.fx);
+    if (current.type !== STEP_FX_TYPES.MULTIBAND_DUCK) return;
+
+    const merged = { ...current.config, ...partial };
+    const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.MULTIBAND_DUCK, config: merged });
+    step.fx = nextFx;
+
+    suppressEvents = true;
+    syncMultibandInputs(nextFx.config);
     suppressEvents = false;
 
     if (typeof onChange === 'function') onChange(selectedIndex, step);
@@ -758,8 +1057,10 @@ function createStepFxPanel(rootEl, track) {
 
     suppressEvents = true;
     typeSelect.value = normalized.type || STEP_FX_TYPES.NONE;
-    updateDelayVisibility(normalized.type);
+    updateEffectVisibility(normalized.type);
     syncDelayInputs(normalized.config);
+    syncDuckingInputs(normalized.config);
+    syncMultibandInputs(normalized.config);
     suppressEvents = false;
   };
 

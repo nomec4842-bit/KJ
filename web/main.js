@@ -1119,6 +1119,154 @@ function resolveDelayConfig(baseConfig = {}, offsets) {
   return { mix, feedback, spacing, repeats };
 }
 
+function resolveDuckingConfig(baseConfig = {}, offsets) {
+  const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
+  const resolved = { ...defaults, ...(baseConfig && typeof baseConfig === 'object' ? baseConfig : {}) };
+  const offsetSource = offsets && typeof offsets === 'object'
+    ? (offsets.config && typeof offsets.config === 'object' ? offsets.config : offsets)
+    : null;
+
+  if (offsetSource) {
+    const apply = (key) => {
+      const delta = Number(offsetSource[key]);
+      if (Number.isFinite(delta)) {
+        const current = resolved[key];
+        resolved[key] = Number.isFinite(current) ? current + delta : delta;
+      }
+    };
+    apply('depthDb');
+    apply('attack');
+    apply('hold');
+    apply('release');
+  }
+
+  const clamp = (value, min, max, fallback) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.min(max, Math.max(min, num));
+  };
+
+  const depthDb = clamp(resolved.depthDb, 0, 36, defaults.depthDb ?? 12);
+  const attack = clamp(resolved.attack, 0, 4, defaults.attack ?? 0.05);
+  const hold = clamp(resolved.hold, 0, 8, defaults.hold ?? 0.2);
+  const release = clamp(resolved.release, 0, 8, defaults.release ?? 0.3);
+  const includeSelf = resolved.includeSelf === true;
+
+  return { depthDb, attack, hold, release, includeSelf };
+}
+
+function resolveMultibandDuckingConfig(baseConfig = {}, offsets) {
+  const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.MULTIBAND_DUCK] || {};
+  const resolved = { ...defaults, ...(baseConfig && typeof baseConfig === 'object' ? baseConfig : {}) };
+  const offsetSource = offsets && typeof offsets === 'object'
+    ? (offsets.config && typeof offsets.config === 'object' ? offsets.config : offsets)
+    : null;
+
+  if (offsetSource) {
+    const apply = (key) => {
+      const delta = Number(offsetSource[key]);
+      if (Number.isFinite(delta)) {
+        const current = resolved[key];
+        resolved[key] = Number.isFinite(current) ? current + delta : delta;
+      }
+    };
+    apply('lowDepthDb');
+    apply('midDepthDb');
+    apply('highDepthDb');
+    apply('attack');
+    apply('hold');
+    apply('release');
+  }
+
+  const clamp = (value, min, max, fallback) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.min(max, Math.max(min, num));
+  };
+
+  const lowDepthDb = clamp(resolved.lowDepthDb, 0, 36, defaults.lowDepthDb ?? 14);
+  const midDepthDb = clamp(resolved.midDepthDb, 0, 36, defaults.midDepthDb ?? 8);
+  const highDepthDb = clamp(resolved.highDepthDb, 0, 36, defaults.highDepthDb ?? 4);
+  const attack = clamp(resolved.attack, 0, 4, defaults.attack ?? 0.05);
+  const hold = clamp(resolved.hold, 0, 8, defaults.hold ?? 0.2);
+  const release = clamp(resolved.release, 0, 8, defaults.release ?? 0.3);
+  const includeSelf = resolved.includeSelf === true;
+
+  return { lowDepthDb, midDepthDb, highDepthDb, attack, hold, release, includeSelf };
+}
+
+function scheduleEnvelope(param, startValue, targetValue, attackSec, holdSec, releaseSec, startTime) {
+  if (!param || !Number.isFinite(startTime)) return;
+  const safeAttack = Math.max(0, Number(attackSec) || 0);
+  const safeHold = Math.max(0, Number(holdSec) || 0);
+  const safeRelease = Math.max(0, Number(releaseSec) || 0);
+  const attackEnd = startTime + safeAttack;
+  const holdEnd = attackEnd + safeHold;
+  const releaseEnd = holdEnd + safeRelease;
+
+  try { param.cancelScheduledValues(startTime); } catch {}
+  try { param.setValueAtTime(startValue, startTime); } catch {}
+  try { param.linearRampToValueAtTime(targetValue, attackEnd); } catch {}
+  try { param.linearRampToValueAtTime(targetValue, holdEnd); } catch {}
+  try { param.linearRampToValueAtTime(startValue, releaseEnd); } catch {}
+}
+
+function scheduleDucking(tracks, sourceTrack, config, scheduledTime) {
+  if (!Array.isArray(tracks) || !tracks.length) return;
+  if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return;
+  if (!config || typeof config !== 'object') return;
+
+  const stepSeconds = currentStepIntervalMs / 1000;
+  const attackSec = (Number(config.attack) || 0) * stepSeconds;
+  const holdSec = (Number(config.hold) || 0) * stepSeconds;
+  const releaseSec = (Number(config.release) || 0) * stepSeconds;
+  const startTime = Number.isFinite(scheduledTime) ? scheduledTime : ctx.currentTime;
+
+  if (config.depthDb <= 0 || (!attackSec && !holdSec && !releaseSec)) return;
+  const targetGain = Math.pow(10, -config.depthDb / 20);
+
+  for (const t of tracks) {
+    if (!t) continue;
+    if (!config.includeSelf && t === sourceTrack) continue;
+    const duckGain = t.duckGainNode?.gain;
+    if (!duckGain) continue;
+    scheduleEnvelope(duckGain, 1, targetGain, attackSec, holdSec, releaseSec, startTime);
+  }
+}
+
+function scheduleMultibandDucking(tracks, sourceTrack, config, scheduledTime) {
+  if (!Array.isArray(tracks) || !tracks.length) return;
+  if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return;
+  if (!config || typeof config !== 'object') return;
+
+  const stepSeconds = currentStepIntervalMs / 1000;
+  const attackSec = (Number(config.attack) || 0) * stepSeconds;
+  const holdSec = (Number(config.hold) || 0) * stepSeconds;
+  const releaseSec = (Number(config.release) || 0) * stepSeconds;
+  const startTime = Number.isFinite(scheduledTime) ? scheduledTime : ctx.currentTime;
+
+  const lowDb = -Math.max(0, Number(config.lowDepthDb) || 0);
+  const midDb = -Math.max(0, Number(config.midDepthDb) || 0);
+  const highDb = -Math.max(0, Number(config.highDepthDb) || 0);
+  if ((!lowDb && !midDb && !highDb) || (!attackSec && !holdSec && !releaseSec)) return;
+
+  for (const t of tracks) {
+    if (!t) continue;
+    if (!config.includeSelf && t === sourceTrack) continue;
+    const filters = t.duckFilters;
+    if (!filters) continue;
+    if (filters.low?.gain) {
+      scheduleEnvelope(filters.low.gain, 0, lowDb, attackSec, holdSec, releaseSec, startTime);
+    }
+    if (filters.mid?.gain) {
+      scheduleEnvelope(filters.mid.gain, 0, midDb, attackSec, holdSec, releaseSec, startTime);
+    }
+    if (filters.high?.gain) {
+      scheduleEnvelope(filters.high.gain, 0, highDb, attackSec, holdSec, releaseSec, startTime);
+    }
+  }
+}
+
 function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime) {
   if (!track || !step) return null;
   if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return null;
@@ -1142,7 +1290,7 @@ function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime) {
   return null;
 }
 
-function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime) {
+function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, allTracks) {
   if (!track || !step || !step.fx || typeof step.fx !== 'object') return null;
   const rawType = typeof step.fx.type === 'string' ? step.fx.type.trim().toLowerCase() : '';
   if (!rawType || rawType === 'none' || rawType === STEP_FX_TYPES.NONE) return null;
@@ -1155,6 +1303,20 @@ function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime) {
     const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
     const baseConfig = { ...defaults, ...(step.fx.config && typeof step.fx.config === 'object' ? step.fx.config : {}) };
     return evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime);
+  }
+  if (rawType === STEP_FX_TYPES.DUCK) {
+    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
+    const baseConfig = { ...defaults, ...(step.fx.config && typeof step.fx.config === 'object' ? step.fx.config : {}) };
+    const config = resolveDuckingConfig(baseConfig, offsets);
+    scheduleDucking(allTracks, track, config, scheduledTime);
+    return null;
+  }
+  if (rawType === STEP_FX_TYPES.MULTIBAND_DUCK) {
+    const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.MULTIBAND_DUCK] || {};
+    const baseConfig = { ...defaults, ...(step.fx.config && typeof step.fx.config === 'object' ? step.fx.config : {}) };
+    const config = resolveMultibandDuckingConfig(baseConfig, offsets);
+    scheduleMultibandDucking(allTracks, track, config, scheduledTime);
+    return null;
   }
 
   return null;
@@ -1208,7 +1370,7 @@ playBtn.onclick = async () => {
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime);
+            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime, tracks);
             let vel = getStepVelocity(st, 1);
             if (fxResult && typeof fxResult === 'object') {
               if (Number.isFinite(fxResult.velocityOffset)) {
