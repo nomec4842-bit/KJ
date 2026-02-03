@@ -34,6 +34,7 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
         };
       }),
       mode: t.mode || 'steps',
+      arp: t.arp ? clone(t.arp) : null,
       notes: (t.notes || []).map(n => ({
         start: n.start|0,
         length: Math.max(1, n.length|0),
@@ -74,6 +75,7 @@ export function instantiatePattern(pat, sampleCache = {}) {
       t.steps[i] = normalizedStep;
     }
     t.mode = td.mode || 'steps';
+    t.arp = td.arp && typeof td.arp === 'object' ? clone(td.arp) : null;
     t.notes = Array.isArray(td.notes) ? td.notes.map(n => ({
       start: Math.max(0, Math.min(td.length - 1, n.start|0)),
       length: Math.max(1, Math.min(td.length - (n.start|0), n.length|0)),

@@ -3,7 +3,7 @@ import { ctx, startTransport, stopTransport, dspReady, ensureAudioReady } from '
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
-  syncTrackEffects, defaults,
+  syncTrackEffects, defaults, ARP_DEFAULTS,
 } from './tracks.js';
 import { STEP_FX_TYPES, STEP_FX_DEFAULTS, normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
@@ -63,6 +63,41 @@ const song = {
 
 let currentStepIntervalMs = 0;
 const PROJECT_STORAGE_KEY = 'kj.project.v1';
+
+function shuffleArray(source) {
+  const arr = [...source];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function buildArpNotes(notes, arp) {
+  if (!Array.isArray(notes) || notes.length === 0) return [];
+  const octaves = Math.max(1, Number(arp?.octaves) || 1);
+  const base = notes.map(n => ({ pitch: n.pitch, vel: n.vel ?? 1 }));
+  const expanded = [];
+  for (let octave = 0; octave < octaves; octave++) {
+    for (const note of base) {
+      expanded.push({ ...note, pitch: note.pitch + 12 * octave });
+    }
+  }
+  expanded.sort((a, b) => a.pitch - b.pitch);
+  if (arp?.direction === 'down') {
+    expanded.reverse();
+    return expanded;
+  }
+  if (arp?.direction === 'random') {
+    return shuffleArray(expanded);
+  }
+  if (arp?.direction === 'upDown') {
+    if (expanded.length <= 1) return expanded;
+    const tail = expanded.slice(1, -1).reverse();
+    return expanded.concat(tail);
+  }
+  return expanded;
+}
 
 function createDefaultTracks() {
   return [
@@ -233,6 +268,20 @@ function normalizeTrack(t) {
     t.selectedStep = t.length - 1;
   } else {
     t.selectedStep = -1;
+  }
+
+  if (!t.arp || typeof t.arp !== 'object') {
+    t.arp = { ...ARP_DEFAULTS };
+  } else {
+    t.arp.enabled = !!t.arp.enabled;
+    const rate = Math.round(Number(t.arp.rate));
+    t.arp.rate = Number.isFinite(rate) ? Math.max(1, Math.min(16, rate)) : ARP_DEFAULTS.rate;
+    const allowedDirections = new Set(['up', 'down', 'upDown', 'random']);
+    t.arp.direction = allowedDirections.has(t.arp.direction) ? t.arp.direction : ARP_DEFAULTS.direction;
+    const octaves = Math.round(Number(t.arp.octaves));
+    t.arp.octaves = Number.isFinite(octaves) ? Math.max(1, Math.min(4, octaves)) : ARP_DEFAULTS.octaves;
+    const gate = Number(t.arp.gate);
+    t.arp.gate = Number.isFinite(gate) ? Math.max(0.05, Math.min(1, gate)) : ARP_DEFAULTS.gate;
   }
 
   if (!t.params || typeof t.params !== 'object') t.params = {};
@@ -1360,7 +1409,23 @@ playBtn.onclick = async () => {
       try {
         if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
-          for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch, scheduledTime);
+          if (t.arp?.enabled && notes.length) {
+            const rate = Math.max(1, Math.round(Number(t.arp.rate) || 1));
+            const gate = Math.max(0.05, Math.min(1, Number(t.arp.gate) || 1));
+            const sliceSec = Math.max(0.001, currentStepIntervalMs / 1000);
+            const interval = sliceSec / rate;
+            const arpNotes = buildArpNotes(notes, t.arp);
+            if (arpNotes.length) {
+              for (let i = 0; i < rate; i++) {
+                const note = arpNotes[i % arpNotes.length];
+                const time = scheduledTime + i * interval;
+                const duration = interval * gate;
+                triggerEngine?.(t, note.vel ?? 1, note.pitch, time, duration);
+              }
+            }
+          } else {
+            for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch, scheduledTime);
+          }
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {

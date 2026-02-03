@@ -66,6 +66,14 @@ export const TRACK_FX_DEFAULTS = Object.freeze({
   compression: TRACK_COMPRESSION_DEFAULT,
 });
 
+export const ARP_DEFAULTS = Object.freeze({
+  enabled: false,
+  rate: 4,
+  direction: 'up',
+  octaves: 1,
+  gate: 0.9,
+});
+
 export function getStepVelocity(step, fallback = 0) {
   if (!step || typeof step !== 'object') return fallback;
   const params = step.params;
@@ -155,6 +163,7 @@ export function createTrack(name, engine='synth', length=16){
     steps: Array.from({length}, makeStep),
     notes: [],               // for piano roll
     mods: [],                // modulation definitions
+    arp: { ...ARP_DEFAULTS },
 
     inputNode: bus.input,
     duckGainNode: bus.duckGain,
@@ -345,16 +354,16 @@ export function resizeTrackSteps(track, newLen){
     .filter(n => n.length > 0);
 }
 
-export function triggerEngine(track, vel=1, semis=0, when){
+export function triggerEngine(track, vel=1, semis=0, when, gateSec){
   const dest = track?.inputNode || track?.gainNode;
   switch(track.engine){
-    case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when);
-    case 'noise':    return noiseSynth(track.params.noise,   dest, vel, semis, when);
-    case 'kick808':  return kick808(track.params.kick808,    dest, vel, when);
-    case 'snare808': return snare808(track.params.snare808,  dest, vel, when);
-    case 'hat808':   return hat808(track.params.hat808,      dest, vel, when);
-    case 'clap909':  return clap909(track.params.clap909,    dest, vel, when);
-    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, semis, when);
+    case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when, gateSec);
+    case 'noise':    return noiseSynth(track.params.noise,   dest, vel, semis, when, gateSec);
+    case 'kick808':  return kick808(track.params.kick808,    dest, vel, when, gateSec);
+    case 'snare808': return snare808(track.params.snare808,  dest, vel, when, gateSec);
+    case 'hat808':   return hat808(track.params.hat808,      dest, vel, when, gateSec);
+    case 'clap909':  return clap909(track.params.clap909,    dest, vel, when, gateSec);
+    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, semis, when, gateSec);
   }
 }
 
