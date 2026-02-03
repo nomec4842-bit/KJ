@@ -140,6 +140,9 @@ h3 { margin:0 0 8px; font-weight:600; }
 .mod-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .mod-empty { color:var(--muted); font-size:12px; padding:2px 0; }
 
+.arp-panel { margin-top:12px; }
+.arp-panel.is-hidden { display:none; }
+
 #sequencer { display:grid; grid-template-columns: repeat(16, minmax(22px,1fr)); gap:6px; }
 .cell { position:relative; height:28px; background:#171a21; border:1px solid var(--border); border-radius:8px; }
 .cell.selected { border-color:var(--accent); box-shadow:0 0 0 2px rgba(90,200,250,0.4); }

@@ -1331,6 +1331,94 @@ function createTrackFxPanel(rootEl, track) {
 }
 
 
+export function renderArpPanel(containerEl, track, makeFieldHtml) {
+  if (!containerEl) return () => {};
+  if (!track) {
+    containerEl.innerHTML = '';
+    return () => {};
+  }
+  const t = track;
+  const field = (label, inputHtml, hint='') => makeFieldHtml(label, inputHtml, hint);
+
+  const arp = t.arp || {};
+  const arpRateOptions = [1, 2, 3, 4, 6, 8, 12, 16]
+    .map((value) => `<option value="${value}" ${Number(arp.rate) === value ? 'selected' : ''}>${value}x</option>`)
+    .join('');
+  const arpDirectionOptions = [
+    { value: 'up', label: 'Up' },
+    { value: 'down', label: 'Down' },
+    { value: 'upDown', label: 'Up-Down' },
+    { value: 'random', label: 'Random' },
+  ]
+    .map(({ value, label }) => `<option value="${value}" ${arp.direction === value ? 'selected' : ''}>${label}</option>`)
+    .join('');
+
+  let html = '';
+  html += `<div class="badge">Arpeggiator</div>`;
+  html += field('Enabled', `<button id="arp_enabled" class="toggle ${arp.enabled ? 'active' : ''}">${arp.enabled ? 'On' : 'Off'}</button>`, 'Applies to piano roll notes');
+  html += field('Rate', `<select id="arp_rate">${arpRateOptions}</select>`, 'Notes per step');
+  html += field('Direction', `<select id="arp_direction">${arpDirectionOptions}</select>`);
+  html += field('Octaves', `<input id="arp_octaves" type="number" min="1" max="4" step="1" value="${arp.octaves ?? 1}">`);
+  html += field('Gate', `<input id="arp_gate" type="range" min="0.05" max="1" step="0.05" value="${arp.gate ?? 0.9}">`, 'Note length ratio');
+
+  containerEl.innerHTML = html;
+
+  return function bindArpEvents({ t: targetTrack, onArpChange }) {
+    const ensureArp = () => {
+      if (!targetTrack.arp || typeof targetTrack.arp !== 'object') targetTrack.arp = {};
+    };
+    const arpEnabled = document.getElementById('arp_enabled');
+    if (arpEnabled) {
+      arpEnabled.onclick = () => {
+        ensureArp();
+        targetTrack.arp.enabled = !targetTrack.arp.enabled;
+        arpEnabled.classList.toggle('active', targetTrack.arp.enabled);
+        arpEnabled.textContent = targetTrack.arp.enabled ? 'On' : 'Off';
+        onArpChange && onArpChange();
+      };
+    }
+    const arpRate = document.getElementById('arp_rate');
+    if (arpRate) {
+      arpRate.onchange = (e) => {
+        ensureArp();
+        const next = Math.round(Number(e.target.value));
+        if (Number.isFinite(next)) targetTrack.arp.rate = next;
+        onArpChange && onArpChange();
+      };
+    }
+    const arpDirection = document.getElementById('arp_direction');
+    if (arpDirection) {
+      arpDirection.onchange = (e) => {
+        ensureArp();
+        targetTrack.arp.direction = e.target.value;
+        onArpChange && onArpChange();
+      };
+    }
+    const arpOctaves = document.getElementById('arp_octaves');
+    if (arpOctaves) {
+      arpOctaves.oninput = (e) => {
+        ensureArp();
+        const next = Math.round(Number(e.target.value));
+        if (Number.isFinite(next)) targetTrack.arp.octaves = next;
+      };
+      arpOctaves.onchange = () => {
+        onArpChange && onArpChange();
+      };
+    }
+    const arpGate = document.getElementById('arp_gate');
+    if (arpGate) {
+      arpGate.oninput = (e) => {
+        ensureArp();
+        const next = Number(e.target.value);
+        if (Number.isFinite(next)) targetTrack.arp.gate = next;
+      };
+      arpGate.onchange = () => {
+        onArpChange && onArpChange();
+      };
+    }
+  };
+}
+
 export function renderParams(containerEl, track, makeFieldHtml) {
   const t = track;
   const eng = t.engine;
@@ -1373,25 +1461,6 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       <span class="hint">Track effects like compression appear here.</span>
     </div>`;
   html += field('Track Effects', trackFxPanel);
-
-  const arp = t.arp || {};
-  const arpRateOptions = [1, 2, 3, 4, 6, 8, 12, 16]
-    .map((value) => `<option value="${value}" ${Number(arp.rate) === value ? 'selected' : ''}>${value}x</option>`)
-    .join('');
-  const arpDirectionOptions = [
-    { value: 'up', label: 'Up' },
-    { value: 'down', label: 'Down' },
-    { value: 'upDown', label: 'Up-Down' },
-    { value: 'random', label: 'Random' },
-  ]
-    .map(({ value, label }) => `<option value="${value}" ${arp.direction === value ? 'selected' : ''}>${label}</option>`)
-    .join('');
-  html += `<div class="badge">Arpeggiator</div>`;
-  html += field('Enabled', `<button id="arp_enabled" class="toggle ${arp.enabled ? 'active' : ''}">${arp.enabled ? 'On' : 'Off'}</button>`, 'Applies to piano roll notes');
-  html += field('Rate', `<select id="arp_rate">${arpRateOptions}</select>`, 'Notes per step');
-  html += field('Direction', `<select id="arp_direction">${arpDirectionOptions}</select>`);
-  html += field('Octaves', `<input id="arp_octaves" type="number" min="1" max="4" step="1" value="${arp.octaves ?? 1}">`);
-  html += field('Gate', `<input id="arp_gate" type="range" min="0.05" max="1" step="0.05" value="${arp.gate ?? 0.9}">`, 'Note length ratio');
 
   // Instrument block
   html += `<div class="badge">Instrument • ${eng}</div>`;
@@ -1568,59 +1637,6 @@ export function renderParams(containerEl, track, makeFieldHtml) {
         }
       }
     };
-
-    const ensureArp = () => {
-      if (!t.arp || typeof t.arp !== 'object') t.arp = {};
-    };
-    const arpEnabled = document.getElementById('arp_enabled');
-    if (arpEnabled) {
-      arpEnabled.onclick = () => {
-        ensureArp();
-        t.arp.enabled = !t.arp.enabled;
-        arpEnabled.classList.toggle('active', t.arp.enabled);
-        arpEnabled.textContent = t.arp.enabled ? 'On' : 'Off';
-        onParamsRerender && onParamsRerender();
-      };
-    }
-    const arpRate = document.getElementById('arp_rate');
-    if (arpRate) {
-      arpRate.onchange = (e) => {
-        ensureArp();
-        const next = Math.round(Number(e.target.value));
-        if (Number.isFinite(next)) t.arp.rate = next;
-        onParamsRerender && onParamsRerender();
-      };
-    }
-    const arpDirection = document.getElementById('arp_direction');
-    if (arpDirection) {
-      arpDirection.onchange = (e) => {
-        ensureArp();
-        t.arp.direction = e.target.value;
-        onParamsRerender && onParamsRerender();
-      };
-    }
-    const arpOctaves = document.getElementById('arp_octaves');
-    if (arpOctaves) {
-      arpOctaves.oninput = (e) => {
-        ensureArp();
-        const next = Math.round(Number(e.target.value));
-        if (Number.isFinite(next)) t.arp.octaves = next;
-      };
-      arpOctaves.onchange = () => {
-        onParamsRerender && onParamsRerender();
-      };
-    }
-    const arpGate = document.getElementById('arp_gate');
-    if (arpGate) {
-      arpGate.oninput = (e) => {
-        ensureArp();
-        const next = Number(e.target.value);
-        if (Number.isFinite(next)) t.arp.gate = next;
-      };
-      arpGate.onchange = () => {
-        onParamsRerender && onParamsRerender();
-      };
-    }
 
     if (containerEl._stepParamsSelectionHandler) {
       containerEl.removeEventListener('stepselectionchange', containerEl._stepParamsSelectionHandler);
