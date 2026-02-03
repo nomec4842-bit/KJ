@@ -9,7 +9,7 @@ import { STEP_FX_TYPES, STEP_FX_DEFAULTS, normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
-import { refreshTrackSelect, renderParams, makeField } from './ui.js';
+import { refreshTrackSelect, renderParams, makeField, renderArpPanel } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
 
 await dspReady;
@@ -20,6 +20,7 @@ const trackSel     = document.getElementById('trackSelect');
 const addTrackBtn  = document.getElementById('addTrack');
 const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
+const arpEl        = document.getElementById('arpPanel');
 const paramsEl     = document.getElementById('params');
 
 const patternSel       = document.getElementById('patternSelect');
@@ -681,6 +682,33 @@ function renderParamsPanel(){
   }
   setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
 }
+
+function updateArpPanelVisibility(track) {
+  if (!arpEl) return;
+  const shouldShow = !!track && track.mode === 'piano';
+  arpEl.classList.toggle('is-hidden', !shouldShow);
+}
+
+function renderArpControls() {
+  if (!arpEl) return;
+  const track = currentTrack();
+  if (!track) {
+    arpEl.innerHTML = '';
+    updateArpPanelVisibility(null);
+    return;
+  }
+  const binder = renderArpPanel(arpEl, track, makeField);
+  if (typeof binder === 'function') {
+    binder({
+      t: track,
+      onArpChange: () => {
+        renderArpControls();
+        saveProjectToStorage();
+      },
+    });
+  }
+  updateArpPanelVisibility(track);
+}
 function refreshAndSelect(i = selectedTrackIndex){
   const track = currentTrack();
   if (track) normalizeTrack(track);
@@ -694,6 +722,7 @@ function refreshAndSelect(i = selectedTrackIndex){
   }
   showEditorForTrack();
   renderParamsPanel();
+  renderArpControls();
 }
 
 trackSel.onchange = () => {
@@ -715,6 +744,7 @@ togglePiano.onchange = () => {
   showEditorForTrack();
   paintPlayhead();
   broadcastSelection(track);
+  renderArpControls();
   saveProjectToStorage();
 };
 
