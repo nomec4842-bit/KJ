@@ -1033,8 +1033,8 @@ function createStepFxPanel(rootEl, track) {
 
   const updateSelection = (index) => {
     selectedIndex = Number.isInteger(index) ? index : -1;
-    if (!track || track.mode !== 'steps') {
-      showPlaceholder('Step effects are available in Steps mode.');
+    if (!track || (track.mode !== 'steps' && track.mode !== 'piano')) {
+      showPlaceholder('Step effects are available in Steps or Piano mode.');
       return;
     }
     const steps = track.steps;

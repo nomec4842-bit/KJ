@@ -418,7 +418,16 @@ const stepGrid = createGrid(
   }
 );
 
-const piano = createPianoRoll(seqEl, () => currentTrack(), () => renderCurrentEditor());
+const piano = createPianoRoll(
+  seqEl,
+  () => currentTrack(),
+  () => renderCurrentEditor(),
+  (index) => {
+    const track = currentTrack();
+    if (!track) return;
+    setTrackSelectedStep(track, index);
+  }
+);
 
 function getTrackStepCount(track) {
   if (!track) return 0;
@@ -454,16 +463,38 @@ function updateInlineStepSelection(selectedIndex) {
 
 function syncSelectionUI() {
   const track = currentTrack();
-  if (!track || track.mode !== 'steps') {
+  if (!track) {
     if (stepGrid && typeof stepGrid.select === 'function') {
       stepGrid.select(-1);
+    }
+    if (piano && typeof piano.select === 'function') {
+      piano.select(-1);
     }
     updateInlineStepSelection(-1);
     return;
   }
   const selectedIndex = getTrackSelectedStep(track);
-  if (stepGrid && typeof stepGrid.select === 'function') {
-    stepGrid.select(selectedIndex);
+  if (track.mode === 'steps') {
+    if (stepGrid && typeof stepGrid.select === 'function') {
+      stepGrid.select(selectedIndex);
+    }
+    if (piano && typeof piano.select === 'function') {
+      piano.select(-1);
+    }
+  } else if (track.mode === 'piano') {
+    if (piano && typeof piano.select === 'function') {
+      piano.select(selectedIndex);
+    }
+    if (stepGrid && typeof stepGrid.select === 'function') {
+      stepGrid.select(-1);
+    }
+  } else {
+    if (stepGrid && typeof stepGrid.select === 'function') {
+      stepGrid.select(-1);
+    }
+    if (piano && typeof piano.select === 'function') {
+      piano.select(-1);
+    }
   }
   updateInlineStepSelection(selectedIndex);
 }

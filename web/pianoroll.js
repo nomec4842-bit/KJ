@@ -1,8 +1,9 @@
 import { toggleNoteAt, stretchNoteEnding } from './tracks.js';
 
 // 24-row (C2..B3) piano roll; quantized to step grid
-export function createPianoRoll(container, getTrack, onChange){
+export function createPianoRoll(container, getTrack, onChange, onSelect){
   let cols = 16, rows = 24; // pitch 0..23
+  let selectedCol = -1;
   container.innerHTML = '';
   container.style.display = 'grid';
   container.style.gridTemplateColumns = `repeat(${cols}, minmax(22px,1fr))`;
@@ -11,6 +12,14 @@ export function createPianoRoll(container, getTrack, onChange){
 
   const pitchToRow = (p) => (rows-1) - p;
   const rowToPitch = (r) => (rows-1) - r;
+
+  function applySelection(col){
+    selectedCol = Number.isInteger(col) ? col : -1;
+    for (const cell of cells){
+      const cellCol = Number(cell.dataset.col);
+      cell.classList.toggle('selected', cellCol === selectedCol);
+    }
+  }
 
   function rebuild(len){
     cols = len;
@@ -38,6 +47,9 @@ export function createPianoRoll(container, getTrack, onChange){
           dragging = true;
           startCol = c;
           cell.setPointerCapture(e.pointerId);
+          if (typeof onSelect === 'function') {
+            onSelect(c);
+          }
           // place or toggle
           toggleNoteAt(getTrack(), c, pitch, 1);
           onChange();
@@ -92,5 +104,14 @@ export function createPianoRoll(container, getTrack, onChange){
 
   rebuild(cols);
 
-  return { setLength: rebuild, update, paint };
+  return {
+    setLength: (len) => {
+      rebuild(len);
+      const next = selectedCol >= 0 && selectedCol < len ? selectedCol : -1;
+      applySelection(next);
+    },
+    update,
+    paint,
+    select: applySelection,
+  };
 }
