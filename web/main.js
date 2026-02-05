@@ -1179,7 +1179,7 @@ function clearPendingDelayTriggers() {
   // Placeholder for any pending scheduling cleanup.
 }
 
-function scheduleDelayedTrigger(track, velocity, delayMs, scheduledTime) {
+function scheduleDelayedTrigger(track, velocity, delayMs, scheduledTime, pitch = 0) {
   const vel = Number(velocity);
   const ms = Number(delayMs);
   if (!Number.isFinite(vel) || vel <= 0) return;
@@ -1189,7 +1189,7 @@ function scheduleDelayedTrigger(track, velocity, delayMs, scheduledTime) {
   const baseTime = Number.isFinite(scheduledTime) ? scheduledTime : ctx.currentTime;
   const startTime = baseTime + (ms / 1000);
   if (!track) return;
-  triggerEngine?.(track, clampedVel, 0, startTime);
+  triggerEngine?.(track, clampedVel, Number.isFinite(pitch) ? pitch : 0, startTime);
 }
 
 function resolveDelayConfig(baseConfig = {}, offsets) {
@@ -1371,30 +1371,43 @@ function scheduleMultibandDucking(tracks, sourceTrack, config, scheduledTime) {
   }
 }
 
-function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime) {
+function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime, notes, baseVelocityOverride) {
   if (!track || !step) return null;
   if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return null;
 
   const config = resolveDelayConfig(baseConfig, offsets);
   if (config.repeats <= 0) return null;
 
-  const baseVelocity = getStepVelocity?.(step, step.on ? 1 : 0) ?? 0;
-  const wetLevel = baseVelocity * config.mix;
-  if (wetLevel <= 0) return null;
+  const noteEvents = Array.isArray(notes) ? notes.filter((note) => note && typeof note === 'object') : [];
+  if (!noteEvents.length) {
+    const fallbackVelocity = Number.isFinite(baseVelocityOverride)
+      ? baseVelocityOverride
+      : (getStepVelocity?.(step, step.on ? 1 : 0) ?? 0);
+    if (fallbackVelocity > 0) noteEvents.push({ vel: fallbackVelocity, pitch: 0 });
+  }
+  if (!noteEvents.length) return null;
 
   const stepDuration = currentStepIntervalMs;
-  for (let i = 0; i < config.repeats; i++) {
-    const repeatVelocity = wetLevel * Math.pow(config.feedback, i);
-    if (repeatVelocity <= 0.0001) break;
-    const delayMs = stepDuration * config.spacing * (i + 1);
-    if (!Number.isFinite(delayMs) || delayMs <= 0) continue;
-    scheduleDelayedTrigger(track, repeatVelocity, delayMs, scheduledTime);
+  for (const note of noteEvents) {
+    const baseVelocity = Number(note.vel);
+    if (!Number.isFinite(baseVelocity) || baseVelocity <= 0) continue;
+    const wetLevel = baseVelocity * config.mix;
+    if (wetLevel <= 0) continue;
+    const pitch = Number(note.pitch);
+    const resolvedPitch = Number.isFinite(pitch) ? pitch : 0;
+    for (let i = 0; i < config.repeats; i++) {
+      const repeatVelocity = wetLevel * Math.pow(config.feedback, i);
+      if (repeatVelocity <= 0.0001) break;
+      const delayMs = stepDuration * config.spacing * (i + 1);
+      if (!Number.isFinite(delayMs) || delayMs <= 0) continue;
+      scheduleDelayedTrigger(track, repeatVelocity, delayMs, scheduledTime, resolvedPitch);
+    }
   }
 
   return null;
 }
 
-function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, allTracks) {
+function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, allTracks, notes, baseVelocityOverride) {
   if (!track || !step || !step.fx || typeof step.fx !== 'object') return null;
   const rawType = typeof step.fx.type === 'string' ? step.fx.type.trim().toLowerCase() : '';
   if (!rawType || rawType === 'none' || rawType === STEP_FX_TYPES.NONE) return null;
@@ -1406,7 +1419,7 @@ function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, al
   if (rawType === STEP_FX_TYPES.DELAY) {
     const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
     const baseConfig = { ...defaults, ...(step.fx.config && typeof step.fx.config === 'object' ? step.fx.config : {}) };
-    return evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime);
+    return evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime, notes, baseVelocityOverride);
   }
   if (rawType === STEP_FX_TYPES.DUCK) {
     const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
@@ -1470,6 +1483,16 @@ playBtn.onclick = async () => {
       try {
         if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
+          const columnStep = t.steps?.[t.pos];
+          const columnVelocity = notes.length
+            ? Math.max(...notes.map((note) => Number.isFinite(note?.vel) ? note.vel : 0))
+            : 0;
+          const fxResult = columnStep
+            ? evaluateStepFx(t, columnStep, t.pos, effectOffsets, scheduledTime, tracks, notes, columnVelocity)
+            : null;
+          const velocityOffset = fxResult && typeof fxResult === 'object' && Number.isFinite(fxResult.velocityOffset)
+            ? fxResult.velocityOffset
+            : 0;
           if (t.arp?.enabled && notes.length) {
             const rate = Math.max(1, Math.round(Number(t.arp.rate) || 1));
             const gate = Math.max(0.05, Math.min(1, Number(t.arp.gate) || 1));
@@ -1481,16 +1504,23 @@ playBtn.onclick = async () => {
                 const note = arpNotes[i % arpNotes.length];
                 const time = scheduledTime + i * interval;
                 const duration = interval * gate;
-                triggerEngine?.(t, note.vel ?? 1, note.pitch, time, duration);
+                let vel = (Number.isFinite(note.vel) ? note.vel : 1) + velocityOffset;
+                vel = Math.max(0, Math.min(1, vel));
+                if (vel > 0) triggerEngine?.(t, vel, note.pitch, time, duration);
               }
             }
           } else {
-            for (const n of notes) triggerEngine?.(t, n.vel ?? 1, n.pitch, scheduledTime);
+            for (const n of notes) {
+              let vel = (Number.isFinite(n?.vel) ? n.vel : 1) + velocityOffset;
+              vel = Math.max(0, Math.min(1, vel));
+              if (vel > 0) triggerEngine?.(t, vel, n.pitch, scheduledTime);
+            }
           }
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime, tracks);
+            const stepNotes = [{ vel: getStepVelocity(st, 1), pitch: 0 }];
+            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime, tracks, stepNotes, stepNotes[0].vel);
             let vel = getStepVelocity(st, 1);
             if (fxResult && typeof fxResult === 'object') {
               if (Number.isFinite(fxResult.velocityOffset)) {
