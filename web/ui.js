@@ -469,6 +469,204 @@ function createStepParamsPanel(rootEl, track) {
   };
 }
 
+export function createPianoNoteParamsPanel(rootEl, getTrack) {
+  if (!rootEl) return null;
+
+  let onChange = null;
+  let selectedNote = null;
+  let suppressEvents = false;
+
+  const makeGroup = (labelText) => {
+    const group = document.createElement('div');
+    group.className = 'note-param-group';
+
+    const label = document.createElement('span');
+    label.className = 'note-param-label';
+    label.textContent = labelText;
+    group.appendChild(label);
+
+    return { group };
+  };
+
+  const velSlider = document.createElement('input');
+  velSlider.type = 'range';
+  velSlider.min = '0';
+  velSlider.max = '1';
+  velSlider.step = '0.01';
+  velSlider.value = '1';
+  velSlider.className = 'note-param-slider';
+  velSlider.setAttribute('aria-label', 'Note velocity');
+
+  const velNumber = document.createElement('input');
+  velNumber.type = 'number';
+  velNumber.min = '0';
+  velNumber.max = '127';
+  velNumber.step = '1';
+  velNumber.value = '127';
+  velNumber.className = 'note-param-value';
+  velNumber.setAttribute('aria-label', 'Note velocity (0-127)');
+  velNumber.inputMode = 'numeric';
+
+  const chanceSlider = document.createElement('input');
+  chanceSlider.type = 'range';
+  chanceSlider.min = '0';
+  chanceSlider.max = '1';
+  chanceSlider.step = '0.01';
+  chanceSlider.value = '1';
+  chanceSlider.className = 'note-param-slider';
+  chanceSlider.setAttribute('aria-label', 'Note chance');
+
+  const chanceNumber = document.createElement('input');
+  chanceNumber.type = 'number';
+  chanceNumber.min = '0';
+  chanceNumber.max = '100';
+  chanceNumber.step = '1';
+  chanceNumber.value = '100';
+  chanceNumber.className = 'note-param-value';
+  chanceNumber.setAttribute('aria-label', 'Note chance (0-100)');
+  chanceNumber.inputMode = 'numeric';
+
+  const stateLabel = document.createElement('span');
+  stateLabel.className = 'note-param-state hint';
+
+  const controls = document.createElement('div');
+  controls.className = 'note-param-controls';
+
+  const velGroup = makeGroup('Velocity');
+  velGroup.group.appendChild(velSlider);
+  velGroup.group.appendChild(velNumber);
+  controls.appendChild(velGroup.group);
+
+  const chanceGroup = makeGroup('Chance');
+  chanceGroup.group.appendChild(chanceSlider);
+  chanceGroup.group.appendChild(chanceNumber);
+  controls.appendChild(chanceGroup.group);
+
+  controls.appendChild(stateLabel);
+
+  const showPlaceholder = (message) => {
+    rootEl.innerHTML = `<span class="hint">${message}</span>`;
+    rootEl.classList.add('placeholder');
+  };
+
+  const ensureControls = () => {
+    if (rootEl.contains(controls)) return;
+    rootEl.innerHTML = '';
+    rootEl.classList.remove('placeholder');
+    rootEl.appendChild(controls);
+  };
+
+  const updateStateLabel = (note) => {
+    if (!note) {
+      stateLabel.textContent = '';
+      return;
+    }
+    stateLabel.textContent = `Step ${note.start + 1} · Pitch ${note.pitch}`;
+  };
+
+  const commitNote = (note, updates = {}) => {
+    if (!note) return;
+    if (updates.vel !== undefined) {
+      const velValue = Number(updates.vel);
+      note.vel = Number.isFinite(velValue) ? Math.max(0, Math.min(1, velValue)) : note.vel;
+    }
+    if (updates.chance !== undefined) {
+      const chanceValue = Number(updates.chance);
+      note.chance = Number.isFinite(chanceValue) ? Math.max(0, Math.min(1, chanceValue)) : note.chance;
+    }
+    const vel = Number.isFinite(Number(note.vel)) ? Math.max(0, Math.min(1, note.vel)) : 1;
+    const chance = Number.isFinite(Number(note.chance)) ? Math.max(0, Math.min(1, note.chance)) : 1;
+    suppressEvents = true;
+    velSlider.value = String(vel);
+    velNumber.value = String(Math.round(vel * 127));
+    chanceSlider.value = String(chance);
+    chanceNumber.value = String(Math.round(chance * 100));
+    suppressEvents = false;
+    updateStateLabel(note);
+    if (typeof onChange === 'function') onChange(note);
+  };
+
+  velSlider.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const value = Number(ev.target.value);
+    if (!Number.isFinite(value)) return;
+    const track = getTrack?.();
+    const note = findSelectedNote(track);
+    if (!note) return;
+    commitNote(note, { vel: value });
+  });
+
+  velNumber.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const midi = Number.parseInt(ev.target.value, 10);
+    if (!Number.isFinite(midi)) return;
+    const track = getTrack?.();
+    const note = findSelectedNote(track);
+    if (!note) return;
+    commitNote(note, { vel: Math.max(0, Math.min(127, midi)) / 127 });
+  });
+
+  chanceSlider.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const value = Number(ev.target.value);
+    if (!Number.isFinite(value)) return;
+    const track = getTrack?.();
+    const note = findSelectedNote(track);
+    if (!note) return;
+    commitNote(note, { chance: value });
+  });
+
+  chanceNumber.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const percent = Number.parseInt(ev.target.value, 10);
+    if (!Number.isFinite(percent)) return;
+    const track = getTrack?.();
+    const note = findSelectedNote(track);
+    if (!note) return;
+    commitNote(note, { chance: Math.max(0, Math.min(100, percent)) / 100 });
+  });
+
+  function findSelectedNote(track) {
+    if (!track || !Array.isArray(track.notes)) return null;
+    if (!selectedNote) return null;
+    return track.notes.find((note) => (
+      note.start === selectedNote.step && note.pitch === selectedNote.pitch
+    )) || null;
+  }
+
+  const updateSelection = (noteInfo) => {
+    selectedNote = noteInfo && typeof noteInfo === 'object'
+      ? { step: Number(noteInfo.step), pitch: Number(noteInfo.pitch) }
+      : null;
+    refresh();
+  };
+
+  const refresh = () => {
+    const track = getTrack?.();
+    if (!track || track.mode !== 'piano') {
+      showPlaceholder('Note parameters are available in Piano Roll mode.');
+      return;
+    }
+    const note = findSelectedNote(track);
+    if (!note) {
+      showPlaceholder('Select a note to edit velocity and chance.');
+      return;
+    }
+    ensureControls();
+    commitNote(note, {});
+  };
+
+  showPlaceholder('Select a note to edit velocity and chance.');
+
+  return {
+    updateSelection,
+    refresh,
+    setOnChange(fn) {
+      onChange = typeof fn === 'function' ? fn : null;
+    },
+  };
+}
+
 function createStepFxPanel(rootEl, track) {
   if (!rootEl) return null;
 

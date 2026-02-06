@@ -9,7 +9,7 @@ import { STEP_FX_TYPES, STEP_FX_DEFAULTS, normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
 import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
-import { refreshTrackSelect, renderParams, makeField, renderArpPanel } from './ui.js';
+import { refreshTrackSelect, renderParams, makeField, renderArpPanel, createPianoNoteParamsPanel } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
 
 await dspReady;
@@ -22,6 +22,7 @@ const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
 const arpEl        = document.getElementById('arpPanel');
 const paramsEl     = document.getElementById('params');
+const pianoNoteParamsEl = document.getElementById('pianoNoteParams');
 
 const patternSel       = document.getElementById('patternSelect');
 const addPatternBtn    = document.getElementById('addPattern');
@@ -74,10 +75,22 @@ function shuffleArray(source) {
   return arr;
 }
 
+function noteChanceAllows(note) {
+  const chanceValue = Number(note?.chance);
+  const chance = Number.isFinite(chanceValue) ? chanceValue : 1;
+  if (chance >= 1) return true;
+  if (chance <= 0) return false;
+  return Math.random() < chance;
+}
+
 function buildArpNotes(notes, arp) {
   if (!Array.isArray(notes) || notes.length === 0) return [];
   const octaves = Math.max(1, Number(arp?.octaves) || 1);
-  const base = notes.map(n => ({ pitch: n.pitch, vel: n.vel ?? 1 }));
+  const base = notes.map(n => ({
+    pitch: n.pitch,
+    vel: n.vel ?? 1,
+    chance: n.chance ?? 1,
+  }));
   const expanded = [];
   for (let octave = 0; octave < octaves; octave++) {
     for (const note of base) {
@@ -262,6 +275,20 @@ function normalizeTrack(t) {
     t.steps.push(normalizeStep({}));
   }
 
+  if (!Array.isArray(t.notes)) t.notes = [];
+  t.notes = t.notes
+    .filter(note => note && typeof note === 'object')
+    .map((note) => {
+      const start = Number.isFinite(Number(note.start)) ? Math.max(0, Math.min(t.length - 1, note.start|0)) : 0;
+      const length = Number.isFinite(Number(note.length)) ? Math.max(1, Math.min(t.length - start, note.length|0)) : 1;
+      const pitch = Number.isFinite(Number(note.pitch)) ? note.pitch|0 : 0;
+      const velValue = Number(note.vel);
+      const vel = Number.isFinite(velValue) ? Math.max(0, Math.min(1, velValue)) : 1;
+      const chanceValue = Number(note.chance);
+      const chance = Number.isFinite(chanceValue) ? Math.max(0, Math.min(1, chanceValue)) : 1;
+      return { ...note, start, length, pitch, vel, chance };
+    });
+
   const storedSelection = Number.isInteger(t.selectedStep) ? t.selectedStep : -1;
   if (storedSelection >= 0 && storedSelection < t.length) {
     t.selectedStep = storedSelection;
@@ -269,6 +296,18 @@ function normalizeTrack(t) {
     t.selectedStep = t.length - 1;
   } else {
     t.selectedStep = -1;
+  }
+
+  if (!t.selectedNote || typeof t.selectedNote !== 'object') {
+    t.selectedNote = null;
+  } else {
+    const step = Number(t.selectedNote.step);
+    const pitch = Number(t.selectedNote.pitch);
+    if (!Number.isFinite(step) || !Number.isFinite(pitch)) {
+      t.selectedNote = null;
+    } else {
+      t.selectedNote = { step: Math.trunc(step), pitch: Math.trunc(pitch) };
+    }
   }
 
   if (!t.arp || typeof t.arp !== 'object') {
@@ -422,12 +461,28 @@ const piano = createPianoRoll(
   seqEl,
   () => currentTrack(),
   () => renderCurrentEditor(),
-  (index) => {
+  (selection) => {
     const track = currentTrack();
     if (!track) return;
-    setTrackSelectedStep(track, index);
+    if (selection && typeof selection === 'object') {
+      const stepIndex = Number(selection.step);
+      setTrackSelectedNote(track, selection, { skipBroadcast: true, force: true });
+      setTrackSelectedStep(track, stepIndex, { skipBroadcast: true, force: true });
+      broadcastSelection(track);
+      return;
+    }
+    setTrackSelectedNote(track, null, { skipBroadcast: true });
+    setTrackSelectedStep(track, selection);
   }
 );
+
+const pianoNoteParams = createPianoNoteParamsPanel(pianoNoteParamsEl, () => currentTrack());
+if (pianoNoteParams) {
+  pianoNoteParams.setOnChange(() => {
+    renderCurrentEditor();
+    saveProjectToStorage();
+  });
+}
 
 function getTrackStepCount(track) {
   if (!track) return 0;
@@ -442,6 +497,14 @@ function getTrackSelectedStep(track) {
   const len = getTrackStepCount(track);
   if (index < 0 || index >= len) return -1;
   return index;
+}
+
+function getTrackSelectedNote(track) {
+  if (!track || !track.selectedNote || typeof track.selectedNote !== 'object') return null;
+  const step = Number(track.selectedNote.step);
+  const pitch = Number(track.selectedNote.pitch);
+  if (!Number.isFinite(step) || !Number.isFinite(pitch)) return null;
+  return { step: Math.trunc(step), pitch: Math.trunc(pitch) };
 }
 
 function updateInlineStepSelection(selectedIndex) {
@@ -471,6 +534,9 @@ function syncSelectionUI() {
       piano.select(-1);
     }
     updateInlineStepSelection(-1);
+    if (pianoNoteParams) {
+      pianoNoteParams.updateSelection(null);
+    }
     return;
   }
   const selectedIndex = getTrackSelectedStep(track);
@@ -497,14 +563,23 @@ function syncSelectionUI() {
     }
   }
   updateInlineStepSelection(selectedIndex);
+  if (pianoNoteParams) {
+    pianoNoteParams.updateSelection(getTrackSelectedNote(track));
+  }
 }
 
 function broadcastSelection(track) {
   syncSelectionUI();
-  if (!track || track !== currentTrack() || !paramsEl) return;
+  const isCurrent = track && track === currentTrack();
+  const note = isCurrent ? getTrackSelectedNote(track) : null;
+  if (pianoNoteParams) {
+    pianoNoteParams.updateSelection(note);
+  }
+  if (!isCurrent || !paramsEl) return;
   const index = getTrackSelectedStep(track);
   const detail = {
     index,
+    note,
     track,
     trackIndex: tracks.indexOf(track),
     selectedTrackIndex,
@@ -516,7 +591,7 @@ function broadcastSelection(track) {
   }));
 }
 
-function setTrackSelectedStep(track, index, { force = false } = {}) {
+function setTrackSelectedStep(track, index, { force = false, skipBroadcast = false } = {}) {
   if (!track) return;
   const len = getTrackStepCount(track);
   let next = -1;
@@ -538,7 +613,27 @@ function setTrackSelectedStep(track, index, { force = false } = {}) {
   if (!force && prev === next) return;
 
   track.selectedStep = next;
-  broadcastSelection(track);
+  if (!skipBroadcast) {
+    broadcastSelection(track);
+  }
+}
+
+function setTrackSelectedNote(track, note, { force = false, skipBroadcast = false } = {}) {
+  if (!track) return;
+  let next = null;
+  if (note && typeof note === 'object') {
+    const step = Number(note.step);
+    const pitch = Number(note.pitch);
+    if (Number.isFinite(step) && Number.isFinite(pitch)) {
+      next = { step: Math.trunc(step), pitch: Math.trunc(pitch) };
+    }
+  }
+  const prev = getTrackSelectedNote(track);
+  if (!force && prev?.step === next?.step && prev?.pitch === next?.pitch) return;
+  track.selectedNote = next;
+  if (!skipBroadcast) {
+    broadcastSelection(track);
+  }
 }
 
 function showEditorForTrack(){
@@ -772,6 +867,9 @@ togglePiano.onchange = () => {
   const track = currentTrack();
   if (!track) return;
   track.mode = togglePiano.checked ? 'piano' : 'steps';
+  if (track.mode !== 'piano') {
+    track.selectedNote = null;
+  }
   showEditorForTrack();
   paintPlayhead();
   broadcastSelection(track);
@@ -1502,6 +1600,7 @@ playBtn.onclick = async () => {
             if (arpNotes.length) {
               for (let i = 0; i < rate; i++) {
                 const note = arpNotes[i % arpNotes.length];
+                if (!noteChanceAllows(note)) continue;
                 const time = scheduledTime + i * interval;
                 const duration = interval * gate;
                 let vel = (Number.isFinite(note.vel) ? note.vel : 1) + velocityOffset;
@@ -1511,6 +1610,7 @@ playBtn.onclick = async () => {
             }
           } else {
             for (const n of notes) {
+              if (!noteChanceAllows(n)) continue;
               let vel = (Number.isFinite(n?.vel) ? n.vel : 1) + velocityOffset;
               vel = Math.max(0, Math.min(1, vel));
               if (vel > 0) triggerEngine?.(t, vel, n.pitch, scheduledTime);

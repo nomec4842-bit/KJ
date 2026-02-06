@@ -63,9 +63,23 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
           ));
         };
 
+        const findNoteAt = (track, col, notePitch) => {
+          if (!track || !Array.isArray(track.notes)) return null;
+          return track.notes.find((n) => (
+            n.pitch === notePitch
+            && col >= n.start
+            && col < n.start + n.length
+          )) || null;
+        };
+
         const triggerSelect = () => {
           if (typeof onSelect === 'function') {
-            onSelect(c);
+            const note = findNoteAt(getTrack(), c, pitch);
+            if (note) {
+              onSelect({ step: note.start, pitch: note.pitch });
+            } else {
+              onSelect(c);
+            }
           }
         };
 
