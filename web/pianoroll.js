@@ -54,6 +54,10 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
           }
         };
 
+        const cancelLongPressForMouse = (e) => {
+          if (e.pointerType === 'mouse') cancelLongPress();
+        };
+
         const hasNoteAt = (track, col, notePitch) => {
           if (!track || !Array.isArray(track.notes)) return false;
           return track.notes.some((n) => (
@@ -123,8 +127,8 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
           dragging = false;
           cancelLongPress();
         });
-        cell.addEventListener('pointerleave', cancelLongPress);
-        cell.addEventListener('pointerout', cancelLongPress);
+        cell.addEventListener('pointerleave', cancelLongPressForMouse);
+        cell.addEventListener('pointerout', cancelLongPressForMouse);
 
         container.appendChild(cell);
         cells.push(cell);

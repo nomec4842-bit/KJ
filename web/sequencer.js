@@ -66,6 +66,10 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
         }
       };
 
+      const cancelLongPressForMouse = (e) => {
+        if (e.pointerType === 'mouse') cancelLongPress();
+      };
+
       const triggerSelect = (shouldSkip = true) => {
         if (typeof onSelect !== 'function') return;
         cancelLongPress();
@@ -82,6 +86,7 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
       cell.addEventListener('pointerdown', (e) => {
         if (typeof onSelect !== 'function') return;
         if (e.pointerType === 'mouse' && e.button !== 0) return;
+        cell.setPointerCapture(e.pointerId);
         cancelLongPress();
         longPressTimer = setTimeout(() => {
           longPressTimer = null;
@@ -93,10 +98,13 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
         cancelLongPress();
       };
 
-      cell.addEventListener('pointerup', clearPendingSelect);
-      cell.addEventListener('pointerleave', clearPendingSelect);
+      cell.addEventListener('pointerup', (e) => {
+        clearPendingSelect();
+        try { cell.releasePointerCapture(e.pointerId); } catch {}
+      });
+      cell.addEventListener('pointerleave', cancelLongPressForMouse);
       cell.addEventListener('pointercancel', clearPendingSelect);
-      cell.addEventListener('pointerout', clearPendingSelect);
+      cell.addEventListener('pointerout', cancelLongPressForMouse);
 
       // Native dblclick (desktop)
       cell.addEventListener('dblclick', (e) => {
