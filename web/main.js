@@ -478,9 +478,23 @@ const piano = createPianoRoll(
 
 const pianoNoteParams = createPianoNoteParamsPanel(pianoNoteParamsEl, () => currentTrack());
 if (pianoNoteParams) {
+  let noteParamRenderQueued = false;
+  let noteParamSaveTimer = null;
   pianoNoteParams.setOnChange(() => {
-    renderCurrentEditor();
-    saveProjectToStorage();
+    if (!noteParamRenderQueued) {
+      noteParamRenderQueued = true;
+      requestAnimationFrame(() => {
+        noteParamRenderQueued = false;
+        renderCurrentEditor();
+      });
+    }
+    if (noteParamSaveTimer) {
+      clearTimeout(noteParamSaveTimer);
+    }
+    noteParamSaveTimer = setTimeout(() => {
+      noteParamSaveTimer = null;
+      saveProjectToStorage();
+    }, 200);
   });
 }
 
