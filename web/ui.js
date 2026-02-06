@@ -566,13 +566,22 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
 
   const commitNote = (note, updates = {}) => {
     if (!note) return;
+    let changed = false;
     if (updates.vel !== undefined) {
       const velValue = Number(updates.vel);
-      note.vel = Number.isFinite(velValue) ? Math.max(0, Math.min(1, velValue)) : note.vel;
+      const nextVel = Number.isFinite(velValue) ? Math.max(0, Math.min(1, velValue)) : note.vel;
+      if (Number.isFinite(nextVel) && nextVel !== note.vel) {
+        note.vel = nextVel;
+        changed = true;
+      }
     }
     if (updates.chance !== undefined) {
       const chanceValue = Number(updates.chance);
-      note.chance = Number.isFinite(chanceValue) ? Math.max(0, Math.min(1, chanceValue)) : note.chance;
+      const nextChance = Number.isFinite(chanceValue) ? Math.max(0, Math.min(1, chanceValue)) : note.chance;
+      if (Number.isFinite(nextChance) && nextChance !== note.chance) {
+        note.chance = nextChance;
+        changed = true;
+      }
     }
     const vel = Number.isFinite(Number(note.vel)) ? Math.max(0, Math.min(1, note.vel)) : 1;
     const chance = Number.isFinite(Number(note.chance)) ? Math.max(0, Math.min(1, note.chance)) : 1;
@@ -583,7 +592,7 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     chanceNumber.value = String(Math.round(chance * 100));
     suppressEvents = false;
     updateStateLabel(note);
-    if (typeof onChange === 'function') onChange(note);
+    if (changed && typeof onChange === 'function') onChange(note);
   };
 
   velSlider.addEventListener('input', (ev) => {
