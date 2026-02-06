@@ -41,31 +41,76 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
         cell.appendChild(velBar);
 
         let dragging=false, startCol=null;
+        let didStretch = false;
+        let longPressTimer = null;
+        let longPressTriggered = false;
+        const LONG_PRESS_MS = 420;
         const pitch = rowToPitch(r);
 
-        cell.addEventListener('pointerdown', (e)=>{
-          dragging = true;
-          startCol = c;
-          cell.setPointerCapture(e.pointerId);
+        const cancelLongPress = () => {
+          if (longPressTimer !== null) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
+        };
+
+        const hasNoteAt = (track, col, notePitch) => {
+          if (!track || !Array.isArray(track.notes)) return false;
+          return track.notes.some((n) => (
+            n.pitch === notePitch
+            && col >= n.start
+            && col < n.start + n.length
+          ));
+        };
+
+        const triggerSelect = () => {
           if (typeof onSelect === 'function') {
             onSelect(c);
           }
-          // place or toggle
-          toggleNoteAt(getTrack(), c, pitch, 1);
-          onChange();
+        };
+
+        cell.addEventListener('pointerdown', (e)=>{
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          dragging = true;
+          startCol = c;
+          didStretch = false;
+          longPressTriggered = false;
+          cell.setPointerCapture(e.pointerId);
+          cancelLongPress();
+          if (typeof onSelect === 'function') {
+            longPressTimer = setTimeout(() => {
+              longPressTimer = null;
+              if (!hasNoteAt(getTrack(), c, pitch)) return;
+              longPressTriggered = true;
+              triggerSelect();
+            }, LONG_PRESS_MS);
+          }
         });
         cell.addEventListener('pointermove', (e)=>{
           if (!dragging) return;
+          if (longPressTriggered) return;
           if (!e.shiftKey) return; // stretch only when Shift held
           const tr = getTrack();
           const endCol = Math.max(c, startCol);
           stretchNoteEnding(tr, startCol, pitch, endCol+1);
+          didStretch = true;
           onChange();
         });
         cell.addEventListener('pointerup', (e)=>{
           dragging=false;
+          cancelLongPress();
+          if (!longPressTriggered && !didStretch) {
+            toggleNoteAt(getTrack(), c, pitch, 1);
+            onChange();
+          }
           try{ cell.releasePointerCapture(e.pointerId);}catch{}
         });
+        cell.addEventListener('pointercancel', ()=>{
+          dragging = false;
+          cancelLongPress();
+        });
+        cell.addEventListener('pointerleave', cancelLongPress);
+        cell.addEventListener('pointerout', cancelLongPress);
 
         container.appendChild(cell);
         cells.push(cell);
