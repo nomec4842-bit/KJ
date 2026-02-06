@@ -109,7 +109,7 @@ export function normalizeStep(step) {
 }
 
 const makeStep = () => normalizeStep({});
-const makeNote = (start=0, length=1, pitch=0, vel=1) => ({ start, length, pitch, vel });
+const makeNote = (start=0, length=1, pitch=0, vel=1, chance=1) => ({ start, length, pitch, vel, chance });
 
 function makeBus(){
   const input = ctx.createGain();
@@ -384,7 +384,7 @@ export function notesStartingAt(track, step){
 export function toggleNoteAt(track, step, pitch, vel=1){
   const idx = track.notes.findIndex(n => n.start===step && n.pitch===pitch);
   if (idx>=0){ track.notes.splice(idx,1); return; }
-  track.notes.push(makeNote(step, 1, pitch, vel));
+  track.notes.push(makeNote(step, 1, pitch, vel, 1));
 }
 export function stretchNoteEnding(track, step, pitch, newEndStep){
   const n = track.notes.find(n => n.start===step && n.pitch===pitch);

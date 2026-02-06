@@ -39,7 +39,8 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
         start: n.start|0,
         length: Math.max(1, n.length|0),
         pitch: n.pitch|0,
-        vel: n.vel ?? 1
+        vel: n.vel ?? 1,
+        chance: n.chance ?? 1,
       })),
       gain: t.gain, pan: t.pan, mute: t.mute, solo: t.solo,
       params: clone(t.params),
@@ -76,12 +77,17 @@ export function instantiatePattern(pat, sampleCache = {}) {
     }
     t.mode = td.mode || 'steps';
     t.arp = td.arp && typeof td.arp === 'object' ? clone(td.arp) : null;
-    t.notes = Array.isArray(td.notes) ? td.notes.map(n => ({
-      start: Math.max(0, Math.min(td.length - 1, n.start|0)),
-      length: Math.max(1, Math.min(td.length - (n.start|0), n.length|0)),
-      pitch: n.pitch|0,
-      vel: n.vel ?? 1
-    })) : [];
+    t.notes = Array.isArray(td.notes) ? td.notes.map(n => {
+      const chanceValue = Number(n.chance);
+      const chance = Number.isFinite(chanceValue) ? Math.max(0, Math.min(1, chanceValue)) : 1;
+      return {
+        start: Math.max(0, Math.min(td.length - 1, n.start|0)),
+        length: Math.max(1, Math.min(td.length - (n.start|0), n.length|0)),
+        pitch: n.pitch|0,
+        vel: n.vel ?? 1,
+        chance,
+      };
+    }) : [];
     t.gain = td.gain; t.pan = td.pan; t.mute = td.mute; t.solo = td.solo;
     t.params = clone(td.params);
     t.effects = normalizeTrackEffects(td.effects);
