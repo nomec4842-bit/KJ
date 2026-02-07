@@ -5,9 +5,11 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
   let cols = 16, rows = 24; // pitch 0..23
   let selectedCol = -1;
   container.innerHTML = '';
+  container.classList.add('piano-roll');
+  container.classList.remove('step-sequencer');
   container.style.display = 'grid';
-  container.style.gridTemplateColumns = `repeat(${cols}, minmax(22px,1fr))`;
-  container.style.gap = '6px';
+  container.style.gridTemplateColumns = `repeat(${cols}, minmax(18px,1fr))`;
+  container.style.gap = '2px';
   const cells = [];
 
   const pitchToRow = (p) => (rows-1) - p;
@@ -24,16 +26,27 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
   function rebuild(len){
     cols = len;
     container.innerHTML = '';
-    container.style.gridTemplateColumns = `repeat(${cols}, minmax(22px,1fr))`;
+    container.style.gridTemplateColumns = `repeat(${cols}, minmax(18px,1fr))`;
     cells.length = 0;
 
     for (let r=0;r<rows;r++){
       for (let c=0;c<cols;c++){
         const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.style.height = '20px';
+        cell.className = 'cell piano-cell';
+        cell.style.height = '18px';
         cell.dataset.col = c;
         cell.dataset.row = r;
+        const pitch = rowToPitch(r);
+        const blackKeyOffsets = new Set([1, 3, 6, 8, 10]);
+        const pitchClass = pitch % 12;
+        if (blackKeyOffsets.has(pitchClass)) {
+          cell.classList.add('black-key');
+        } else {
+          cell.classList.add('white-key');
+        }
+        if (c % 4 === 0) {
+          cell.classList.add('bar-start');
+        }
 
         const velBar = document.createElement('div');
         velBar.className = 'vel';
@@ -45,7 +58,6 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
         let longPressTimer = null;
         let longPressTriggered = false;
         const LONG_PRESS_MS = 420;
-        const pitch = rowToPitch(r);
 
         const cancelLongPress = () => {
           if (longPressTimer !== null) {

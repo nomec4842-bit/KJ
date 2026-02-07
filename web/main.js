@@ -686,6 +686,8 @@ function showEditorForTrack(){
     syncSelectionUI();
     return;
   }
+  seqEl.classList.toggle('piano-roll', t.mode === 'piano');
+  seqEl.classList.toggle('step-sequencer', t.mode !== 'piano');
   if (t.mode === 'piano') piano.setLength(t.length);
   else stepGrid.setLength(t.length);
   renderCurrentEditor();
@@ -696,6 +698,8 @@ function renderCurrentEditor(){
     syncSelectionUI();
     return;
   }
+  seqEl.classList.toggle('piano-roll', t.mode === 'piano');
+  seqEl.classList.toggle('step-sequencer', t.mode !== 'piano');
   if (t.mode === 'piano') piano.update();
   else stepGrid.update((i)=>t.steps[i]);
   const inlineStep = paramsEl?._inlineStepEditor;
