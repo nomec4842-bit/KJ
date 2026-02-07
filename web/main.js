@@ -100,7 +100,7 @@ function applyNoteOffsets(notes, noteOffsets, trackLength) {
     const maxLength = Number.isFinite(trackLength)
       ? Math.max(1, trackLength - note.start)
       : Math.max(1, lengthBase + lengthOffset);
-    const length = Math.max(1, Math.min(maxLength, Math.round(lengthBase + lengthOffset)));
+    const length = Math.max(1, Math.min(maxLength, lengthBase + lengthOffset));
     return { ...note, vel, chance, length };
   });
 }
@@ -301,8 +301,10 @@ function normalizeTrack(t) {
   t.notes = t.notes
     .filter(note => note && typeof note === 'object')
     .map((note) => {
-      const start = Number.isFinite(Number(note.start)) ? Math.max(0, Math.min(t.length - 1, note.start|0)) : 0;
-      const length = Number.isFinite(Number(note.length)) ? Math.max(1, Math.min(t.length - start, note.length|0)) : 1;
+      const startValue = Number(note.start);
+      const lengthValue = Number(note.length);
+      const start = Number.isFinite(startValue) ? Math.max(0, Math.min(t.length - 1, Math.trunc(startValue))) : 0;
+      const length = Number.isFinite(lengthValue) ? Math.max(1, Math.min(t.length - start, lengthValue)) : 1;
       const pitch = Number.isFinite(Number(note.pitch)) ? note.pitch|0 : 0;
       const velValue = Number(note.vel);
       const vel = Number.isFinite(velValue) ? Math.max(0, Math.min(1, velValue)) : 1;

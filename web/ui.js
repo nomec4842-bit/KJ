@@ -562,7 +562,7 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
   lengthSlider.type = 'range';
   lengthSlider.min = '1';
   lengthSlider.max = '16';
-  lengthSlider.step = '1';
+  lengthSlider.step = '0.01';
   lengthSlider.value = '1';
   lengthSlider.className = 'note-param-slider';
   lengthSlider.setAttribute('aria-label', 'Note length');
@@ -571,11 +571,11 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
   lengthNumber.type = 'number';
   lengthNumber.min = '1';
   lengthNumber.max = '16';
-  lengthNumber.step = '1';
+  lengthNumber.step = '0.0001';
   lengthNumber.value = '1';
   lengthNumber.className = 'note-param-value';
   lengthNumber.setAttribute('aria-label', 'Note length (steps)');
-  lengthNumber.inputMode = 'numeric';
+  lengthNumber.inputMode = 'decimal';
 
   const stateLabel = document.createElement('span');
   stateLabel.className = 'note-param-state hint';
@@ -688,7 +688,7 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     if (updates.length !== undefined) {
       const lengthValue = Number(updates.length);
       const maxLength = getMaxLength(note, track);
-      const nextLength = Number.isFinite(lengthValue) ? Math.round(lengthValue) : note.length;
+      const nextLength = Number.isFinite(lengthValue) ? lengthValue : note.length;
       const clamped = Math.max(1, Math.min(maxLength, nextLength));
       if (Number.isFinite(clamped) && clamped !== note.length) {
         note.length = clamped;
@@ -698,7 +698,7 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     const vel = Number.isFinite(Number(note.vel)) ? Math.max(0, Math.min(1, note.vel)) : 1;
     const chance = Number.isFinite(Number(note.chance)) ? Math.max(0, Math.min(1, note.chance)) : 1;
     const maxLength = getMaxLength(note, track);
-    const length = Number.isFinite(Number(note.length)) ? Math.max(1, Math.min(maxLength, Math.round(note.length))) : 1;
+    const length = Number.isFinite(Number(note.length)) ? Math.max(1, Math.min(maxLength, note.length)) : 1;
     suppressEvents = true;
     velSlider.value = String(vel);
     velNumber.value = String(Math.round(vel * 127));
@@ -765,7 +765,7 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
 
   lengthNumber.addEventListener('input', (ev) => {
     if (suppressEvents) return;
-    const value = Number.parseInt(ev.target.value, 10);
+    const value = Number.parseFloat(ev.target.value);
     if (!Number.isFinite(value)) return;
     const track = getTrack?.();
     const note = findSelectedNote(track);
