@@ -88,6 +88,16 @@ const CVL_RATES = [
   { value: '1/32T', label: '1/32 Triplet' },
 ];
 
+function getCvlRateBeats(rate) {
+  const match = typeof rate === 'string' ? rate.match(/^1\/(\d+)([DT])?$/) : null;
+  const denom = match ? Number(match[1]) : 16;
+  const safeDenom = Number.isFinite(denom) && denom > 0 ? denom : 16;
+  let beats = 4 / safeDenom;
+  if (match?.[2] === 'D') beats *= 1.5;
+  if (match?.[2] === 'T') beats *= 2 / 3;
+  return beats;
+}
+
 function shuffleArray(source) {
   const arr = [...source];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -1947,6 +1957,10 @@ playBtn.onclick = async () => {
   currentStepIntervalMs = 60000 / (bpm * 4);
   startTransport(bpm, (stepIndex, scheduledTime) => {
     applyMixer?.(tracks);
+    const secondsPerBeat = 60 / bpm;
+    const stepSeconds = secondsPerBeat / 4;
+    const elapsedSeconds = stepIndex * stepSeconds;
+    const prevElapsedSeconds = (stepIndex - 1) * stepSeconds;
 
     let patternCompleted = false;
     const anchorTrack = tracks.length ? tracks[0] : null;
@@ -1985,7 +1999,48 @@ playBtn.onclick = async () => {
       }
 
       try {
-        if (t.mode === 'piano') {
+        if (t.type === 'cvl') {
+          const trackLengthBeats = Math.max(0, t.length / 4);
+          if (trackLengthBeats > 0 && Array.isArray(t.cvl?.clips) && t.cvl.clips.length) {
+            const rateBeats = getCvlRateBeats(t.cvl?.scrubberRate);
+            const rateSeconds = rateBeats * secondsPerBeat;
+            const scrubberPhase = rateSeconds > 0 ? (elapsedSeconds / rateSeconds) % 1 : 0;
+            const depth = Number.isFinite(t.cvl?.scrubberDepth) ? t.cvl.scrubberDepth : 0;
+            const offsetBeats = (scrubberPhase * 2 - 1) * depth * trackLengthBeats;
+            const baseBeat = t.pos >= 0 ? t.pos / 4 : 0;
+            const modulatedBeat = Math.max(0, Math.min(trackLengthBeats, baseBeat + offsetBeats));
+
+            let prevModulatedBeat = null;
+            if (previousPos >= 0 && rateSeconds > 0 && stepIndex > 0) {
+              const prevPhase = (prevElapsedSeconds / rateSeconds) % 1;
+              const prevOffset = (prevPhase * 2 - 1) * depth * trackLengthBeats;
+              const prevBaseBeat = previousPos / 4;
+              prevModulatedBeat = Math.max(0, Math.min(trackLengthBeats, prevBaseBeat + prevOffset));
+            }
+
+            const clips = t.cvl.clips;
+            for (const clip of clips) {
+              if (!clip || typeof clip !== 'object') continue;
+              const clipStart = Number(clip.start);
+              const clipLength = Number(clip.length);
+              if (!Number.isFinite(clipStart) || !Number.isFinite(clipLength) || clipLength <= 0) continue;
+              const clipEnd = clipStart + clipLength;
+              const insideNow = modulatedBeat >= clipStart && modulatedBeat < clipEnd;
+              const insidePrev = prevModulatedBeat !== null
+                ? prevModulatedBeat >= clipStart && prevModulatedBeat < clipEnd
+                : false;
+              if (!insideNow || insidePrev) continue;
+              const sampleName = typeof clip.sampleName === 'string' ? clip.sampleName : '';
+              const buffer = sampleName ? sampleCache[sampleName] : null;
+              if (!buffer) continue;
+              const previousSample = t.sample;
+              t.sample = { buffer, name: sampleName };
+              const durationSec = clipLength * secondsPerBeat;
+              triggerEngine?.(t, 1, 0, scheduledTime, durationSec);
+              t.sample = previousSample;
+            }
+          }
+        } else if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
           const notesWithOffsets = noteOffsets ? applyNoteOffsets(notes, noteOffsets, t.length) : notes;
           const columnStep = t.steps?.[t.pos];
