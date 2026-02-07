@@ -24,6 +24,7 @@ const seqEl        = document.getElementById('sequencer');
 const arpEl        = document.getElementById('arpPanel');
 const paramsEl     = document.getElementById('params');
 const pianoNoteParamsEl = document.getElementById('pianoNoteParams');
+const timelinePanel = document.getElementById('timelinePanel');
 const cvlPanel     = document.getElementById('cvlPanel');
 const cvlRoot      = document.getElementById('cvlRoot');
 
@@ -785,11 +786,13 @@ function showEditorForTrack(){
     return;
   }
   if (t.type === 'cvl') {
+    if (timelinePanel) timelinePanel.classList.add('is-hidden');
     if (seqEl) seqEl.classList.add('is-hidden');
     if (cvlPanel) cvlPanel.classList.remove('is-hidden');
     renderCvlPanel();
     return;
   }
+  if (timelinePanel) timelinePanel.classList.remove('is-hidden');
   if (seqEl) seqEl.classList.remove('is-hidden');
   if (cvlPanel) cvlPanel.classList.add('is-hidden');
   seqEl.classList.toggle('piano-roll', t.mode === 'piano');
