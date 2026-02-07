@@ -18,11 +18,14 @@ await dspReady;
 const tempoInput   = document.getElementById('tempo');
 const trackSel     = document.getElementById('trackSelect');
 const addTrackBtn  = document.getElementById('addTrack');
+const trackTypeSel = document.getElementById('trackType');
 const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
 const arpEl        = document.getElementById('arpPanel');
 const paramsEl     = document.getElementById('params');
 const pianoNoteParamsEl = document.getElementById('pianoNoteParams');
+const cvlPanel     = document.getElementById('cvlPanel');
+const cvlRoot      = document.getElementById('cvlRoot');
 
 const patternSel       = document.getElementById('patternSelect');
 const addPatternBtn    = document.getElementById('addPattern');
@@ -65,6 +68,25 @@ const song = {
 
 let currentStepIntervalMs = 0;
 const PROJECT_STORAGE_KEY = 'kj.project.v1';
+
+const CVL_RATES = [
+  { value: '1/1', label: '1/1 (Whole)' },
+  { value: '1/2', label: '1/2' },
+  { value: '1/2D', label: '1/2 Dotted' },
+  { value: '1/2T', label: '1/2 Triplet' },
+  { value: '1/4', label: '1/4' },
+  { value: '1/4D', label: '1/4 Dotted' },
+  { value: '1/4T', label: '1/4 Triplet' },
+  { value: '1/8', label: '1/8' },
+  { value: '1/8D', label: '1/8 Dotted' },
+  { value: '1/8T', label: '1/8 Triplet' },
+  { value: '1/16', label: '1/16' },
+  { value: '1/16D', label: '1/16 Dotted' },
+  { value: '1/16T', label: '1/16 Triplet' },
+  { value: '1/32', label: '1/32' },
+  { value: '1/32D', label: '1/32 Dotted' },
+  { value: '1/32T', label: '1/32 Triplet' },
+];
 
 function shuffleArray(source) {
   const arr = [...source];
@@ -274,6 +296,12 @@ function loadProjectFromStorage() {
 function normalizeTrack(t) {
   if (!t) return t;
   t.name   = t.name   ?? 'Track';
+  const type = typeof t.type === 'string' ? t.type : 'standard';
+  t.type = type === 'cvl' ? 'cvl' : 'standard';
+  if (t.type === 'cvl') {
+    t.engine = 'sampler';
+    t.mode = 'steps';
+  }
   t.mode   = t.mode   ?? 'steps';
   t.length = Math.max(1, (t.length ?? 16)|0);
   t.pos    = Number.isInteger(t.pos) ? t.pos : -1;
@@ -439,6 +467,31 @@ function normalizeTrack(t) {
     sampler.gain = toNumber(sampler.gain, 1);
     sampler.loop = !!sampler.loop;
     sampler.advanced = !!sampler.advanced;
+  }
+
+  if (!t.params.cvl || typeof t.params.cvl !== 'object') {
+    t.params.cvl = { scrubber: 0 };
+  } else {
+    const scrubber = Number(t.params.cvl.scrubber);
+    t.params.cvl.scrubber = Number.isFinite(scrubber) ? scrubber : 0;
+  }
+
+  if (!t.cvl || typeof t.cvl !== 'object') {
+    t.cvl = { lanes: 6, samples: [], scrubberRate: '1/16', scrubberDepth: 0 };
+  } else {
+    const lanes = Number(t.cvl.lanes);
+    t.cvl.lanes = Number.isFinite(lanes) ? Math.max(1, Math.min(12, Math.round(lanes))) : 6;
+    if (!Array.isArray(t.cvl.samples)) t.cvl.samples = [];
+    t.cvl.samples = t.cvl.samples
+      .filter((sample) => sample && typeof sample === 'object')
+      .map((sample) => ({ name: sample.name || 'Sample' }));
+    const allowedRates = new Set(CVL_RATES.map((rate) => rate.value));
+    const scrubberRate = typeof t.cvl.scrubberRate === 'string' ? t.cvl.scrubberRate : '';
+    t.cvl.scrubberRate = allowedRates.has(scrubberRate) ? scrubberRate : '1/16';
+    const scrubberDepth = Number(t.cvl.scrubberDepth);
+    t.cvl.scrubberDepth = Number.isFinite(scrubberDepth)
+      ? Math.max(0, Math.min(1, scrubberDepth))
+      : 0;
   }
 
   if (!Array.isArray(t.mods)) {
@@ -694,6 +747,14 @@ function showEditorForTrack(){
     syncSelectionUI();
     return;
   }
+  if (t.type === 'cvl') {
+    if (seqEl) seqEl.classList.add('is-hidden');
+    if (cvlPanel) cvlPanel.classList.remove('is-hidden');
+    renderCvlPanel();
+    return;
+  }
+  if (seqEl) seqEl.classList.remove('is-hidden');
+  if (cvlPanel) cvlPanel.classList.add('is-hidden');
   seqEl.classList.toggle('piano-roll', t.mode === 'piano');
   seqEl.classList.toggle('step-sequencer', t.mode !== 'piano');
   if (t.mode === 'piano') piano.setLength(t.length);
@@ -704,6 +765,10 @@ function renderCurrentEditor(){
   const t = currentTrack();
   if (!t) {
     syncSelectionUI();
+    return;
+  }
+  if (t.type === 'cvl') {
+    renderCvlPanel();
     return;
   }
   seqEl.classList.toggle('piano-roll', t.mode === 'piano');
@@ -745,6 +810,35 @@ async function onSampleFile(file) {
   const track = currentTrack();
   if (!track) return;
 
+  const buffer = await decodeAudioFile(file);
+  if (!buffer) return;
+
+  track.sample = { buffer, name: file.name };
+  sampleCache[file.name] = buffer;
+
+  if (track === currentTrack()) {
+    renderParamsPanel();
+  }
+
+  saveProjectToStorage();
+}
+
+async function onCvlSampleFile(file) {
+  if (!file) return;
+  const track = currentTrack();
+  if (!track || track.type !== 'cvl') return;
+
+  const buffer = await decodeAudioFile(file);
+  if (!buffer) return;
+
+  if (!Array.isArray(track.cvl.samples)) track.cvl.samples = [];
+  track.cvl.samples.push({ name: file.name });
+  sampleCache[file.name] = buffer;
+  renderCvlPanel();
+  saveProjectToStorage();
+}
+
+async function decodeAudioFile(file) {
   let arrayBuffer;
   try {
     arrayBuffer = await file.arrayBuffer();
@@ -753,12 +847,11 @@ async function onSampleFile(file) {
     if (typeof window !== 'undefined' && typeof window.alert === 'function') {
       window.alert('Failed to read the selected audio file.');
     }
-    return;
+    return null;
   }
 
-  let buffer;
   try {
-    buffer = await new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       let settled = false;
       const done = (result) => {
         if (settled) return;
@@ -780,17 +873,8 @@ async function onSampleFile(file) {
     if (typeof window !== 'undefined' && typeof window.alert === 'function') {
       window.alert('Unable to decode the selected audio file.');
     }
-    return;
+    return null;
   }
-
-  track.sample = { buffer, name: file.name };
-  sampleCache[file.name] = buffer;
-
-  if (track === currentTrack()) {
-    renderParamsPanel();
-  }
-
-  saveProjectToStorage();
 }
 
 function renderParamsPanel(){
@@ -865,6 +949,100 @@ function renderParamsPanel(){
   setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
 }
 
+function renderCvlPanel() {
+  if (!cvlPanel || !cvlRoot) return;
+  const track = currentTrack();
+  if (!track || track.type !== 'cvl') {
+    cvlPanel.classList.add('is-hidden');
+    cvlRoot.innerHTML = '';
+    return;
+  }
+
+  cvlPanel.classList.remove('is-hidden');
+
+  const samples = Array.isArray(track.cvl?.samples) ? track.cvl.samples : [];
+  const lanes = Number.isFinite(Number(track.cvl?.lanes)) ? Math.max(1, Math.round(track.cvl.lanes)) : 6;
+  const timelineSteps = Math.max(1, Number.isFinite(track.length) ? track.length : 16);
+  const rateOptions = CVL_RATES.map((rate) => (
+    `<option value="${rate.value}" ${rate.value === track.cvl.scrubberRate ? 'selected' : ''}>${rate.label}</option>`
+  )).join('');
+
+  const sampleList = samples.length
+    ? samples.map((sample) => `<li>${sample.name}</li>`).join('')
+    : '<li class="cvl-empty">No samples loaded.</li>';
+
+  const laneRows = Array.from({ length: lanes }, (_, index) => {
+    const cells = Array.from({ length: timelineSteps }, () => '<div class="cvl-cell"></div>').join('');
+    return `
+      <div class="cvl-lane">
+        <div class="cvl-lane-label">Lane ${index + 1}</div>
+        <div class="cvl-timeline" style="--cvl-steps:${timelineSteps}">${cells}</div>
+      </div>
+    `;
+  }).join('');
+
+  cvlRoot.innerHTML = `
+    <div class="cvl-window">
+      <div class="cvl-header">
+        <label class="ctrl">
+          Sample Loader
+          <input id="cvl_sample" type="file" accept="audio/*">
+        </label>
+        <div class="cvl-controls">
+          <label class="ctrl">
+            Scrubber Mod Rate
+            <select id="cvl_scrubberRate">${rateOptions}</select>
+          </label>
+          <label class="ctrl">
+            Depth
+            <input id="cvl_scrubberDepth" type="range" min="0" max="1" step="0.01" value="${track.cvl.scrubberDepth ?? 0}">
+          </label>
+        </div>
+      </div>
+      <div class="cvl-body">
+        <aside class="cvl-bin">
+          <h4>Sample Bin</h4>
+          <ul>${sampleList}</ul>
+        </aside>
+        <div class="cvl-lanes">
+          ${laneRows}
+        </div>
+      </div>
+    </div>
+  `;
+
+  const sampleInput = document.getElementById('cvl_sample');
+  if (sampleInput) {
+    sampleInput.onchange = (ev) => {
+      const file = ev.target?.files?.[0];
+      if (!file) return;
+      onCvlSampleFile(file);
+      ev.target.value = '';
+    };
+  }
+
+  const rateSelect = document.getElementById('cvl_scrubberRate');
+  if (rateSelect) {
+    rateSelect.onchange = (ev) => {
+      const value = ev.target.value;
+      const allowed = new Set(CVL_RATES.map((rate) => rate.value));
+      track.cvl.scrubberRate = allowed.has(value) ? value : '1/16';
+      saveProjectToStorage();
+    };
+  }
+
+  const depthControl = document.getElementById('cvl_scrubberDepth');
+  if (depthControl) {
+    depthControl.oninput = (ev) => {
+      const value = Number(ev.target.value);
+      track.cvl.scrubberDepth = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    };
+    depthControl.onchange = () => {
+      saveProjectToStorage();
+    };
+  }
+}
+
 function updateArpPanelVisibility(track) {
   if (!arpEl) return;
   const shouldShow = !!track && track.mode === 'piano';
@@ -896,11 +1074,23 @@ function refreshAndSelect(i = selectedTrackIndex){
   if (track) normalizeTrack(track);
   refreshTrackSelect(trackSel, tracks, i);
   if (track) {
-    engineSel.value = track.engine;
-    togglePiano.checked = track.mode === 'piano';
+    if (trackTypeSel) trackTypeSel.value = track.type || 'standard';
+    if (track.type === 'cvl') {
+      track.engine = 'sampler';
+      engineSel.value = 'sampler';
+      engineSel.disabled = true;
+      togglePiano.checked = false;
+      togglePiano.disabled = true;
+    } else {
+      engineSel.disabled = false;
+      togglePiano.disabled = false;
+      engineSel.value = track.engine;
+      togglePiano.checked = track.mode === 'piano';
+    }
   } else {
     engineSel.value = '';
     togglePiano.checked = false;
+    if (trackTypeSel) trackTypeSel.value = 'standard';
   }
   showEditorForTrack();
   renderParamsPanel();
@@ -912,6 +1102,21 @@ trackSel.onchange = () => {
   refreshAndSelect(selectedTrackIndex);
   saveProjectToStorage();
 };
+
+if (trackTypeSel) {
+  trackTypeSel.onchange = () => {
+    const track = currentTrack();
+    if (!track) return;
+    track.type = trackTypeSel.value === 'cvl' ? 'cvl' : 'standard';
+    if (track.type === 'cvl') {
+      track.engine = 'sampler';
+      track.mode = 'steps';
+      track.selectedNote = null;
+    }
+    refreshAndSelect(selectedTrackIndex);
+    saveProjectToStorage();
+  };
+}
 
 engineSel.onchange = () => {
   currentTrack().engine = engineSel.value;
@@ -934,9 +1139,12 @@ togglePiano.onchange = () => {
 };
 
 addTrackBtn.onclick = () => {
-  const eng = engineSel.value || 'synth';
+  const type = trackTypeSel?.value === 'cvl' ? 'cvl' : 'standard';
+  const eng = type === 'cvl' ? 'sampler' : (engineSel.value || 'synth');
   const name = `Track ${tracks.length + 1}`;
-  tracks.push(normalizeTrack(createTrack(name, eng, 16)));
+  const newTrack = createTrack(name, eng, 16);
+  newTrack.type = type;
+  tracks.push(normalizeTrack(newTrack));
   selectedTrackIndex = tracks.length - 1;
   applyMixer(tracks);
   refreshAndSelect(selectedTrackIndex);

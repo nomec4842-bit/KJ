@@ -23,6 +23,7 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
     tracks: tracks.map(t => ({
       name: t.name,
       engine: t.engine,
+      type: t.type || 'standard',
       length: t.length,
       steps: t.steps.map(s => {
         const normalized = normalizeStep(s);
@@ -52,6 +53,7 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
         : [],
       gain: t.gain, pan: t.pan, mute: t.mute, solo: t.solo,
       params: clone(t.params),
+      cvl: t.cvl ? clone(t.cvl) : null,
       effects: clone(t.effects || {}),
       sampleName: t.sample?.name || '',
       mods: Array.isArray(t.mods) ? t.mods
@@ -72,6 +74,7 @@ export function instantiatePattern(pat, sampleCache = {}) {
   const tracks = [];
   for (const td of pat.tracks) {
     const t = createTrack(td.name, td.engine, td.length);
+    t.type = td.type || 'standard';
     resizeTrackSteps(t, td.length);
     for (let i = 0; i < td.length; i++) {
       const source = td.steps?.[i];
@@ -110,6 +113,9 @@ export function instantiatePattern(pat, sampleCache = {}) {
       : [];
     t.gain = td.gain; t.pan = td.pan; t.mute = td.mute; t.solo = td.solo;
     t.params = clone(td.params);
+    if (td.cvl && typeof td.cvl === 'object') {
+      t.cvl = clone(td.cvl);
+    }
     t.effects = normalizeTrackEffects(td.effects);
     syncTrackEffects(t);
     if (Array.isArray(td.mods)) {
