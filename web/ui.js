@@ -609,7 +609,10 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     stateLabel.textContent = `Step ${note.start + 1} · Pitch ${note.pitch}`;
   };
 
-  const getNoteKey = (note) => `${note.start}:${note.pitch}`;
+  const getNoteKey = (note) => {
+    const step = note?.start ?? note?.step;
+    return `${step}:${note?.pitch}`;
+  };
 
   const hasNoteTarget = (track, note) => {
     if (!track || !note || !Array.isArray(track.noteModTargets)) return false;
