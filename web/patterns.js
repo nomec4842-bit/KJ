@@ -42,6 +42,14 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
         vel: n.vel ?? 1,
         chance: n.chance ?? 1,
       })),
+      noteModTargets: Array.isArray(t.noteModTargets)
+        ? t.noteModTargets
+            .filter(target => target && typeof target === 'object')
+            .map(target => ({
+              step: Number.isFinite(Number(target.step)) ? Number(target.step) : 0,
+              pitch: Number.isFinite(Number(target.pitch)) ? Number(target.pitch) : 0,
+            }))
+        : [],
       gain: t.gain, pan: t.pan, mute: t.mute, solo: t.solo,
       params: clone(t.params),
       effects: clone(t.effects || {}),
@@ -88,6 +96,14 @@ export function instantiatePattern(pat, sampleCache = {}) {
         chance,
       };
     }) : [];
+    t.noteModTargets = Array.isArray(td.noteModTargets)
+      ? td.noteModTargets
+          .filter(target => target && typeof target === 'object')
+          .map(target => ({
+            step: Math.max(0, Math.min(td.length - 1, Number(target.step) || 0)),
+            pitch: Number(target.pitch) || 0,
+          }))
+      : [];
     t.gain = td.gain; t.pan = td.pan; t.mute = td.mute; t.solo = td.solo;
     t.params = clone(td.params);
     t.effects = normalizeTrackEffects(td.effects);

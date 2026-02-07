@@ -162,6 +162,7 @@ export function createTrack(name, engine='synth', length=16){
     pos: -1,
     steps: Array.from({length}, makeStep),
     notes: [],               // for piano roll
+    noteModTargets: [],      // per-note modulation target list
     mods: [],                // modulation definitions
     arp: { ...ARP_DEFAULTS },
 
