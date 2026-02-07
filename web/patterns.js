@@ -36,9 +36,9 @@ export function serializePattern(name, tracks, patternLen16 = 16) {
       mode: t.mode || 'steps',
       arp: t.arp ? clone(t.arp) : null,
       notes: (t.notes || []).map(n => ({
-        start: n.start|0,
-        length: Math.max(1, n.length|0),
-        pitch: n.pitch|0,
+        start: Math.trunc(Number(n.start) || 0),
+        length: Math.max(1, Number.isFinite(Number(n.length)) ? Number(n.length) : 1),
+        pitch: Math.trunc(Number(n.pitch) || 0),
         vel: n.vel ?? 1,
         chance: n.chance ?? 1,
       })),
@@ -88,10 +88,14 @@ export function instantiatePattern(pat, sampleCache = {}) {
     t.notes = Array.isArray(td.notes) ? td.notes.map(n => {
       const chanceValue = Number(n.chance);
       const chance = Number.isFinite(chanceValue) ? Math.max(0, Math.min(1, chanceValue)) : 1;
+      const startValue = Math.trunc(Number(n.start) || 0);
+      const start = Math.max(0, Math.min(td.length - 1, startValue));
+      const lengthValue = Number(n.length);
+      const length = Math.max(1, Math.min(td.length - start, Number.isFinite(lengthValue) ? lengthValue : 1));
       return {
-        start: Math.max(0, Math.min(td.length - 1, n.start|0)),
-        length: Math.max(1, Math.min(td.length - (n.start|0), n.length|0)),
-        pitch: n.pitch|0,
+        start,
+        length,
+        pitch: Math.trunc(Number(n.pitch) || 0),
         vel: n.vel ?? 1,
         chance,
       };
