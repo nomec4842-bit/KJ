@@ -84,6 +84,7 @@ const FALLBACK_TARGETS = Object.freeze(
 const NOTE_PARAM_TARGETS = [
   { value: 'vel', label: 'Velocity' },
   { value: 'chance', label: 'Chance' },
+  { value: 'length', label: 'Length' },
 ];
 
 function getNoteTargetOptions(track) {
@@ -557,6 +558,25 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
   chanceNumber.setAttribute('aria-label', 'Note chance (0-100)');
   chanceNumber.inputMode = 'numeric';
 
+  const lengthSlider = document.createElement('input');
+  lengthSlider.type = 'range';
+  lengthSlider.min = '1';
+  lengthSlider.max = '16';
+  lengthSlider.step = '1';
+  lengthSlider.value = '1';
+  lengthSlider.className = 'note-param-slider';
+  lengthSlider.setAttribute('aria-label', 'Note length');
+
+  const lengthNumber = document.createElement('input');
+  lengthNumber.type = 'number';
+  lengthNumber.min = '1';
+  lengthNumber.max = '16';
+  lengthNumber.step = '1';
+  lengthNumber.value = '1';
+  lengthNumber.className = 'note-param-value';
+  lengthNumber.setAttribute('aria-label', 'Note length (steps)');
+  lengthNumber.inputMode = 'numeric';
+
   const stateLabel = document.createElement('span');
   stateLabel.className = 'note-param-state hint';
 
@@ -582,6 +602,11 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
   chanceGroup.group.appendChild(chanceSlider);
   chanceGroup.group.appendChild(chanceNumber);
   controls.appendChild(chanceGroup.group);
+
+  const lengthGroup = makeGroup('Length');
+  lengthGroup.group.appendChild(lengthSlider);
+  lengthGroup.group.appendChild(lengthNumber);
+  controls.appendChild(lengthGroup.group);
 
   const modGroup = makeGroup('Mod Matrix');
   modGroup.group.appendChild(modToggleLabel);
@@ -634,8 +659,15 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     }
   };
 
-  const commitNote = (note, updates = {}) => {
+  const getMaxLength = (note, track) => {
+    const trackLength = Number(track?.length);
+    if (!note || !Number.isFinite(trackLength)) return 16;
+    return Math.max(1, trackLength - note.start);
+  };
+
+  const commitNote = (note, updates = {}, trackOverride) => {
     if (!note) return;
+    const track = trackOverride || getTrack?.();
     let changed = false;
     if (updates.vel !== undefined) {
       const velValue = Number(updates.vel);
@@ -653,13 +685,29 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
         changed = true;
       }
     }
+    if (updates.length !== undefined) {
+      const lengthValue = Number(updates.length);
+      const maxLength = getMaxLength(note, track);
+      const nextLength = Number.isFinite(lengthValue) ? Math.round(lengthValue) : note.length;
+      const clamped = Math.max(1, Math.min(maxLength, nextLength));
+      if (Number.isFinite(clamped) && clamped !== note.length) {
+        note.length = clamped;
+        changed = true;
+      }
+    }
     const vel = Number.isFinite(Number(note.vel)) ? Math.max(0, Math.min(1, note.vel)) : 1;
     const chance = Number.isFinite(Number(note.chance)) ? Math.max(0, Math.min(1, note.chance)) : 1;
+    const maxLength = getMaxLength(note, track);
+    const length = Number.isFinite(Number(note.length)) ? Math.max(1, Math.min(maxLength, Math.round(note.length))) : 1;
     suppressEvents = true;
     velSlider.value = String(vel);
     velNumber.value = String(Math.round(vel * 127));
     chanceSlider.value = String(chance);
     chanceNumber.value = String(Math.round(chance * 100));
+    lengthSlider.max = String(maxLength);
+    lengthNumber.max = String(maxLength);
+    lengthSlider.value = String(length);
+    lengthNumber.value = String(length);
     suppressEvents = false;
     updateStateLabel(note);
     if (changed && typeof onChange === 'function') onChange(note);
@@ -705,6 +753,26 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     commitNote(note, { chance: Math.max(0, Math.min(100, percent)) / 100 });
   });
 
+  lengthSlider.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const value = Number(ev.target.value);
+    if (!Number.isFinite(value)) return;
+    const track = getTrack?.();
+    const note = findSelectedNote(track);
+    if (!note) return;
+    commitNote(note, { length: value }, track);
+  });
+
+  lengthNumber.addEventListener('input', (ev) => {
+    if (suppressEvents) return;
+    const value = Number.parseInt(ev.target.value, 10);
+    if (!Number.isFinite(value)) return;
+    const track = getTrack?.();
+    const note = findSelectedNote(track);
+    if (!note) return;
+    commitNote(note, { length: value }, track);
+  });
+
   modToggle.addEventListener('change', (ev) => {
     if (suppressEvents) return;
     const track = getTrack?.();
@@ -737,18 +805,18 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     }
     const note = findSelectedNote(track);
     if (!note) {
-      showPlaceholder('Select a note to edit velocity and chance.');
+      showPlaceholder('Select a note to edit velocity, chance, and length.');
       return;
     }
     ensureControls();
-    commitNote(note, {});
+    commitNote(note, {}, track);
     suppressEvents = true;
     modToggle.checked = hasNoteTarget(track, note);
     modToggle.disabled = false;
     suppressEvents = false;
   };
 
-  showPlaceholder('Select a note to edit velocity and chance.');
+  showPlaceholder('Select a note to edit velocity, chance, and length.');
 
   return {
     updateSelection,
