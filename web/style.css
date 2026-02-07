@@ -165,11 +165,55 @@ h3 { margin:0 0 8px; font-weight:600; }
 .cvl-bin ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
 .cvl-bin li { padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:#171a21; font-size:12px; }
 .cvl-empty { font-size:12px; color:var(--muted); }
-.cvl-lanes { display:flex; flex-direction:column; gap:8px; }
+.cvl-lanes { display:flex; flex-direction:column; gap:8px; overflow-x:auto; padding-bottom:4px; }
 .cvl-lane { display:grid; grid-template-columns: 80px 1fr; gap:8px; align-items:center; }
+.cvl-ruler { display:grid; grid-template-columns: 80px 1fr; gap:8px; align-items:end; }
 .cvl-lane-label { font-size:12px; color:var(--muted); }
-.cvl-timeline { display:grid; grid-template-columns: repeat(var(--cvl-steps, 16), minmax(20px, 1fr)); gap:4px; }
-.cvl-cell { height:22px; border-radius:6px; border:1px solid var(--border); background:#171a21; }
+.cvl-lane-track,
+.cvl-ruler-track {
+  position:relative;
+  min-width: var(--cvl-width, 360px);
+}
+.cvl-lane-track {
+  height:28px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 100%) 0 0 / var(--cvl-beat, 24px) 100%;
+  overflow:hidden;
+}
+.cvl-clip {
+  position:absolute;
+  top:4px;
+  height:20px;
+  border-radius:6px;
+  background:linear-gradient(135deg, #5b7cff, #7f9bff);
+  color:#0b1020;
+  font-size:11px;
+  font-weight:600;
+  padding:0 8px;
+  display:flex;
+  align-items:center;
+  box-shadow:0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.cvl-clip span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cvl-ruler-track {
+  height:22px;
+  border-bottom:1px solid var(--border);
+}
+.cvl-ruler-tick {
+  position:absolute;
+  bottom:0;
+  width:1px;
+  height:100%;
+  background:rgba(255,255,255,0.18);
+}
+.cvl-ruler-tick span {
+  position:absolute;
+  top:0;
+  left:4px;
+  font-size:10px;
+  color:var(--muted);
+}
 .cvl-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .cvl-controls select, .cvl-controls input[type="range"] { min-width:120px; }
 

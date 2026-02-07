@@ -477,7 +477,14 @@ function normalizeTrack(t) {
   }
 
   if (!t.cvl || typeof t.cvl !== 'object') {
-    t.cvl = { lanes: 6, samples: [], scrubberRate: '1/16', scrubberDepth: 0 };
+    t.cvl = {
+      lanes: 6,
+      samples: [],
+      scrubberRate: '1/16',
+      scrubberDepth: 0,
+      pixelsPerBeat: 24,
+      clips: [],
+    };
   } else {
     const lanes = Number(t.cvl.lanes);
     t.cvl.lanes = Number.isFinite(lanes) ? Math.max(1, Math.min(12, Math.round(lanes))) : 6;
@@ -492,6 +499,24 @@ function normalizeTrack(t) {
     t.cvl.scrubberDepth = Number.isFinite(scrubberDepth)
       ? Math.max(0, Math.min(1, scrubberDepth))
       : 0;
+    const pixelsPerBeat = Number(t.cvl.pixelsPerBeat);
+    t.cvl.pixelsPerBeat = Number.isFinite(pixelsPerBeat)
+      ? Math.max(6, Math.min(96, pixelsPerBeat))
+      : 24;
+    if (!Array.isArray(t.cvl.clips)) t.cvl.clips = [];
+    t.cvl.clips = t.cvl.clips
+      .filter((clip) => clip && typeof clip === 'object')
+      .map((clip) => {
+        const lane = Number(clip.lane);
+        const start = Number(clip.start);
+        const length = Number(clip.length);
+        return {
+          lane: Number.isFinite(lane) ? Math.max(0, Math.floor(lane)) : 0,
+          start: Number.isFinite(start) ? Math.max(0, start) : 0,
+          length: Number.isFinite(length) ? Math.max(0.25, length) : 1,
+          sampleName: typeof clip.sampleName === 'string' ? clip.sampleName : 'Sample',
+        };
+      });
   }
 
   if (!Array.isArray(t.mods)) {
@@ -961,8 +986,12 @@ function renderCvlPanel() {
   cvlPanel.classList.remove('is-hidden');
 
   const samples = Array.isArray(track.cvl?.samples) ? track.cvl.samples : [];
+  const clips = Array.isArray(track.cvl?.clips) ? track.cvl.clips : [];
   const lanes = Number.isFinite(Number(track.cvl?.lanes)) ? Math.max(1, Math.round(track.cvl.lanes)) : 6;
   const timelineSteps = Math.max(1, Number.isFinite(track.length) ? track.length : 16);
+  const pixelsPerBeat = Number.isFinite(track.cvl?.pixelsPerBeat) ? track.cvl.pixelsPerBeat : 24;
+  const timelineBeats = Math.max(1, timelineSteps / 4);
+  const timelineWidth = Math.max(240, Math.round(timelineBeats * pixelsPerBeat));
   const rateOptions = CVL_RATES.map((rate) => (
     `<option value="${rate.value}" ${rate.value === track.cvl.scrubberRate ? 'selected' : ''}>${rate.label}</option>`
   )).join('');
@@ -971,15 +1000,40 @@ function renderCvlPanel() {
     ? samples.map((sample) => `<li>${sample.name}</li>`).join('')
     : '<li class="cvl-empty">No samples loaded.</li>';
 
-  const laneRows = Array.from({ length: lanes }, (_, index) => {
-    const cells = Array.from({ length: timelineSteps }, () => '<div class="cvl-cell"></div>').join('');
+  const clipMarkupForLane = (laneIndex) => {
+    const laneClips = clips.filter((clip) => clip.lane === laneIndex);
+    if (!laneClips.length) return '';
+    return laneClips.map((clip) => {
+      const start = Number.isFinite(clip.start) ? clip.start : 0;
+      const length = Number.isFinite(clip.length) ? clip.length : 1;
+      const left = Math.max(0, start * pixelsPerBeat);
+      const width = Math.max(8, length * pixelsPerBeat);
+      const sampleName = clip.sampleName || 'Sample';
+      return `
+        <div class="cvl-clip" style="left:${left}px; width:${width}px" title="${sampleName}">
+          <span>${sampleName}</span>
+        </div>
+      `;
+    }).join('');
+  };
+
+  const rulerTicks = Array.from({ length: Math.ceil(timelineBeats) + 1 }, (_, index) => {
+    const left = index * pixelsPerBeat;
     return `
-      <div class="cvl-lane">
-        <div class="cvl-lane-label">Lane ${index + 1}</div>
-        <div class="cvl-timeline" style="--cvl-steps:${timelineSteps}">${cells}</div>
+      <div class="cvl-ruler-tick" style="left:${left}px">
+        <span>${index + 1}</span>
       </div>
     `;
   }).join('');
+
+  const laneRows = Array.from({ length: lanes }, (_, index) => `
+    <div class="cvl-lane">
+      <div class="cvl-lane-label">Lane ${index + 1}</div>
+      <div class="cvl-lane-track" style="--cvl-width:${timelineWidth}px; --cvl-beat:${pixelsPerBeat}px">
+        ${clipMarkupForLane(index)}
+      </div>
+    </div>
+  `).join('');
 
   cvlRoot.innerHTML = `
     <div class="cvl-window">
@@ -1005,6 +1059,12 @@ function renderCvlPanel() {
           <ul>${sampleList}</ul>
         </aside>
         <div class="cvl-lanes">
+          <div class="cvl-ruler">
+            <div class="cvl-lane-label">Timeline</div>
+            <div class="cvl-ruler-track" style="--cvl-width:${timelineWidth}px; --cvl-beat:${pixelsPerBeat}px">
+              ${rulerTicks}
+            </div>
+          </div>
           ${laneRows}
         </div>
       </div>
