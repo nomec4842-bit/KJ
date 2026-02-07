@@ -81,6 +81,37 @@ const FALLBACK_TARGETS = Object.freeze(
   Object.values(TARGETS_BY_ENGINE).flat()
 );
 
+const NOTE_PARAM_TARGETS = [
+  { value: 'vel', label: 'Velocity' },
+  { value: 'chance', label: 'Chance' },
+];
+
+function getNoteTargetOptions(track) {
+  if (!track || !Array.isArray(track.noteModTargets) || !track.noteModTargets.length) return [];
+  const options = [];
+  track.noteModTargets.forEach((target) => {
+    const step = Number(target?.step);
+    const pitch = Number(target?.pitch);
+    if (!Number.isFinite(step) || !Number.isFinite(pitch)) return;
+    const stepIndex = Math.max(0, Math.trunc(step));
+    const pitchValue = Math.trunc(pitch);
+    const prefixLabel = `Note ${stepIndex + 1} · Pitch ${pitchValue}`;
+    NOTE_PARAM_TARGETS.forEach((param) => {
+      options.push({
+        value: `note.${stepIndex}.${pitchValue}.${param.value}`,
+        label: `${prefixLabel} ${param.label}`,
+      });
+    });
+  });
+  return options;
+}
+
+function withNoteTargets(track, options) {
+  const noteOptions = getNoteTargetOptions(track);
+  if (!noteOptions.length) return options;
+  return [...options, ...noteOptions];
+}
+
 function getTargetOptionsForTrack(track) {
   const engine = track?.engine;
   if (engine && TARGETS_BY_ENGINE[engine]) {
@@ -106,17 +137,17 @@ function getTargetOptionsForTrack(track) {
             });
           }
         });
-        return options;
+        return withNoteTargets(track, options);
       }
       const options = [...TARGETS_BY_ENGINE.synth];
       if (synthParams.wavetable) {
         options.push(SYNTH_MORPH_TARGET);
       }
-      return options;
+      return withNoteTargets(track, options);
     }
-    return TARGETS_BY_ENGINE[engine];
+    return withNoteTargets(track, TARGETS_BY_ENGINE[engine]);
   }
-  return FALLBACK_TARGETS;
+  return withNoteTargets(track, FALLBACK_TARGETS);
 }
 
 function createModCell(labelText, controlEl) {
@@ -529,6 +560,16 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
   const stateLabel = document.createElement('span');
   stateLabel.className = 'note-param-state hint';
 
+  const modToggle = document.createElement('input');
+  modToggle.type = 'checkbox';
+  modToggle.className = 'note-param-toggle-input';
+  modToggle.setAttribute('aria-label', 'Add note to mod matrix targets');
+
+  const modToggleLabel = document.createElement('label');
+  modToggleLabel.className = 'note-param-toggle';
+  modToggleLabel.appendChild(modToggle);
+  modToggleLabel.appendChild(document.createTextNode('Add to mod matrix'));
+
   const controls = document.createElement('div');
   controls.className = 'note-param-controls';
 
@@ -541,6 +582,10 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
   chanceGroup.group.appendChild(chanceSlider);
   chanceGroup.group.appendChild(chanceNumber);
   controls.appendChild(chanceGroup.group);
+
+  const modGroup = makeGroup('Mod Matrix');
+  modGroup.group.appendChild(modToggleLabel);
+  controls.appendChild(modGroup.group);
 
   controls.appendChild(stateLabel);
 
@@ -562,6 +607,28 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
       return;
     }
     stateLabel.textContent = `Step ${note.start + 1} · Pitch ${note.pitch}`;
+  };
+
+  const getNoteKey = (note) => `${note.start}:${note.pitch}`;
+
+  const hasNoteTarget = (track, note) => {
+    if (!track || !note || !Array.isArray(track.noteModTargets)) return false;
+    const key = getNoteKey(note);
+    return track.noteModTargets.some((target) => getNoteKey(target) === key);
+  };
+
+  const setNoteTarget = (track, note, enabled) => {
+    if (!track || !note) return;
+    if (!Array.isArray(track.noteModTargets)) track.noteModTargets = [];
+    const key = getNoteKey(note);
+    const existingIndex = track.noteModTargets.findIndex((target) => getNoteKey(target) === key);
+    if (enabled && existingIndex === -1) {
+      track.noteModTargets.push({ step: note.start, pitch: note.pitch });
+      return;
+    }
+    if (!enabled && existingIndex !== -1) {
+      track.noteModTargets.splice(existingIndex, 1);
+    }
   };
 
   const commitNote = (note, updates = {}) => {
@@ -635,6 +702,15 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     commitNote(note, { chance: Math.max(0, Math.min(100, percent)) / 100 });
   });
 
+  modToggle.addEventListener('change', (ev) => {
+    if (suppressEvents) return;
+    const track = getTrack?.();
+    const note = findSelectedNote(track);
+    if (!track || !note) return;
+    setNoteTarget(track, note, !!ev.target.checked);
+    if (typeof onChange === 'function') onChange(note);
+  });
+
   function findSelectedNote(track) {
     if (!track || !Array.isArray(track.notes)) return null;
     if (!selectedNote) return null;
@@ -663,6 +739,10 @@ export function createPianoNoteParamsPanel(rootEl, getTrack) {
     }
     ensureControls();
     commitNote(note, {});
+    suppressEvents = true;
+    modToggle.checked = hasNoteTarget(track, note);
+    modToggle.disabled = false;
+    suppressEvents = false;
   };
 
   showPlaceholder('Select a note to edit velocity and chance.');

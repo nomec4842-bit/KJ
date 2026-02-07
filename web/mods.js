@@ -149,8 +149,10 @@ export function applyMods(track) {
 
   const paramOffsets = {};
   const effectOffsets = {};
+  const noteOffsets = {};
   let paramsTouched = false;
   let effectsTouched = false;
+  let notesTouched = false;
 
   for (const mod of track.mods) {
     if (!mod || typeof mod !== 'object') continue;
@@ -167,6 +169,23 @@ export function applyMods(track) {
     if (!path.length) continue;
 
     const prefix = path[0]?.toLowerCase?.();
+    if (prefix === 'note' || prefix === 'notes') {
+      if (path.length < 4) continue;
+      const step = Number(path[1]);
+      const pitch = Number(path[2]);
+      const param = typeof path[3] === 'string' ? path[3].toLowerCase() : '';
+      if (!Number.isFinite(step) || !Number.isFinite(pitch)) continue;
+      if (param !== 'vel' && param !== 'velocity' && param !== 'chance') continue;
+      const key = `${Math.trunc(step)}:${Math.trunc(pitch)}`;
+      const bucket = noteOffsets[key] || (noteOffsets[key] = { vel: 0, chance: 0 });
+      if (param === 'chance') {
+        bucket.chance += delta;
+      } else {
+        bucket.vel += delta;
+      }
+      notesTouched = true;
+      continue;
+    }
     if (prefix === 'fx' || prefix === 'stepfx' || prefix === 'effects' || prefix === 'effect') {
       if (path.length < 3) continue;
       const rawType = path[1];
@@ -189,10 +208,11 @@ export function applyMods(track) {
     paramsTouched = true;
   }
 
-  if (!paramsTouched && !effectsTouched) return null;
+  if (!paramsTouched && !effectsTouched && !notesTouched) return null;
 
   const result = {};
   if (paramsTouched) result.params = paramOffsets;
   if (effectsTouched) result.effects = effectOffsets;
+  if (notesTouched) result.notes = noteOffsets;
   return result;
 }

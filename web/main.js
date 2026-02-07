@@ -75,12 +75,28 @@ function shuffleArray(source) {
   return arr;
 }
 
-function noteChanceAllows(note) {
-  const chanceValue = Number(note?.chance);
+function noteChanceAllows(note, chanceOverride) {
+  const chanceValue = Number(chanceOverride ?? note?.chance);
   const chance = Number.isFinite(chanceValue) ? chanceValue : 1;
   if (chance >= 1) return true;
   if (chance <= 0) return false;
   return Math.random() < chance;
+}
+
+function applyNoteOffsets(notes, noteOffsets) {
+  if (!noteOffsets || !Array.isArray(notes)) return notes;
+  return notes.map((note) => {
+    const key = `${note.start}:${note.pitch}`;
+    const offset = noteOffsets[key];
+    if (!offset) return note;
+    const velBase = Number.isFinite(note?.vel) ? note.vel : 1;
+    const chanceBase = Number.isFinite(note?.chance) ? note.chance : 1;
+    const velOffset = Number.isFinite(offset.vel) ? offset.vel : 0;
+    const chanceOffset = Number.isFinite(offset.chance) ? offset.chance : 0;
+    const vel = Math.max(0, Math.min(1, velBase + velOffset));
+    const chance = Math.max(0, Math.min(1, chanceBase + chanceOffset));
+    return { ...note, vel, chance };
+  });
 }
 
 function buildArpNotes(notes, arp) {
@@ -288,6 +304,20 @@ function normalizeTrack(t) {
       const chance = Number.isFinite(chanceValue) ? Math.max(0, Math.min(1, chanceValue)) : 1;
       return { ...note, start, length, pitch, vel, chance };
     });
+
+  if (!Array.isArray(t.noteModTargets)) {
+    t.noteModTargets = [];
+  } else {
+    t.noteModTargets = t.noteModTargets
+      .filter(target => target && typeof target === 'object')
+      .map((target) => {
+        const stepRaw = Number(target.step);
+        const pitchRaw = Number(target.pitch);
+        const step = Number.isFinite(stepRaw) ? Math.max(0, Math.min(t.length - 1, Math.trunc(stepRaw))) : 0;
+        const pitch = Number.isFinite(pitchRaw) ? Math.trunc(pitchRaw) : 0;
+        return { step, pitch };
+      });
+  }
 
   const storedSelection = Number.isInteger(t.selectedStep) ? t.selectedStep : -1;
   if (storedSelection >= 0 && storedSelection < t.length) {
@@ -1577,12 +1607,16 @@ playBtn.onclick = async () => {
       const modResult = applyMods?.(t);
       let paramOffsets = null;
       let effectOffsets = null;
-      if (modResult && typeof modResult === 'object' && (modResult.params || modResult.effects || 'params' in modResult || 'effects' in modResult)) {
+      let noteOffsets = null;
+      if (modResult && typeof modResult === 'object' && (modResult.params || modResult.effects || modResult.notes || 'params' in modResult || 'effects' in modResult || 'notes' in modResult)) {
         if (modResult.params && typeof modResult.params === 'object') {
           paramOffsets = modResult.params;
         }
         if (modResult.effects && typeof modResult.effects === 'object') {
           effectOffsets = modResult.effects;
+        }
+        if (modResult.notes && typeof modResult.notes === 'object') {
+          noteOffsets = modResult.notes;
         }
       } else if (modResult) {
         paramOffsets = modResult;
@@ -1595,22 +1629,23 @@ playBtn.onclick = async () => {
       try {
         if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
+          const notesWithOffsets = noteOffsets ? applyNoteOffsets(notes, noteOffsets) : notes;
           const columnStep = t.steps?.[t.pos];
-          const columnVelocity = notes.length
-            ? Math.max(...notes.map((note) => Number.isFinite(note?.vel) ? note.vel : 0))
+          const columnVelocity = notesWithOffsets.length
+            ? Math.max(...notesWithOffsets.map((note) => Number.isFinite(note?.vel) ? note.vel : 0))
             : 0;
           const fxResult = columnStep
-            ? evaluateStepFx(t, columnStep, t.pos, effectOffsets, scheduledTime, tracks, notes, columnVelocity)
+            ? evaluateStepFx(t, columnStep, t.pos, effectOffsets, scheduledTime, tracks, notesWithOffsets, columnVelocity)
             : null;
           const velocityOffset = fxResult && typeof fxResult === 'object' && Number.isFinite(fxResult.velocityOffset)
             ? fxResult.velocityOffset
             : 0;
-          if (t.arp?.enabled && notes.length) {
+          if (t.arp?.enabled && notesWithOffsets.length) {
             const rate = Math.max(1, Math.round(Number(t.arp.rate) || 1));
             const gate = Math.max(0.05, Math.min(1, Number(t.arp.gate) || 1));
             const sliceSec = Math.max(0.001, currentStepIntervalMs / 1000);
             const interval = sliceSec / rate;
-            const arpNotes = buildArpNotes(notes, t.arp);
+            const arpNotes = buildArpNotes(notesWithOffsets, t.arp);
             if (arpNotes.length) {
               for (let i = 0; i < rate; i++) {
                 const note = arpNotes[i % arpNotes.length];
@@ -1623,7 +1658,7 @@ playBtn.onclick = async () => {
               }
             }
           } else {
-            for (const n of notes) {
+            for (const n of notesWithOffsets) {
               if (!noteChanceAllows(n)) continue;
               let vel = (Number.isFinite(n?.vel) ? n.vel : 1) + velocityOffset;
               vel = Math.max(0, Math.min(1, vel));
