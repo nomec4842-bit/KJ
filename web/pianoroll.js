@@ -53,17 +53,10 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
         velBar.style.height = '0%';
         cell.appendChild(velBar);
 
-        const handle = document.createElement('div');
-        handle.className = 'note-handle';
-        cell.appendChild(handle);
-
         let dragging=false, startCol=null;
         let didStretch = false;
         let longPressTimer = null;
         let longPressTriggered = false;
-        let resizing = false;
-        let resizeStartCol = null;
-        let resizePitch = null;
         const LONG_PRESS_MS = 420;
 
         const cancelLongPress = () => {
@@ -106,45 +99,6 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
           }
         };
 
-        const handlePointerMove = (e) => {
-          if (!resizing) return;
-          const tr = getTrack();
-          const target = document.elementFromPoint(e.clientX, e.clientY);
-          const targetCell = target && target.closest ? target.closest('.piano-cell') : null;
-          const endCol = targetCell ? Number(targetCell.dataset.col) : c;
-          stretchNoteEnding(tr, resizeStartCol, resizePitch, endCol + 1);
-          didStretch = true;
-          onChange();
-        };
-
-        handle.addEventListener('pointerdown', (e) => {
-          if (e.pointerType === 'mouse' && e.button !== 0) return;
-          const note = findNoteAt(getTrack(), c, pitch);
-          if (!note) return;
-          if (c !== note.start + note.length - 1) return;
-          e.stopPropagation();
-          resizing = true;
-          resizeStartCol = note.start;
-          resizePitch = note.pitch;
-          didStretch = false;
-          handle.setPointerCapture(e.pointerId);
-        });
-
-        handle.addEventListener('pointermove', handlePointerMove);
-
-        handle.addEventListener('pointerup', (e) => {
-          resizing = false;
-          resizeStartCol = null;
-          resizePitch = null;
-          try { handle.releasePointerCapture(e.pointerId); } catch {}
-        });
-
-        handle.addEventListener('pointercancel', () => {
-          resizing = false;
-          resizeStartCol = null;
-          resizePitch = null;
-        });
-
         cell.addEventListener('pointerdown', (e)=>{
           if (e.pointerType === 'mouse' && e.button !== 0) return;
           dragging = true;
@@ -165,7 +119,6 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
         cell.addEventListener('pointermove', (e)=>{
           if (!dragging) return;
           if (longPressTriggered) return;
-          if (resizing) return;
           if (!e.shiftKey) return; // stretch only when Shift held
           const tr = getTrack();
           const endCol = Math.max(c, startCol);
@@ -200,7 +153,6 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
     // clear
     for (const cell of cells){
       cell.classList.remove('on');
-      cell.classList.remove('note-end');
       const bar = cell.querySelector('.vel'); if (bar) bar.style.height = '0%';
     }
     // draw notes
@@ -212,9 +164,6 @@ export function createPianoRoll(container, getTrack, onChange, onSelect){
         const idx = r*cols + c;
         const cell = cells[idx];
         cell.classList.add('on');
-        if (x === n.length - 1) {
-          cell.classList.add('note-end');
-        }
         const bar = cell.querySelector('.vel');
         if (bar) bar.style.height = Math.round((n.vel || 1)*100)+'%';
       }

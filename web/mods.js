@@ -175,11 +175,13 @@ export function applyMods(track) {
       const pitch = Number(path[2]);
       const param = typeof path[3] === 'string' ? path[3].toLowerCase() : '';
       if (!Number.isFinite(step) || !Number.isFinite(pitch)) continue;
-      if (param !== 'vel' && param !== 'velocity' && param !== 'chance') continue;
+      if (param !== 'vel' && param !== 'velocity' && param !== 'chance' && param !== 'length' && param !== 'len') continue;
       const key = `${Math.trunc(step)}:${Math.trunc(pitch)}`;
-      const bucket = noteOffsets[key] || (noteOffsets[key] = { vel: 0, chance: 0 });
+      const bucket = noteOffsets[key] || (noteOffsets[key] = { vel: 0, chance: 0, length: 0 });
       if (param === 'chance') {
         bucket.chance += delta;
+      } else if (param === 'length' || param === 'len') {
+        bucket.length += delta;
       } else {
         bucket.vel += delta;
       }

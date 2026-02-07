@@ -83,7 +83,7 @@ function noteChanceAllows(note, chanceOverride) {
   return Math.random() < chance;
 }
 
-function applyNoteOffsets(notes, noteOffsets) {
+function applyNoteOffsets(notes, noteOffsets, trackLength) {
   if (!noteOffsets || !Array.isArray(notes)) return notes;
   return notes.map((note) => {
     const key = `${note.start}:${note.pitch}`;
@@ -91,11 +91,17 @@ function applyNoteOffsets(notes, noteOffsets) {
     if (!offset) return note;
     const velBase = Number.isFinite(note?.vel) ? note.vel : 1;
     const chanceBase = Number.isFinite(note?.chance) ? note.chance : 1;
+    const lengthBase = Number.isFinite(note?.length) ? note.length : 1;
     const velOffset = Number.isFinite(offset.vel) ? offset.vel : 0;
     const chanceOffset = Number.isFinite(offset.chance) ? offset.chance : 0;
+    const lengthOffset = Number.isFinite(offset.length) ? offset.length : 0;
     const vel = Math.max(0, Math.min(1, velBase + velOffset));
     const chance = Math.max(0, Math.min(1, chanceBase + chanceOffset));
-    return { ...note, vel, chance };
+    const maxLength = Number.isFinite(trackLength)
+      ? Math.max(1, trackLength - note.start)
+      : Math.max(1, lengthBase + lengthOffset);
+    const length = Math.max(1, Math.min(maxLength, Math.round(lengthBase + lengthOffset)));
+    return { ...note, vel, chance, length };
   });
 }
 
@@ -1633,7 +1639,7 @@ playBtn.onclick = async () => {
       try {
         if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
-          const notesWithOffsets = noteOffsets ? applyNoteOffsets(notes, noteOffsets) : notes;
+          const notesWithOffsets = noteOffsets ? applyNoteOffsets(notes, noteOffsets, t.length) : notes;
           const columnStep = t.steps?.[t.pos];
           const columnVelocity = notesWithOffsets.length
             ? Math.max(...notesWithOffsets.map((note) => Number.isFinite(note?.vel) ? note.vel : 0))
@@ -1662,11 +1668,17 @@ playBtn.onclick = async () => {
               }
             }
           } else {
+            const stepSeconds = Number.isFinite(currentStepIntervalMs)
+              ? Math.max(0.001, currentStepIntervalMs / 1000)
+              : null;
             for (const n of notesWithOffsets) {
               if (!noteChanceAllows(n)) continue;
               let vel = (Number.isFinite(n?.vel) ? n.vel : 1) + velocityOffset;
               vel = Math.max(0, Math.min(1, vel));
-              if (vel > 0) triggerEngine?.(t, vel, n.pitch, scheduledTime);
+              const gateSec = stepSeconds && Number.isFinite(n?.length)
+                ? Math.max(0.01, n.length * stepSeconds)
+                : undefined;
+              if (vel > 0) triggerEngine?.(t, vel, n.pitch, scheduledTime, gateSec);
             }
           }
         } else {
