@@ -483,6 +483,7 @@ function normalizeTrack(t) {
       scrubberRate: '1/16',
       scrubberDepth: 0,
       pixelsPerBeat: 24,
+      snapToGrid: false,
       clips: [],
     };
   } else {
@@ -503,6 +504,7 @@ function normalizeTrack(t) {
     t.cvl.pixelsPerBeat = Number.isFinite(pixelsPerBeat)
       ? Math.max(6, Math.min(96, pixelsPerBeat))
       : 24;
+    t.cvl.snapToGrid = !!t.cvl.snapToGrid;
     if (!Array.isArray(t.cvl.clips)) t.cvl.clips = [];
     t.cvl.clips = t.cvl.clips
       .filter((clip) => clip && typeof clip === 'object')
@@ -996,8 +998,18 @@ function renderCvlPanel() {
     `<option value="${rate.value}" ${rate.value === track.cvl.scrubberRate ? 'selected' : ''}>${rate.label}</option>`
   )).join('');
 
+  const escapeHtml = (value) => `${value}`
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
   const sampleList = samples.length
-    ? samples.map((sample) => `<li>${sample.name}</li>`).join('')
+    ? samples.map((sample) => {
+      const safeName = escapeHtml(sample.name);
+      return `<li class="cvl-sample" draggable="true" data-sample-name="${safeName}">${safeName}</li>`;
+    }).join('')
     : '<li class="cvl-empty">No samples loaded.</li>';
 
   const clipMarkupForLane = (laneIndex) => {
@@ -1008,7 +1020,7 @@ function renderCvlPanel() {
       const length = Number.isFinite(clip.length) ? clip.length : 1;
       const left = Math.max(0, start * pixelsPerBeat);
       const width = Math.max(8, length * pixelsPerBeat);
-      const sampleName = clip.sampleName || 'Sample';
+      const sampleName = escapeHtml(clip.sampleName || 'Sample');
       return `
         <div class="cvl-clip" style="left:${left}px; width:${width}px" title="${sampleName}">
           <span>${sampleName}</span>
@@ -1027,7 +1039,7 @@ function renderCvlPanel() {
   }).join('');
 
   const laneRows = Array.from({ length: lanes }, (_, index) => `
-    <div class="cvl-lane">
+    <div class="cvl-lane" data-lane="${index}">
       <div class="cvl-lane-label">Lane ${index + 1}</div>
       <div class="cvl-lane-track" style="--cvl-width:${timelineWidth}px; --cvl-beat:${pixelsPerBeat}px">
         ${clipMarkupForLane(index)}
@@ -1050,6 +1062,10 @@ function renderCvlPanel() {
           <label class="ctrl">
             Depth
             <input id="cvl_scrubberDepth" type="range" min="0" max="1" step="0.01" value="${track.cvl.scrubberDepth ?? 0}">
+          </label>
+          <label class="ctrl">
+            Snap to Grid
+            <input id="cvl_snapToGrid" type="checkbox" ${track.cvl.snapToGrid ? 'checked' : ''}>
           </label>
         </div>
       </div>
@@ -1101,6 +1117,68 @@ function renderCvlPanel() {
       saveProjectToStorage();
     };
   }
+
+  const snapToggle = document.getElementById('cvl_snapToGrid');
+  if (snapToggle) {
+    snapToggle.onchange = (ev) => {
+      track.cvl.snapToGrid = !!ev.target.checked;
+      saveProjectToStorage();
+    };
+  }
+
+  const sampleItems = cvlRoot.querySelectorAll('.cvl-sample[data-sample-name]');
+  sampleItems.forEach((item) => {
+    item.addEventListener('dragstart', (event) => {
+      const sampleName = item.dataset.sampleName;
+      if (!event.dataTransfer || !sampleName) return;
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('application/x-cvl-sample', sampleName);
+      event.dataTransfer.setData('text/plain', sampleName);
+    });
+  });
+
+  const laneRowsEls = cvlRoot.querySelectorAll('.cvl-lane');
+  laneRowsEls.forEach((laneEl) => {
+    const laneIndex = Number(laneEl.dataset.lane);
+    const trackEl = laneEl.querySelector('.cvl-lane-track');
+    if (!trackEl) return;
+    const getSampleName = (event) => {
+      if (!event.dataTransfer) return '';
+      return event.dataTransfer.getData('application/x-cvl-sample')
+        || event.dataTransfer.getData('text/plain');
+    };
+    const handleDragOver = (event) => {
+      if (!getSampleName(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    };
+    const handleDrop = (event) => {
+      const sampleName = getSampleName(event);
+      if (!sampleName) return;
+      event.preventDefault();
+      const rect = trackEl.getBoundingClientRect();
+      const rawOffset = event.clientX - rect.left;
+      const clampedOffset = Math.max(0, Math.min(rect.width, rawOffset));
+      const rawBeat = clampedOffset / pixelsPerBeat;
+      const gridSize = 0.25;
+      const snappedBeat = track.cvl.snapToGrid
+        ? Math.round(rawBeat / gridSize) * gridSize
+        : rawBeat;
+      const start = Math.max(0, Math.min(timelineBeats, snappedBeat));
+      const clip = {
+        lane: Number.isFinite(laneIndex) ? laneIndex : 0,
+        start,
+        length: 1,
+        sampleName,
+      };
+      if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
+      track.cvl.clips.push(clip);
+      saveProjectToStorage();
+      renderCvlPanel();
+    };
+    laneEl.addEventListener('dragover', handleDragOver);
+    laneEl.addEventListener('drop', handleDrop);
+  });
 }
 
 function updateArpPanelVisibility(track) {
