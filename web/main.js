@@ -521,12 +521,16 @@ function normalizeTrack(t) {
       .filter((clip) => clip && typeof clip === 'object')
       .map((clip) => {
         const lane = Number(clip.lane);
-        const start = Number(clip.start);
-        const length = Number(clip.length);
+        const startBeat = Number.isFinite(Number(clip.startBeat))
+          ? Number(clip.startBeat)
+          : Number(clip.start);
+        const lengthBeats = Number.isFinite(Number(clip.lengthBeats))
+          ? Number(clip.lengthBeats)
+          : Number(clip.length);
         return {
           lane: Number.isFinite(lane) ? Math.max(0, Math.floor(lane)) : 0,
-          start: Number.isFinite(start) ? Math.max(0, start) : 0,
-          length: Number.isFinite(length) ? Math.max(0.25, length) : 1,
+          startBeat: Number.isFinite(startBeat) ? Math.max(0, startBeat) : 0,
+          lengthBeats: Number.isFinite(lengthBeats) ? Math.max(0.25, lengthBeats) : 1,
           sampleName: typeof clip.sampleName === 'string' ? clip.sampleName : 'Sample',
         };
       });
@@ -1029,10 +1033,10 @@ function renderCvlPanel() {
     const laneClips = clips.filter((clip) => clip.lane === laneIndex);
     if (!laneClips.length) return '';
     return laneClips.map((clip) => {
-      const start = Number.isFinite(clip.start) ? clip.start : 0;
-      const length = Number.isFinite(clip.length) ? clip.length : 1;
-      const left = Math.max(0, start * pixelsPerBeat);
-      const width = Math.max(8, length * pixelsPerBeat);
+      const startBeat = Number.isFinite(clip.startBeat) ? clip.startBeat : 0;
+      const lengthBeats = Number.isFinite(clip.lengthBeats) ? clip.lengthBeats : 1;
+      const left = Math.max(0, startBeat * pixelsPerBeat);
+      const width = Math.max(8, lengthBeats * pixelsPerBeat);
       const sampleName = escapeHtml(clip.sampleName || 'Sample');
       return `
         <div class="cvl-clip" style="left:${left}px; width:${width}px" title="${sampleName}">
@@ -1180,8 +1184,8 @@ function renderCvlPanel() {
       const start = Math.max(0, Math.min(timelineBeats, snappedBeat));
       const clip = {
         lane: Number.isFinite(laneIndex) ? laneIndex : 0,
-        start,
-        length: 1,
+        startBeat: start,
+        lengthBeats: 1,
         sampleName,
       };
       if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
@@ -2024,8 +2028,8 @@ playBtn.onclick = async () => {
             const clips = t.cvl.clips;
             for (const clip of clips) {
               if (!clip || typeof clip !== 'object') continue;
-              const clipStart = Number(clip.start);
-              const clipLength = Number(clip.length);
+              const clipStart = Number(clip.startBeat);
+              const clipLength = Number(clip.lengthBeats);
               if (!Number.isFinite(clipStart) || !Number.isFinite(clipLength) || clipLength <= 0) continue;
               const clipEnd = clipStart + clipLength;
               const insideNow = modulatedBeat >= clipStart && modulatedBeat < clipEnd;

@@ -179,7 +179,9 @@ h3 { margin:0 0 8px; font-weight:600; }
   height:28px;
   border-radius:8px;
   border:1px solid var(--border);
-  background: linear-gradient(90deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 100%) 0 0 / var(--cvl-beat, 24px) 100%;
+  background:
+    linear-gradient(0deg, rgba(16, 20, 30, 0.95), rgba(16, 20, 30, 0.95)),
+    linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 100%) 0 0 / var(--cvl-beat, 24px) 100%;
   overflow:hidden;
 }
 .cvl-clip {
@@ -200,6 +202,8 @@ h3 { margin:0 0 8px; font-weight:600; }
 .cvl-ruler-track {
   height:22px;
   border-bottom:1px solid var(--border);
+  background:rgba(10, 14, 22, 0.75);
+  border-radius:6px;
 }
 .cvl-ruler-tick {
   position:absolute;
