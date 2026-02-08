@@ -845,6 +845,7 @@ function paintPlayhead(){
   else stepGrid.paint(t.pos);
   const inlineStep = paramsEl?._inlineStepEditor;
   if (inlineStep) inlineStep.paint(t.pos ?? -1);
+  updateCvlPlayhead();
 }
 
 /* ---------- Params ---------- */
@@ -1046,11 +1047,14 @@ function renderCvlPanel() {
     }).join('');
   };
 
-  const rulerTicks = Array.from({ length: Math.ceil(timelineBeats) + 1 }, (_, index) => {
+  const totalBeats = Math.max(1, Math.ceil(timelineBeats));
+  const rulerTicks = Array.from({ length: totalBeats + 1 }, (_, index) => {
     const left = index * pixelsPerBeat;
+    const isBar = index % 4 === 0;
+    const barNumber = Math.floor(index / 4) + 1;
     return `
-      <div class="cvl-ruler-tick" style="left:${left}px">
-        <span>${index + 1}</span>
+      <div class="cvl-ruler-tick ${isBar ? 'is-bar' : 'is-beat'}" style="left:${left}px">
+        ${isBar ? `<span>${barNumber}</span>` : ''}
       </div>
     `;
   }).join('');
@@ -1095,6 +1099,7 @@ function renderCvlPanel() {
           <div class="cvl-ruler">
             <div class="cvl-lane-label">Timeline</div>
             <div class="cvl-ruler-track" style="--cvl-width:${timelineWidth}px; --cvl-beat:${pixelsPerBeat}px">
+              <div class="cvl-playhead" aria-hidden="true"></div>
               ${rulerTicks}
             </div>
           </div>
@@ -1196,6 +1201,22 @@ function renderCvlPanel() {
     trackEl.addEventListener('dragover', handleDragOver);
     trackEl.addEventListener('drop', handleDrop);
   });
+
+  updateCvlPlayhead();
+}
+
+function updateCvlPlayhead() {
+  if (!cvlRoot) return;
+  const track = currentTrack();
+  const playhead = cvlRoot.querySelector('.cvl-playhead');
+  if (!track || track.type !== 'cvl' || !playhead) return;
+  const pixelsPerBeat = Number.isFinite(track.cvl?.pixelsPerBeat) ? track.cvl.pixelsPerBeat : 24;
+  const timelineSteps = Math.max(1, Number.isFinite(track.length) ? track.length : 16);
+  const timelineBeats = Math.max(1, timelineSteps / 4);
+  const beat = Number.isFinite(track.pos) && track.pos >= 0 ? track.pos / 4 : 0;
+  const clampedBeat = Math.max(0, Math.min(timelineBeats, beat));
+  playhead.style.left = `${clampedBeat * pixelsPerBeat}px`;
+  playhead.style.opacity = track.pos >= 0 ? '1' : '0';
 }
 
 function updateArpPanelVisibility(track) {

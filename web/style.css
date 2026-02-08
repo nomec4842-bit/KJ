@@ -168,7 +168,7 @@ h3 { margin:0 0 8px; font-weight:600; }
 .cvl-empty { font-size:12px; color:var(--muted); }
 .cvl-lanes { display:flex; flex-direction:column; gap:8px; overflow-x:auto; padding-bottom:4px; }
 .cvl-lane { display:grid; grid-template-columns: 80px 1fr; gap:8px; align-items:center; }
-.cvl-ruler { display:grid; grid-template-columns: 80px 1fr; gap:8px; align-items:end; }
+.cvl-ruler { display:grid; grid-template-columns: 80px 1fr; gap:8px; align-items:end; padding-top:2px; }
 .cvl-lane-label { font-size:12px; color:var(--muted); }
 .cvl-lane-track,
 .cvl-ruler-track {
@@ -205,12 +205,28 @@ h3 { margin:0 0 8px; font-weight:600; }
   background:rgba(10, 14, 22, 0.75);
   border-radius:6px;
 }
+.cvl-playhead {
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(90, 200, 250, 0.65);
+  pointer-events:none;
+  transition:opacity 0.12s ease;
+}
 .cvl-ruler-tick {
   position:absolute;
   bottom:0;
   width:1px;
   height:100%;
   background:rgba(255,255,255,0.18);
+}
+.cvl-ruler-tick.is-bar {
+  background:rgba(255,255,255,0.35);
+}
+.cvl-ruler-tick.is-beat {
+  height:70%;
 }
 .cvl-ruler-tick span {
   position:absolute;
