@@ -51,6 +51,15 @@ const loadProjectBtn = document.getElementById('loadProject');
 const loadProjectInput = document.getElementById('loadProjectFile');
 const resetProjectBtn = document.getElementById('resetProject');
 
+function applyCvlLayout(isCvl) {
+  if (timelinePanel) timelinePanel.classList.toggle('is-hidden', isCvl);
+  if (seqEl) seqEl.classList.toggle('is-hidden', isCvl);
+  if (cvlPanel) {
+    cvlPanel.classList.toggle('is-hidden', !isCvl);
+    cvlPanel.style.gridColumn = isCvl ? '1 / -1' : '';
+  }
+}
+
 /* ---------- State ---------- */
 const tracks = [];
 let selectedTrackIndex = 0;
@@ -790,15 +799,11 @@ function showEditorForTrack(){
     return;
   }
   if (t.type === 'cvl') {
-    if (timelinePanel) timelinePanel.classList.add('is-hidden');
-    if (seqEl) seqEl.classList.add('is-hidden');
-    if (cvlPanel) cvlPanel.classList.remove('is-hidden');
+    applyCvlLayout(true);
     renderCvlPanel();
     return;
   }
-  if (timelinePanel) timelinePanel.classList.remove('is-hidden');
-  if (seqEl) seqEl.classList.remove('is-hidden');
-  if (cvlPanel) cvlPanel.classList.add('is-hidden');
+  applyCvlLayout(false);
   seqEl.classList.toggle('piano-roll', t.mode === 'piano');
   seqEl.classList.toggle('step-sequencer', t.mode !== 'piano');
   if (t.mode === 'piano') piano.setLength(t.length);
@@ -998,12 +1003,12 @@ function renderCvlPanel() {
   if (!cvlPanel || !cvlRoot) return;
   const track = currentTrack();
   if (!track || track.type !== 'cvl') {
-    cvlPanel.classList.add('is-hidden');
+    applyCvlLayout(false);
     cvlRoot.innerHTML = '';
     return;
   }
 
-  cvlPanel.classList.remove('is-hidden');
+  applyCvlLayout(true);
 
   const samples = Array.isArray(track.cvl?.samples) ? track.cvl.samples : [];
   const clips = Array.isArray(track.cvl?.clips) ? track.cvl.clips : [];
