@@ -41,6 +41,7 @@ export const defaults = {
   hat808:  { decay:0.06, hpf:8000 },
   clap909: { bursts:3, spread:0.02, decay:0.10 },
   sampler: { start:0, end:1, semis:0, gain:1, loop:false, advanced:false },
+  cvl: { scrubber: 0 },
 };
 
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -157,6 +158,7 @@ export function createTrack(name, engine='synth', length=16){
   const bus = makeBus();
   const track = {
     name, engine,
+    type: 'standard',
     mode: 'steps',           // 'steps' | 'piano'
     length,
     pos: -1,
@@ -182,9 +184,18 @@ export function createTrack(name, engine='synth', length=16){
       hat808:  clone(defaults.hat808),
       clap909: clone(defaults.clap909),
       sampler: clone(defaults.sampler),
+      cvl: clone(defaults.cvl),
     },
 
     sample: { buffer:null, name:'' },
+    cvl: {
+      lanes: 6,
+      samples: [],
+      clips: [],
+      scrubberRate: '1/16',
+      scrubberDepth: 0,
+      snap: true,
+    },
     effects: normalizeTrackEffects({}),
   };
   ensureTrackFxNodes(track);

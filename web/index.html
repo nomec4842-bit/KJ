@@ -23,6 +23,14 @@
     <button id="addTrack">+ Track</button>
 
     <label class="ctrl">
+      Track Type
+      <select id="trackType">
+        <option value="standard">Standard</option>
+        <option value="cvl">CVL</option>
+      </select>
+    </label>
+
+    <label class="ctrl">
       Engine
       <select id="engine">
         <option value="synth">Synth</option>
@@ -72,6 +80,11 @@
       <div id="pianoNoteParams" class="step-detail piano-note-params placeholder">
         <span class="hint">Select a piano roll note to edit velocity, chance, and length.</span>
       </div>
+    </section>
+
+    <section class="panel cvl-panel is-hidden" id="cvlPanel">
+      <h3>CVL</h3>
+      <div id="cvlRoot"></div>
     </section>
 
     <section class="panel">

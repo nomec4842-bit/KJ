@@ -87,6 +87,10 @@ const NOTE_PARAM_TARGETS = [
   { value: 'length', label: 'Length' },
 ];
 
+const CVL_TARGETS = [
+  { value: 'cvl.scrubber', label: 'CVL Scrubber' },
+];
+
 function getNoteTargetOptions(track) {
   if (!track || !Array.isArray(track.noteModTargets) || !track.noteModTargets.length) return [];
   const options = [];
@@ -115,6 +119,7 @@ function withNoteTargets(track, options) {
 
 function getTargetOptionsForTrack(track) {
   const engine = track?.engine;
+  const isCvl = track?.type === 'cvl';
   if (engine && TARGETS_BY_ENGINE[engine]) {
     if (engine === 'synth') {
       const synthParams = track?.params?.synth || {};
@@ -138,17 +143,22 @@ function getTargetOptionsForTrack(track) {
             });
           }
         });
-        return withNoteTargets(track, options);
+        const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
+        return withNoteTargets(track, merged);
       }
       const options = [...TARGETS_BY_ENGINE.synth];
       if (synthParams.wavetable) {
         options.push(SYNTH_MORPH_TARGET);
       }
-      return withNoteTargets(track, options);
+      const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
+      return withNoteTargets(track, merged);
     }
-    return withNoteTargets(track, TARGETS_BY_ENGINE[engine]);
+    const options = TARGETS_BY_ENGINE[engine];
+    const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
+    return withNoteTargets(track, merged);
   }
-  return withNoteTargets(track, FALLBACK_TARGETS);
+  const merged = isCvl ? [...FALLBACK_TARGETS, ...CVL_TARGETS] : FALLBACK_TARGETS;
+  return withNoteTargets(track, merged);
 }
 
 function createModCell(labelText, controlEl) {
@@ -302,7 +312,8 @@ export function refreshTrackSelect(selectEl, tracks, selectedIndex) {
   tracks.forEach((t, i) => {
     const opt = document.createElement('option');
     opt.value = String(i);
-    opt.textContent = `${i + 1}. ${t.name} (${t.engine})`;
+    const typeLabel = t.type === 'cvl' ? 'CVL' : 'Standard';
+    opt.textContent = `${i + 1}. ${t.name} (${typeLabel} • ${t.engine})`;
     selectEl.appendChild(opt);
   });
   selectEl.value = String(selectedIndex);
