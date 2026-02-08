@@ -1170,7 +1170,7 @@ function renderCvlPanel() {
       event.dataTransfer.dropEffect = 'copy';
     };
     const handleDrop = (event) => {
-      const sampleName = getSampleName(event);
+      const sampleName = getSampleName(event).trim();
       if (!sampleName) return;
       event.preventDefault();
       const rect = trackEl.getBoundingClientRect();
@@ -1193,8 +1193,8 @@ function renderCvlPanel() {
       saveProjectToStorage();
       renderCvlPanel();
     };
-    laneEl.addEventListener('dragover', handleDragOver);
-    laneEl.addEventListener('drop', handleDrop);
+    trackEl.addEventListener('dragover', handleDragOver);
+    trackEl.addEventListener('drop', handleDrop);
   });
 }
 
