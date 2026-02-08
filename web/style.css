@@ -165,10 +165,11 @@ h3 { margin:0 0 8px; font-weight:600; }
 .cvl-bin ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
 .cvl-bin li { padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:#171a21; font-size:12px; }
 .cvl-bin li[draggable="true"] { cursor:grab; }
+.cvl-bin li.is-armed { border-color:var(--accent); box-shadow:0 0 0 1px rgba(90,200,250,0.4); background:#1b2232; }
 .cvl-empty { font-size:12px; color:var(--muted); }
-.cvl-lanes { display:flex; flex-direction:column; gap:8px; overflow-x:auto; padding-bottom:4px; }
-.cvl-lane { display:grid; grid-template-columns: 80px 1fr; gap:8px; align-items:center; }
-.cvl-ruler { display:grid; grid-template-columns: 80px 1fr; gap:8px; align-items:end; padding-top:2px; }
+.cvl-lanes { display:flex; flex-direction:column; gap:10px; overflow-x:auto; padding-bottom:8px; }
+.cvl-lane { display:grid; grid-template-columns: 90px 1fr; gap:10px; align-items:center; }
+.cvl-ruler { display:grid; grid-template-columns: 90px 1fr; gap:10px; align-items:end; padding-top:2px; }
 .cvl-lane-label { font-size:12px; color:var(--muted); }
 .cvl-lane-track,
 .cvl-ruler-track {
@@ -176,7 +177,7 @@ h3 { margin:0 0 8px; font-weight:600; }
   min-width: var(--cvl-width, 360px);
 }
 .cvl-lane-track {
-  height:28px;
+  height:34px;
   border-radius:8px;
   border:1px solid var(--border);
   background:
@@ -186,21 +187,35 @@ h3 { margin:0 0 8px; font-weight:600; }
 }
 .cvl-clip {
   position:absolute;
-  top:4px;
-  height:20px;
+  top:6px;
+  height:22px;
   border-radius:6px;
   background:linear-gradient(135deg, #5b7cff, #7f9bff);
   color:#0b1020;
   font-size:11px;
   font-weight:600;
-  padding:0 8px;
+  padding:0 10px;
   display:flex;
   align-items:center;
   box-shadow:0 2px 6px rgba(0, 0, 0, 0.35);
 }
-.cvl-clip span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cvl-clip-label { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.cvl-clip-handle {
+  position:absolute;
+  top:0;
+  width:8px;
+  height:100%;
+  border:none;
+  background:rgba(7, 12, 26, 0.25);
+  cursor:ew-resize;
+  padding:0;
+  touch-action:none;
+}
+.cvl-clip-handle.is-left { left:0; border-top-left-radius:6px; border-bottom-left-radius:6px; }
+.cvl-clip-handle.is-right { right:0; border-top-right-radius:6px; border-bottom-right-radius:6px; }
+.cvl-clip-handle:hover { background:rgba(7, 12, 26, 0.45); }
 .cvl-ruler-track {
-  height:22px;
+  height:26px;
   border-bottom:1px solid var(--border);
   background:rgba(10, 14, 22, 0.75);
   border-radius:6px;

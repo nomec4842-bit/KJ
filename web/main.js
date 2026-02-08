@@ -97,6 +97,14 @@ const CVL_RATES = [
   { value: '1/32D', label: '1/32 Dotted' },
   { value: '1/32T', label: '1/32 Triplet' },
 ];
+const CVL_SNAP_GRID = 0.25;
+
+function createCvlClipId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `cvl-${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
+}
 
 function getCvlRateBeats(rate) {
   const match = typeof rate === 'string' ? rate.match(/^1\/(\d+)([DT])?$/) : null;
@@ -504,6 +512,7 @@ function normalizeTrack(t) {
       scrubberDepth: 0,
       pixelsPerBeat: 24,
       snapToGrid: false,
+      armedSample: '',
       clips: [],
     };
   } else {
@@ -525,6 +534,7 @@ function normalizeTrack(t) {
       ? Math.max(6, Math.min(96, pixelsPerBeat))
       : 24;
     t.cvl.snapToGrid = !!t.cvl.snapToGrid;
+    t.cvl.armedSample = typeof t.cvl.armedSample === 'string' ? t.cvl.armedSample : '';
     if (!Array.isArray(t.cvl.clips)) t.cvl.clips = [];
     t.cvl.clips = t.cvl.clips
       .filter((clip) => clip && typeof clip === 'object')
@@ -537,9 +547,10 @@ function normalizeTrack(t) {
           ? Number(clip.lengthBeats)
           : Number(clip.length);
         return {
+          id: typeof clip.id === 'string' && clip.id.trim() ? clip.id : createCvlClipId(),
           lane: Number.isFinite(lane) ? Math.max(0, Math.floor(lane)) : 0,
           startBeat: Number.isFinite(startBeat) ? Math.max(0, startBeat) : 0,
-          lengthBeats: Number.isFinite(lengthBeats) ? Math.max(0.25, lengthBeats) : 1,
+          lengthBeats: Number.isFinite(lengthBeats) ? Math.max(CVL_SNAP_GRID, lengthBeats) : 1,
           sampleName: typeof clip.sampleName === 'string' ? clip.sampleName : 'Sample',
         };
       });
@@ -1017,6 +1028,12 @@ function renderCvlPanel() {
   const pixelsPerBeat = Number.isFinite(track.cvl?.pixelsPerBeat) ? track.cvl.pixelsPerBeat : 24;
   const timelineBeats = Math.max(1, timelineSteps / 4);
   const timelineWidth = Math.max(240, Math.round(timelineBeats * pixelsPerBeat));
+  const minClipLength = track.cvl.snapToGrid ? CVL_SNAP_GRID : 0.25;
+  const clampBeat = (value) => Math.max(0, Math.min(timelineBeats, value));
+  const snapBeat = (value) => {
+    if (!track.cvl.snapToGrid) return value;
+    return Math.round(value / CVL_SNAP_GRID) * CVL_SNAP_GRID;
+  };
   const rateOptions = CVL_RATES.map((rate) => (
     `<option value="${rate.value}" ${rate.value === track.cvl.scrubberRate ? 'selected' : ''}>${rate.label}</option>`
   )).join('');
@@ -1031,7 +1048,8 @@ function renderCvlPanel() {
   const sampleList = samples.length
     ? samples.map((sample) => {
       const safeName = escapeHtml(sample.name);
-      return `<li class="cvl-sample" draggable="true" data-sample-name="${safeName}">${safeName}</li>`;
+      const isArmed = track.cvl?.armedSample === sample.name;
+      return `<li class="cvl-sample ${isArmed ? 'is-armed' : ''}" draggable="true" data-sample-name="${safeName}">${safeName}</li>`;
     }).join('')
     : '<li class="cvl-empty">No samples loaded.</li>';
 
@@ -1044,9 +1062,12 @@ function renderCvlPanel() {
       const left = Math.max(0, startBeat * pixelsPerBeat);
       const width = Math.max(8, lengthBeats * pixelsPerBeat);
       const sampleName = escapeHtml(clip.sampleName || 'Sample');
+      const clipId = escapeHtml(clip.id || '');
       return `
-        <div class="cvl-clip" style="left:${left}px; width:${width}px" title="${sampleName}">
-          <span>${sampleName}</span>
+        <div class="cvl-clip" data-clip-id="${clipId}" style="left:${left}px; width:${width}px" title="${sampleName}">
+          <button class="cvl-clip-handle is-left" data-edge="start" aria-label="Trim clip start"></button>
+          <span class="cvl-clip-label">${sampleName}</span>
+          <button class="cvl-clip-handle is-right" data-edge="end" aria-label="Trim clip end"></button>
         </div>
       `;
     }).join('');
@@ -1068,6 +1089,7 @@ function renderCvlPanel() {
     <div class="cvl-lane" data-lane="${index}">
       <div class="cvl-lane-label">Lane ${index + 1}</div>
       <div class="cvl-lane-track" style="--cvl-width:${timelineWidth}px; --cvl-beat:${pixelsPerBeat}px">
+        <div class="cvl-playhead" aria-hidden="true"></div>
         ${clipMarkupForLane(index)}
       </div>
     </div>
@@ -1162,6 +1184,12 @@ function renderCvlPanel() {
       event.dataTransfer.setData('application/x-cvl-sample', sampleName);
       event.dataTransfer.setData('text/plain', sampleName);
     });
+    item.addEventListener('click', () => {
+      const sampleName = item.dataset.sampleName;
+      if (!sampleName) return;
+      track.cvl.armedSample = track.cvl.armedSample === sampleName ? '' : sampleName;
+      renderCvlPanel();
+    });
   });
 
   const laneRowsEls = cvlRoot.querySelectorAll('.cvl-lane');
@@ -1169,6 +1197,21 @@ function renderCvlPanel() {
     const laneIndex = Number(laneEl.dataset.lane);
     const trackEl = laneEl.querySelector('.cvl-lane-track');
     if (!trackEl) return;
+    const placeClip = (startBeat, sampleName) => {
+      if (!sampleName) return;
+      const clippedStart = clampBeat(snapBeat(startBeat));
+      const clip = {
+        id: createCvlClipId(),
+        lane: Number.isFinite(laneIndex) ? laneIndex : 0,
+        startBeat: clippedStart,
+        lengthBeats: Math.max(minClipLength, 1),
+        sampleName,
+      };
+      if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
+      track.cvl.clips.push(clip);
+      saveProjectToStorage();
+      renderCvlPanel();
+    };
     const getSampleName = (event) => {
       if (!event.dataTransfer) return '';
       return event.dataTransfer.getData('application/x-cvl-sample')
@@ -1187,24 +1230,66 @@ function renderCvlPanel() {
       const rawOffset = event.clientX - rect.left;
       const clampedOffset = Math.max(0, Math.min(rect.width, rawOffset));
       const rawBeat = clampedOffset / pixelsPerBeat;
-      const gridSize = 0.25;
-      const snappedBeat = track.cvl.snapToGrid
-        ? Math.round(rawBeat / gridSize) * gridSize
-        : rawBeat;
-      const start = Math.max(0, Math.min(timelineBeats, snappedBeat));
-      const clip = {
-        lane: Number.isFinite(laneIndex) ? laneIndex : 0,
-        startBeat: start,
-        lengthBeats: 1,
-        sampleName,
-      };
-      if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
-      track.cvl.clips.push(clip);
-      saveProjectToStorage();
-      renderCvlPanel();
+      placeClip(rawBeat, sampleName);
+    };
+    const handleClickPlace = (event) => {
+      if (event.target.closest('.cvl-clip')) return;
+      const armedSample = track.cvl?.armedSample;
+      if (!armedSample) return;
+      const rect = trackEl.getBoundingClientRect();
+      const rawOffset = event.clientX - rect.left;
+      const clampedOffset = Math.max(0, Math.min(rect.width, rawOffset));
+      const rawBeat = clampedOffset / pixelsPerBeat;
+      placeClip(rawBeat, armedSample);
     };
     trackEl.addEventListener('dragover', handleDragOver);
     trackEl.addEventListener('drop', handleDrop);
+    trackEl.addEventListener('click', handleClickPlace);
+  });
+
+  const clipEls = cvlRoot.querySelectorAll('.cvl-clip[data-clip-id]');
+  clipEls.forEach((clipEl) => {
+    const clipId = clipEl.dataset.clipId;
+    if (!clipId) return;
+    const handlePointerDown = (event) => {
+      const edge = event.target?.dataset?.edge;
+      if (!edge) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const clip = track.cvl.clips.find((item) => item.id === clipId);
+      if (!clip) return;
+      const startX = event.clientX;
+      const startBeat = clip.startBeat;
+      const startLength = clip.lengthBeats;
+      const maxEnd = timelineBeats;
+      const onPointerMove = (moveEvent) => {
+        const deltaBeat = (moveEvent.clientX - startX) / pixelsPerBeat;
+        if (edge === 'start') {
+          const endBeat = startBeat + startLength;
+          const rawStart = Math.max(0, Math.min(endBeat - minClipLength, startBeat + deltaBeat));
+          const snappedStart = snapBeat(rawStart);
+          const nextStart = Math.max(0, Math.min(endBeat - minClipLength, snappedStart));
+          clip.startBeat = nextStart;
+          clip.lengthBeats = Math.max(minClipLength, endBeat - nextStart);
+        } else {
+          const rawEnd = Math.max(startBeat + minClipLength, Math.min(maxEnd, startBeat + startLength + deltaBeat));
+          const snappedEnd = snapBeat(rawEnd);
+          const nextEnd = Math.max(startBeat + minClipLength, Math.min(maxEnd, snappedEnd));
+          clip.lengthBeats = Math.max(minClipLength, nextEnd - startBeat);
+        }
+        clipEl.style.left = `${clip.startBeat * pixelsPerBeat}px`;
+        clipEl.style.width = `${Math.max(8, clip.lengthBeats * pixelsPerBeat)}px`;
+      };
+      const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        saveProjectToStorage();
+        renderCvlPanel();
+      };
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    };
+    clipEl.addEventListener('pointerdown', handlePointerDown);
   });
 
   updateCvlPlayhead();
@@ -1213,15 +1298,17 @@ function renderCvlPanel() {
 function updateCvlPlayhead() {
   if (!cvlRoot) return;
   const track = currentTrack();
-  const playhead = cvlRoot.querySelector('.cvl-playhead');
-  if (!track || track.type !== 'cvl' || !playhead) return;
+  const playheads = cvlRoot.querySelectorAll('.cvl-playhead');
+  if (!track || track.type !== 'cvl' || !playheads.length) return;
   const pixelsPerBeat = Number.isFinite(track.cvl?.pixelsPerBeat) ? track.cvl.pixelsPerBeat : 24;
   const timelineSteps = Math.max(1, Number.isFinite(track.length) ? track.length : 16);
   const timelineBeats = Math.max(1, timelineSteps / 4);
   const beat = Number.isFinite(track.pos) && track.pos >= 0 ? track.pos / 4 : 0;
   const clampedBeat = Math.max(0, Math.min(timelineBeats, beat));
-  playhead.style.left = `${clampedBeat * pixelsPerBeat}px`;
-  playhead.style.opacity = track.pos >= 0 ? '1' : '0';
+  playheads.forEach((playhead) => {
+    playhead.style.left = `${clampedBeat * pixelsPerBeat}px`;
+    playhead.style.opacity = track.pos >= 0 ? '1' : '0';
+  });
 }
 
 function updateArpPanelVisibility(track) {
