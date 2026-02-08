@@ -11,7 +11,7 @@ import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
 import { refreshTrackSelect, renderParams, makeField, renderArpPanel, createPianoNoteParamsPanel } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
-import { normalizeCvlState, renderCvlPanel } from './cvl.js';
+import { normalizeCvlState, renderCvlPanel } from './cvl/index.js';
 
 await dspReady;
 
