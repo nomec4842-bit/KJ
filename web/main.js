@@ -66,6 +66,7 @@ let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
 
 const sampleCache = {};
+const sampleWaveformCache = new Map();
 const song = {
   patterns: [],
   current: 0,
@@ -876,6 +877,7 @@ async function onSampleFile(file) {
 
   track.sample = { buffer, name: file.name };
   sampleCache[file.name] = buffer;
+  sampleWaveformCache.delete(file.name);
 
   if (track === currentTrack()) {
     renderParamsPanel();
@@ -893,6 +895,7 @@ async function addCvlSampleFromFile(file, track) {
     track.cvl.samples.push({ name: file.name });
   }
   sampleCache[file.name] = buffer;
+  sampleWaveformCache.delete(file.name);
   return file.name;
 }
 
@@ -944,6 +947,42 @@ async function decodeAudioFile(file) {
     }
     return null;
   }
+}
+
+function getSampleWaveform(sampleName) {
+  if (!sampleName || typeof document === 'undefined') return '';
+  if (sampleWaveformCache.has(sampleName)) {
+    return sampleWaveformCache.get(sampleName) || '';
+  }
+  const buffer = sampleCache[sampleName];
+  if (!buffer) return '';
+  const width = 200;
+  const height = 22;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx2d = canvas.getContext('2d');
+  if (!ctx2d) return '';
+  ctx2d.clearRect(0, 0, width, height);
+  ctx2d.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  const channelData = buffer.getChannelData(0);
+  const step = Math.max(1, Math.floor(channelData.length / width));
+  for (let x = 0; x < width; x += 1) {
+    const start = x * step;
+    let min = 1;
+    let max = -1;
+    for (let i = 0; i < step && start + i < channelData.length; i += 1) {
+      const sample = channelData[start + i];
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+    const y = Math.round((1 + min) * 0.5 * height);
+    const barHeight = Math.max(1, Math.round((max - min) * 0.5 * height));
+    ctx2d.fillRect(x, y, 1, barHeight);
+  }
+  const dataUrl = canvas.toDataURL('image/png');
+  sampleWaveformCache.set(sampleName, dataUrl);
+  return dataUrl;
 }
 
 function renderParamsPanel(){
@@ -1071,8 +1110,13 @@ function renderCvlPanel() {
       const width = Math.max(8, lengthBeats * pixelsPerBeat);
       const sampleName = escapeHtml(clip.sampleName || 'Sample');
       const clipId = escapeHtml(clip.id || '');
+      const waveform = getSampleWaveform(clip.sampleName);
+      const waveformMarkup = waveform
+        ? `<div class="cvl-clip-wave" style="background-image:url('${waveform}')"></div>`
+        : '';
       return `
         <div class="cvl-clip" data-clip-id="${clipId}" style="left:${left}px; width:${width}px" title="${sampleName}">
+          ${waveformMarkup}
           <button class="cvl-clip-handle is-left" data-edge="start" aria-label="Trim clip start"></button>
           <span class="cvl-clip-label">${sampleName}</span>
           <button class="cvl-clip-handle is-right" data-edge="end" aria-label="Trim clip end"></button>
@@ -1207,6 +1251,10 @@ function renderCvlPanel() {
     if (!trackEl) return;
     const placeClip = (startBeat, sampleName) => {
       if (!sampleName) return;
+      if (!Array.isArray(track.cvl.samples)) track.cvl.samples = [];
+      if (!track.cvl.samples.some((sample) => sample?.name === sampleName)) {
+        track.cvl.samples.push({ name: sampleName });
+      }
       const clippedStart = clampBeat(snapBeat(startBeat));
       const clip = {
         id: createCvlClipId(),
