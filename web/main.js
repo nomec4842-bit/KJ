@@ -1310,8 +1310,11 @@ function renderCvlPanel() {
       const rawBeat = clampedOffset / pixelsPerBeat;
       placeClip(rawBeat, armedSample);
     };
-    trackEl.addEventListener('dragover', handleDragOver);
-    trackEl.addEventListener('drop', handleDrop);
+    const dragTargets = [trackEl, laneEl];
+    dragTargets.forEach((target) => {
+      target.addEventListener('dragover', handleDragOver);
+      target.addEventListener('drop', handleDrop);
+    });
     trackEl.addEventListener('click', handleClickPlace);
   });
 
