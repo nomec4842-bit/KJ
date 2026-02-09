@@ -884,17 +884,25 @@ async function onSampleFile(file) {
   saveProjectToStorage();
 }
 
+async function addCvlSampleFromFile(file, track) {
+  if (!file || !track || track.type !== 'cvl') return '';
+  const buffer = await decodeAudioFile(file);
+  if (!buffer) return '';
+  if (!Array.isArray(track.cvl.samples)) track.cvl.samples = [];
+  if (!track.cvl.samples.some((sample) => sample?.name === file.name)) {
+    track.cvl.samples.push({ name: file.name });
+  }
+  sampleCache[file.name] = buffer;
+  return file.name;
+}
+
 async function onCvlSampleFile(file) {
   if (!file) return;
   const track = currentTrack();
   if (!track || track.type !== 'cvl') return;
 
-  const buffer = await decodeAudioFile(file);
-  if (!buffer) return;
-
-  if (!Array.isArray(track.cvl.samples)) track.cvl.samples = [];
-  track.cvl.samples.push({ name: file.name });
-  sampleCache[file.name] = buffer;
+  const sampleName = await addCvlSampleFromFile(file, track);
+  if (!sampleName) return;
   renderCvlPanel();
   saveProjectToStorage();
 }
@@ -1217,19 +1225,31 @@ function renderCvlPanel() {
       return event.dataTransfer.getData('application/x-cvl-sample')
         || event.dataTransfer.getData('text/plain');
     };
+    const getDroppedFile = (event) => {
+      if (!event.dataTransfer?.files?.length) return null;
+      return Array.from(event.dataTransfer.files).find((file) => file);
+    };
     const handleDragOver = (event) => {
-      if (!getSampleName(event)) return;
+      const sampleName = getSampleName(event);
+      const file = getDroppedFile(event);
+      if (!sampleName && !file) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
     };
-    const handleDrop = (event) => {
-      const sampleName = getSampleName(event).trim();
-      if (!sampleName) return;
+    const handleDrop = async (event) => {
       event.preventDefault();
       const rect = trackEl.getBoundingClientRect();
       const rawOffset = event.clientX - rect.left;
       const clampedOffset = Math.max(0, Math.min(rect.width, rawOffset));
       const rawBeat = clampedOffset / pixelsPerBeat;
+
+      let sampleName = getSampleName(event).trim();
+      if (!sampleName) {
+        const file = getDroppedFile(event);
+        if (!file) return;
+        sampleName = await addCvlSampleFromFile(file, track);
+        if (!sampleName) return;
+      }
       placeClip(rawBeat, sampleName);
     };
     const handleClickPlace = (event) => {
