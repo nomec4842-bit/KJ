@@ -1360,7 +1360,41 @@ function renderCvlPanel() {
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
     };
-    clipEl.addEventListener('pointerdown', handlePointerDown);
+    const handleMovePointerDown = (event) => {
+      if (event.button !== 0 && event.pointerType === 'mouse') return;
+      if (event.target?.dataset?.edge || event.target.closest('.cvl-clip-handle')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const clip = track.cvl.clips.find((item) => item.id === clipId);
+      if (!clip) return;
+      const startX = event.clientX;
+      const initialStart = clip.startBeat;
+      const maxStart = Math.max(0, timelineBeats - clip.lengthBeats);
+      const onPointerMove = (moveEvent) => {
+        const deltaBeat = (moveEvent.clientX - startX) / pixelsPerBeat;
+        const rawStart = initialStart + deltaBeat;
+        const snappedStart = snapBeat(rawStart);
+        const nextStart = Math.max(0, Math.min(maxStart, snappedStart));
+        clip.startBeat = nextStart;
+        clipEl.style.left = `${clip.startBeat * pixelsPerBeat}px`;
+      };
+      const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        saveProjectToStorage();
+        renderCvlPanel();
+      };
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    };
+    clipEl.addEventListener('pointerdown', (event) => {
+      const edge = event.target?.dataset?.edge;
+      if (edge) {
+        handlePointerDown(event);
+      } else {
+        handleMovePointerDown(event);
+      }
+    });
   });
 
   updateCvlPlayhead();
