@@ -1164,7 +1164,7 @@ function renderCvlPanel() {
             <input id="cvl_scrubberDepth" type="range" min="0" max="1" step="0.01" value="${track.cvl.scrubberDepth ?? 0}">
           </label>
           <label class="ctrl">
-            Snap to Grid
+            Snap to Grid (Alt = free place)
             <input id="cvl_snapToGrid" type="checkbox" ${track.cvl.snapToGrid ? 'checked' : ''}>
           </label>
         </div>
@@ -1249,13 +1249,14 @@ function renderCvlPanel() {
     const laneIndex = Number(laneEl.dataset.lane);
     const trackEl = laneEl.querySelector('.cvl-lane-track');
     if (!trackEl) return;
-    const placeClip = (startBeat, sampleName) => {
+    const placeClip = (startBeat, sampleName, { freePlacement = false } = {}) => {
       if (!sampleName) return;
       if (!Array.isArray(track.cvl.samples)) track.cvl.samples = [];
       if (!track.cvl.samples.some((sample) => sample?.name === sampleName)) {
         track.cvl.samples.push({ name: sampleName });
       }
-      const clippedStart = clampBeat(snapBeat(startBeat));
+      const shouldSnap = track.cvl.snapToGrid && !freePlacement;
+      const clippedStart = clampBeat(shouldSnap ? snapBeat(startBeat) : startBeat);
       const clip = {
         id: createCvlClipId(),
         lane: Number.isFinite(laneIndex) ? laneIndex : 0,
@@ -1290,6 +1291,7 @@ function renderCvlPanel() {
       const rawOffset = event.clientX - rect.left;
       const clampedOffset = Math.max(0, Math.min(rect.width, rawOffset));
       const rawBeat = clampedOffset / pixelsPerBeat;
+      const freePlacement = event.altKey;
 
       let sampleName = getSampleName(event).trim();
       if (!sampleName) {
@@ -1298,7 +1300,7 @@ function renderCvlPanel() {
         sampleName = await addCvlSampleFromFile(file, track);
         if (!sampleName) return;
       }
-      placeClip(rawBeat, sampleName);
+      placeClip(rawBeat, sampleName, { freePlacement });
     };
     const handleClickPlace = (event) => {
       if (event.target.closest('.cvl-clip')) return;
@@ -1308,7 +1310,7 @@ function renderCvlPanel() {
       const rawOffset = event.clientX - rect.left;
       const clampedOffset = Math.max(0, Math.min(rect.width, rawOffset));
       const rawBeat = clampedOffset / pixelsPerBeat;
-      placeClip(rawBeat, armedSample);
+      placeClip(rawBeat, armedSample, { freePlacement: event.altKey });
     };
     const dragTargets = [trackEl, laneEl];
     dragTargets.forEach((target) => {
