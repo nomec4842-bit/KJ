@@ -1331,10 +1331,68 @@ function renderCvlPanel() {
   clipEls.forEach((clipEl) => {
     const clipId = clipEl.dataset.clipId;
     if (!clipId) return;
+    let lastLeftHandleTapAt = 0;
+    const leftHandleDoubleTapMs = 320;
+    const holdToMoveMs = 180;
+
+    const handleLeftHandleDragPointerDown = (event) => {
+      if (activeClipInteraction === 'resize') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const clip = track.cvl.clips.find((item) => item.id === clipId);
+      if (!clip) return;
+      const startX = event.clientX;
+      const initialStart = clip.startBeat;
+      const maxStart = Math.max(0, timelineBeats - clip.lengthBeats);
+      let moveEnabled = false;
+      let hasMoved = false;
+      let holdTimerId = null;
+      beginClipInteraction('move');
+      const enableMove = () => {
+        moveEnabled = true;
+      };
+      const onPointerMove = (moveEvent) => {
+        if (!moveEnabled) return;
+        const deltaBeat = (moveEvent.clientX - startX) / pixelsPerBeat;
+        const rawStart = initialStart + deltaBeat;
+        const snappedStart = snapBeat(rawStart);
+        const nextStart = Math.max(0, Math.min(maxStart, snappedStart));
+        if (nextStart === clip.startBeat) return;
+        hasMoved = true;
+        clip.startBeat = nextStart;
+        clipEl.style.left = `${clip.startBeat * pixelsPerBeat}px`;
+      };
+      const onPointerUp = () => {
+        if (holdTimerId !== null) {
+          clearTimeout(holdTimerId);
+          holdTimerId = null;
+        }
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        endClipInteraction();
+        if (hasMoved) {
+          saveProjectToStorage();
+          renderCvlPanel();
+        }
+      };
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      holdTimerId = window.setTimeout(enableMove, holdToMoveMs);
+    };
+
     const handlePointerDown = (event) => {
       if (activeClipInteraction === 'move') return;
       const edge = event.target?.dataset?.edge;
       if (!edge) return;
+      if (edge === 'start') {
+        const now = Date.now();
+        const isDoubleTap = now - lastLeftHandleTapAt <= leftHandleDoubleTapMs;
+        lastLeftHandleTapAt = now;
+        if (isDoubleTap) {
+          handleLeftHandleDragPointerDown(event);
+          return;
+        }
+      }
       event.preventDefault();
       event.stopPropagation();
       const clip = track.cvl.clips.find((item) => item.id === clipId);
@@ -1383,7 +1441,6 @@ function renderCvlPanel() {
       const startX = event.clientX;
       const initialStart = clip.startBeat;
       const maxStart = Math.max(0, timelineBeats - clip.lengthBeats);
-      const holdToMoveMs = 180;
       let moveEnabled = false;
       let hasMoved = false;
       let holdTimerId = null;
