@@ -1321,10 +1321,18 @@ function renderCvlPanel() {
   });
 
   const clipEls = cvlRoot.querySelectorAll('.cvl-clip[data-clip-id]');
+  let activeClipInteraction = null;
+  const beginClipInteraction = (mode) => {
+    activeClipInteraction = mode;
+  };
+  const endClipInteraction = () => {
+    activeClipInteraction = null;
+  };
   clipEls.forEach((clipEl) => {
     const clipId = clipEl.dataset.clipId;
     if (!clipId) return;
     const handlePointerDown = (event) => {
+      if (activeClipInteraction === 'move') return;
       const edge = event.target?.dataset?.edge;
       if (!edge) return;
       event.preventDefault();
@@ -1335,6 +1343,7 @@ function renderCvlPanel() {
       const startBeat = clip.startBeat;
       const startLength = clip.lengthBeats;
       const maxEnd = timelineBeats;
+      beginClipInteraction('resize');
       const onPointerMove = (moveEvent) => {
         const deltaBeat = (moveEvent.clientX - startX) / pixelsPerBeat;
         if (edge === 'start') {
@@ -1356,6 +1365,7 @@ function renderCvlPanel() {
       const onPointerUp = () => {
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
+        endClipInteraction();
         saveProjectToStorage();
         renderCvlPanel();
       };
@@ -1363,6 +1373,7 @@ function renderCvlPanel() {
       window.addEventListener('pointerup', onPointerUp);
     };
     const handleMovePointerDown = (event) => {
+      if (activeClipInteraction === 'resize') return;
       if (event.button !== 0 && event.pointerType === 'mouse') return;
       if (event.target?.dataset?.edge || event.target.closest('.cvl-clip-handle')) return;
       event.preventDefault();
@@ -1376,6 +1387,7 @@ function renderCvlPanel() {
       let moveEnabled = false;
       let hasMoved = false;
       let holdTimerId = null;
+      beginClipInteraction('move');
       const enableMove = () => {
         moveEnabled = true;
       };
@@ -1397,6 +1409,7 @@ function renderCvlPanel() {
         }
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
+        endClipInteraction();
         if (hasMoved) {
           saveProjectToStorage();
           renderCvlPanel();
