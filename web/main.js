@@ -507,7 +507,7 @@ function normalizeTrack(t) {
 
   if (!t.cvl || typeof t.cvl !== 'object') {
     t.cvl = {
-      lanes: 6,
+      lanes: 1,
       samples: [],
       scrubberRate: '1/16',
       scrubberDepth: 0,
@@ -517,8 +517,7 @@ function normalizeTrack(t) {
       clips: [],
     };
   } else {
-    const lanes = Number(t.cvl.lanes);
-    t.cvl.lanes = Number.isFinite(lanes) ? Math.max(1, Math.min(12, Math.round(lanes))) : 6;
+    t.cvl.lanes = 1;
     if (!Array.isArray(t.cvl.samples)) t.cvl.samples = [];
     t.cvl.samples = t.cvl.samples
       .filter((sample) => sample && typeof sample === 'object')
@@ -540,7 +539,6 @@ function normalizeTrack(t) {
     t.cvl.clips = t.cvl.clips
       .filter((clip) => clip && typeof clip === 'object')
       .map((clip) => {
-        const lane = Number(clip.lane);
         const startBeat = Number.isFinite(Number(clip.startBeat))
           ? Number(clip.startBeat)
           : Number(clip.start);
@@ -549,7 +547,7 @@ function normalizeTrack(t) {
           : Number(clip.length);
         return {
           id: typeof clip.id === 'string' && clip.id.trim() ? clip.id : createCvlClipId(),
-          lane: Number.isFinite(lane) ? Math.max(0, Math.floor(lane)) : 0,
+          lane: 0,
           startBeat: Number.isFinite(startBeat) ? Math.max(0, startBeat) : 0,
           lengthBeats: Number.isFinite(lengthBeats) ? Math.max(CVL_SNAP_GRID, lengthBeats) : 1,
           sampleName: typeof clip.sampleName === 'string' ? clip.sampleName : 'Sample',
@@ -1070,7 +1068,7 @@ function renderCvlPanel() {
 
   const samples = Array.isArray(track.cvl?.samples) ? track.cvl.samples : [];
   const clips = Array.isArray(track.cvl?.clips) ? track.cvl.clips : [];
-  const lanes = Number.isFinite(Number(track.cvl?.lanes)) ? Math.max(1, Math.round(track.cvl.lanes)) : 6;
+  const lanes = 1;
   const timelineSteps = Math.max(1, Number.isFinite(track.length) ? track.length : 16);
   const pixelsPerBeat = Number.isFinite(track.cvl?.pixelsPerBeat) ? track.cvl.pixelsPerBeat : 24;
   const timelineBeats = Math.max(1, timelineSteps / 4);
