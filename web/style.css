@@ -177,7 +177,7 @@ h3 { margin:0 0 8px; font-weight:600; }
   min-width: var(--cvl-width, 360px);
 }
 .cvl-lane-track {
-  height:34px;
+  height:46px;
   border-radius:8px;
   border:1px solid var(--border);
   background:
@@ -187,8 +187,8 @@ h3 { margin:0 0 8px; font-weight:600; }
 }
 .cvl-clip {
   position:absolute;
-  top:6px;
-  height:22px;
+  top:8px;
+  height:30px;
   border-radius:6px;
   background:linear-gradient(135deg, #5b7cff, #7f9bff);
   color:#0b1020;
