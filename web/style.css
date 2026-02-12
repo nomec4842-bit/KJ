@@ -194,7 +194,7 @@ h3 { margin:0 0 8px; font-weight:600; }
   color:#0b1020;
   font-size:11px;
   font-weight:600;
-  padding:0 10px;
+  padding:8px 10px 0;
   display:flex;
   align-items:center;
   box-shadow:0 2px 6px rgba(0, 0, 0, 0.35);
@@ -218,6 +218,22 @@ h3 { margin:0 0 8px; font-weight:600; }
   pointer-events:none;
   user-select:none;
 }
+.cvl-clip-top-handle {
+  position:absolute;
+  left:8px;
+  right:8px;
+  top:0;
+  height:8px;
+  border:none;
+  border-radius:6px 6px 0 0;
+  background:rgba(7, 12, 26, 0.25);
+  cursor:grab;
+  padding:0;
+  touch-action:none;
+  z-index:3;
+}
+.cvl-clip-top-handle:hover { background:rgba(7, 12, 26, 0.4); }
+.cvl-clip-top-handle:active { cursor:grabbing; }
 .cvl-clip-handle {
   position:absolute;
   top:0;

@@ -1115,6 +1115,7 @@ function renderCvlPanel() {
       return `
         <div class="cvl-clip" data-clip-id="${clipId}" style="left:${left}px; width:${width}px" title="${sampleName}">
           ${waveformMarkup}
+          <button class="cvl-clip-top-handle" data-drag-handle="top" aria-label="Drag clip"></button>
           <button class="cvl-clip-handle is-left" data-edge="start" aria-label="Trim clip start"></button>
           <span class="cvl-clip-label">${sampleName}</span>
           <button class="cvl-clip-handle is-right" data-edge="end" aria-label="Trim clip end"></button>
@@ -1333,7 +1334,7 @@ function renderCvlPanel() {
     const leftHandleDoubleTapMs = 320;
     const holdToMoveMs = 180;
 
-    const beginHoldToMoveInteraction = (event) => {
+    const beginMoveInteraction = (event, { requireHold = true } = {}) => {
       if (activeClipInteraction === 'resize') return;
       if (event.button !== 0 && event.pointerType === 'mouse') return;
       event.preventDefault();
@@ -1343,7 +1344,7 @@ function renderCvlPanel() {
       const startX = event.clientX;
       const initialStart = clip.startBeat;
       const maxStart = Math.max(0, timelineBeats - clip.lengthBeats);
-      let moveEnabled = false;
+      let moveEnabled = !requireHold;
       let hasMoved = false;
       let holdTimerId = null;
       beginClipInteraction('move');
@@ -1381,11 +1382,13 @@ function renderCvlPanel() {
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerEnd);
       window.addEventListener('pointercancel', onPointerEnd);
-      holdTimerId = window.setTimeout(enableMove, holdToMoveMs);
+      if (requireHold) {
+        holdTimerId = window.setTimeout(enableMove, holdToMoveMs);
+      }
     };
 
     const handleLeftHandleDragPointerDown = (event) => {
-      beginHoldToMoveInteraction(event);
+      beginMoveInteraction(event);
     };
 
     const handlePointerDown = (event) => {
@@ -1440,7 +1443,8 @@ function renderCvlPanel() {
     };
     const handleMovePointerDown = (event) => {
       if (event.target?.dataset?.edge || event.target.closest('.cvl-clip-handle')) return;
-      beginHoldToMoveInteraction(event);
+      const isTopHandle = !!event.target?.closest('.cvl-clip-top-handle');
+      beginMoveInteraction(event, { requireHold: !isTopHandle });
     };
     clipEl.addEventListener('pointerdown', (event) => {
       const edge = event.target?.dataset?.edge;
