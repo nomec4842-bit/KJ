@@ -1335,8 +1335,9 @@ function renderCvlPanel() {
     const leftHandleDoubleTapMs = 320;
     const holdToMoveMs = 180;
 
-    const handleLeftHandleDragPointerDown = (event) => {
+    const beginHoldToMoveInteraction = (event) => {
       if (activeClipInteraction === 'resize') return;
+      if (event.button !== 0 && event.pointerType === 'mouse') return;
       event.preventDefault();
       event.stopPropagation();
       const clip = track.cvl.clips.find((item) => item.id === clipId);
@@ -1351,6 +1352,15 @@ function renderCvlPanel() {
       const enableMove = () => {
         moveEnabled = true;
       };
+      const cleanup = () => {
+        if (holdTimerId !== null) {
+          clearTimeout(holdTimerId);
+          holdTimerId = null;
+        }
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerEnd);
+        window.removeEventListener('pointercancel', onPointerEnd);
+      };
       const onPointerMove = (moveEvent) => {
         if (!moveEnabled) return;
         const deltaBeat = (moveEvent.clientX - startX) / pixelsPerBeat;
@@ -1362,13 +1372,8 @@ function renderCvlPanel() {
         clip.startBeat = nextStart;
         clipEl.style.left = `${clip.startBeat * pixelsPerBeat}px`;
       };
-      const onPointerUp = () => {
-        if (holdTimerId !== null) {
-          clearTimeout(holdTimerId);
-          holdTimerId = null;
-        }
-        window.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', onPointerUp);
+      const onPointerEnd = () => {
+        cleanup();
         endClipInteraction();
         if (hasMoved) {
           saveProjectToStorage();
@@ -1376,8 +1381,13 @@ function renderCvlPanel() {
         }
       };
       window.addEventListener('pointermove', onPointerMove);
-      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
       holdTimerId = window.setTimeout(enableMove, holdToMoveMs);
+    };
+
+    const handleLeftHandleDragPointerDown = (event) => {
+      beginHoldToMoveInteraction(event);
     };
 
     const handlePointerDown = (event) => {
@@ -1431,50 +1441,8 @@ function renderCvlPanel() {
       window.addEventListener('pointerup', onPointerUp);
     };
     const handleMovePointerDown = (event) => {
-      if (activeClipInteraction === 'resize') return;
-      if (event.button !== 0 && event.pointerType === 'mouse') return;
       if (event.target?.dataset?.edge || event.target.closest('.cvl-clip-handle')) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const clip = track.cvl.clips.find((item) => item.id === clipId);
-      if (!clip) return;
-      const startX = event.clientX;
-      const initialStart = clip.startBeat;
-      const maxStart = Math.max(0, timelineBeats - clip.lengthBeats);
-      let moveEnabled = false;
-      let hasMoved = false;
-      let holdTimerId = null;
-      beginClipInteraction('move');
-      const enableMove = () => {
-        moveEnabled = true;
-      };
-      const onPointerMove = (moveEvent) => {
-        if (!moveEnabled) return;
-        const deltaBeat = (moveEvent.clientX - startX) / pixelsPerBeat;
-        const rawStart = initialStart + deltaBeat;
-        const snappedStart = snapBeat(rawStart);
-        const nextStart = Math.max(0, Math.min(maxStart, snappedStart));
-        if (nextStart === clip.startBeat) return;
-        hasMoved = true;
-        clip.startBeat = nextStart;
-        clipEl.style.left = `${clip.startBeat * pixelsPerBeat}px`;
-      };
-      const onPointerUp = () => {
-        if (holdTimerId !== null) {
-          clearTimeout(holdTimerId);
-          holdTimerId = null;
-        }
-        window.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', onPointerUp);
-        endClipInteraction();
-        if (hasMoved) {
-          saveProjectToStorage();
-          renderCvlPanel();
-        }
-      };
-      window.addEventListener('pointermove', onPointerMove);
-      window.addEventListener('pointerup', onPointerUp);
-      holdTimerId = window.setTimeout(enableMove, holdToMoveMs);
+      beginHoldToMoveInteraction(event);
     };
     clipEl.addEventListener('pointerdown', (event) => {
       const edge = event.target?.dataset?.edge;
