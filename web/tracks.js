@@ -189,7 +189,7 @@ export function createTrack(name, engine='synth', length=16){
 
     sample: { buffer:null, name:'' },
     cvl: {
-      lanes: 6,
+      lanes: 1,
       samples: [],
       scrubberRate: '1/16',
       scrubberDepth: 0,
