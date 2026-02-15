@@ -514,6 +514,7 @@ function normalizeTrack(t) {
       pixelsPerBeat: 24,
       snapToGrid: false,
       armedSample: '',
+      selectedClipId: '',
       clips: [],
     };
   } else {
@@ -535,6 +536,7 @@ function normalizeTrack(t) {
       : 24;
     t.cvl.snapToGrid = !!t.cvl.snapToGrid;
     t.cvl.armedSample = typeof t.cvl.armedSample === 'string' ? t.cvl.armedSample : '';
+    t.cvl.selectedClipId = typeof t.cvl.selectedClipId === 'string' ? t.cvl.selectedClipId : '';
     if (!Array.isArray(t.cvl.clips)) t.cvl.clips = [];
     t.cvl.clips = t.cvl.clips
       .filter((clip) => clip && typeof clip === 'object')
@@ -545,12 +547,30 @@ function normalizeTrack(t) {
         const lengthBeats = Number.isFinite(Number(clip.lengthBeats))
           ? Number(clip.lengthBeats)
           : Number(clip.length);
+        const rawParams = clip.params && typeof clip.params === 'object' ? clip.params : {};
+        const rawEffects = clip.effects && typeof clip.effects === 'object' ? clip.effects : {};
+        const gain = Number(rawParams.gain);
+        const pan = Number(rawParams.pan);
+        const pitch = Number(rawParams.pitch);
+        const drive = Number(rawEffects.drive);
+        const delay = Number(rawEffects.delay);
+        const reverb = Number(rawEffects.reverb);
         return {
           id: typeof clip.id === 'string' && clip.id.trim() ? clip.id : createCvlClipId(),
           lane: 0,
           startBeat: Number.isFinite(startBeat) ? Math.max(0, startBeat) : 0,
           lengthBeats: Number.isFinite(lengthBeats) ? Math.max(CVL_SNAP_GRID, lengthBeats) : 1,
           sampleName: typeof clip.sampleName === 'string' ? clip.sampleName : 'Sample',
+          params: {
+            gain: Number.isFinite(gain) ? Math.max(0, Math.min(2, gain)) : 1,
+            pan: Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0,
+            pitch: Number.isFinite(pitch) ? Math.max(-24, Math.min(24, pitch)) : 0,
+          },
+          effects: {
+            drive: Number.isFinite(drive) ? Math.max(0, Math.min(1, drive)) : 0,
+            delay: Number.isFinite(delay) ? Math.max(0, Math.min(1, delay)) : 0,
+            reverb: Number.isFinite(reverb) ? Math.max(0, Math.min(1, reverb)) : 0,
+          },
         };
       });
   }
@@ -1108,12 +1128,13 @@ function renderCvlPanel() {
       const width = Math.max(8, lengthBeats * pixelsPerBeat);
       const sampleName = escapeHtml(clip.sampleName || 'Sample');
       const clipId = escapeHtml(clip.id || '');
+      const isSelected = clip.id && track.cvl?.selectedClipId === clip.id;
       const waveform = getSampleWaveform(clip.sampleName);
       const waveformMarkup = waveform
         ? `<div class="cvl-clip-wave" style="background-image:url('${waveform}')"></div>`
         : '';
       return `
-        <div class="cvl-clip" data-clip-id="${clipId}" style="left:${left}px; width:${width}px" title="${sampleName}">
+        <div class="cvl-clip ${isSelected ? 'is-selected' : ''}" data-clip-id="${clipId}" style="left:${left}px; width:${width}px" title="${sampleName}">
           ${waveformMarkup}
           <button class="cvl-clip-top-handle" data-drag-handle="top" aria-label="Drag clip"></button>
           <button class="cvl-clip-handle is-left" data-edge="start" aria-label="Trim clip start"></button>
@@ -1145,6 +1166,40 @@ function renderCvlPanel() {
       </div>
     </div>
   `).join('');
+
+  const selectedClip = clips.find((clip) => clip.id === track.cvl?.selectedClipId) || null;
+  const selectedClipParams = selectedClip?.params || { gain: 1, pan: 0, pitch: 0 };
+  const selectedClipEffects = selectedClip?.effects || { drive: 0, delay: 0, reverb: 0 };
+  const clipInspectorMarkup = selectedClip
+    ? `
+      <div class="cvl-clip-editor-fields">
+        <label class="ctrl">
+          Gain
+          <input id="cvl_clipGain" type="range" min="0" max="2" step="0.01" value="${selectedClipParams.gain}">
+        </label>
+        <label class="ctrl">
+          Pan
+          <input id="cvl_clipPan" type="range" min="-1" max="1" step="0.01" value="${selectedClipParams.pan}">
+        </label>
+        <label class="ctrl">
+          Pitch
+          <input id="cvl_clipPitch" type="range" min="-24" max="24" step="1" value="${selectedClipParams.pitch}">
+        </label>
+        <label class="ctrl">
+          Drive
+          <input id="cvl_clipDrive" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.drive}">
+        </label>
+        <label class="ctrl">
+          Delay
+          <input id="cvl_clipDelay" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.delay}">
+        </label>
+        <label class="ctrl">
+          Reverb
+          <input id="cvl_clipReverb" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.reverb}">
+        </label>
+      </div>
+    `
+    : '<p class="cvl-empty">Double tap a left trim handle to edit clip params + effects.</p>';
 
   cvlRoot.innerHTML = `
     <div class="cvl-window">
@@ -1183,6 +1238,11 @@ function renderCvlPanel() {
           </div>
           ${laneRows}
         </div>
+        <aside class="cvl-clip-editor">
+          <h4>Clip Params & Effects</h4>
+          <div class="cvl-clip-editor-title">${selectedClip ? escapeHtml(selectedClip.sampleName || 'Sample') : 'No clip selected'}</div>
+          ${clipInspectorMarkup}
+        </aside>
       </div>
     </div>
   `;
@@ -1225,6 +1285,38 @@ function renderCvlPanel() {
       saveProjectToStorage();
     };
   }
+  const selectedClipId = track.cvl?.selectedClipId;
+  const inspectorClip = Array.isArray(track.cvl?.clips)
+    ? track.cvl.clips.find((clip) => clip.id === selectedClipId)
+    : null;
+  const bindClipControl = (selector, updater) => {
+    const control = document.getElementById(selector);
+    if (!control || !inspectorClip) return;
+    control.oninput = (ev) => {
+      updater(Number(ev.target.value));
+    };
+    control.onchange = () => {
+      saveProjectToStorage();
+    };
+  };
+  bindClipControl('cvl_clipGain', (value) => {
+    inspectorClip.params.gain = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : 1;
+  });
+  bindClipControl('cvl_clipPan', (value) => {
+    inspectorClip.params.pan = Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+  });
+  bindClipControl('cvl_clipPitch', (value) => {
+    inspectorClip.params.pitch = Number.isFinite(value) ? Math.max(-24, Math.min(24, value)) : 0;
+  });
+  bindClipControl('cvl_clipDrive', (value) => {
+    inspectorClip.effects.drive = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  });
+  bindClipControl('cvl_clipDelay', (value) => {
+    inspectorClip.effects.delay = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  });
+  bindClipControl('cvl_clipReverb', (value) => {
+    inspectorClip.effects.reverb = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  });
 
   const sampleItems = cvlRoot.querySelectorAll('.cvl-sample[data-sample-name]');
   sampleItems.forEach((item) => {
@@ -1262,6 +1354,8 @@ function renderCvlPanel() {
         startBeat: clippedStart,
         lengthBeats: Math.max(minClipLength, 1),
         sampleName,
+        params: { gain: 1, pan: 0, pitch: 0 },
+        effects: { drive: 0, delay: 0, reverb: 0 },
       };
       if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
       track.cvl.clips.push(clip);
@@ -1386,11 +1480,6 @@ function renderCvlPanel() {
         holdTimerId = window.setTimeout(enableMove, holdToMoveMs);
       }
     };
-
-    const handleLeftHandleDragPointerDown = (event) => {
-      beginMoveInteraction(event);
-    };
-
     const handlePointerDown = (event) => {
       if (activeClipInteraction === 'move') return;
       const edge = event.target?.dataset?.edge;
@@ -1400,7 +1489,9 @@ function renderCvlPanel() {
         const isDoubleTap = now - lastLeftHandleTapAt <= leftHandleDoubleTapMs;
         lastLeftHandleTapAt = now;
         if (isDoubleTap) {
-          handleLeftHandleDragPointerDown(event);
+          track.cvl.selectedClipId = clipId;
+          saveProjectToStorage();
+          renderCvlPanel();
           return;
         }
       }
