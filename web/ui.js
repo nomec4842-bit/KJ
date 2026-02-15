@@ -1793,6 +1793,12 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const eng = t.engine;
   const p = t.params[eng];
   const field = (label, inputHtml, hint='') => makeFieldHtml(label, inputHtml, hint);
+  const escapeHtml = (value) => `${value}`
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
   let html = '';
 
@@ -1830,6 +1836,47 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       <span class="hint">Track effects like compression appear here.</span>
     </div>`;
   html += field('Track Effects', trackFxPanel);
+
+  if (t.type === 'cvl') {
+    const clips = Array.isArray(t.cvl?.clips) ? t.cvl.clips : [];
+    const selectedClip = clips.find((clip) => clip.id === t.cvl?.selectedClipId) || null;
+    const selectedClipParams = selectedClip?.params || { gain: 1, pan: 0, pitch: 0 };
+    const selectedClipEffects = selectedClip?.effects || { drive: 0, delay: 0, reverb: 0 };
+    const cvlClipPanel = selectedClip
+      ? `
+        <div class="cvl-clip-editor-fields">
+          <label class="ctrl">
+            Gain
+            <input id="cvl_clipGain" type="range" min="0" max="2" step="0.01" value="${selectedClipParams.gain}">
+          </label>
+          <label class="ctrl">
+            Pan
+            <input id="cvl_clipPan" type="range" min="-1" max="1" step="0.01" value="${selectedClipParams.pan}">
+          </label>
+          <label class="ctrl">
+            Pitch
+            <input id="cvl_clipPitch" type="range" min="-24" max="24" step="1" value="${selectedClipParams.pitch}">
+          </label>
+          <label class="ctrl">
+            Drive
+            <input id="cvl_clipDrive" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.drive}">
+          </label>
+          <label class="ctrl">
+            Delay
+            <input id="cvl_clipDelay" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.delay}">
+          </label>
+          <label class="ctrl">
+            Reverb
+            <input id="cvl_clipReverb" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.reverb}">
+          </label>
+        </div>
+      `
+      : '<span class="hint">Double tap a left trim handle to edit clip params + effects.</span>';
+    html += field(
+      'CVL Clip Params & Effects',
+      `<div class="cvl-clip-editor-title">${selectedClip ? escapeHtml(selectedClip.sampleName || 'Sample') : 'No clip selected'}</div>${cvlClipPanel}`,
+    );
+  }
 
   // Instrument block
   html += `<div class="badge">Instrument • ${eng}</div>`;
@@ -1977,7 +2024,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange, onTrackFxChange, onParamsRerender }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange, onTrackFxChange, onCvlClipChange, onParamsRerender }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -2062,6 +2109,39 @@ export function renderParams(containerEl, track, makeFieldHtml) {
         if (typeof onTrackFxChange === 'function') onTrackFxChange();
       });
     }
+
+    const selectedClipId = t.cvl?.selectedClipId;
+    const selectedClip = Array.isArray(t.cvl?.clips)
+      ? t.cvl.clips.find((clip) => clip.id === selectedClipId)
+      : null;
+    const bindClipControl = (selector, updater) => {
+      const control = document.getElementById(selector);
+      if (!control || !selectedClip) return;
+      control.oninput = (ev) => {
+        updater(Number(ev.target.value));
+      };
+      control.onchange = () => {
+        if (typeof onCvlClipChange === 'function') onCvlClipChange();
+      };
+    };
+    bindClipControl('cvl_clipGain', (value) => {
+      selectedClip.params.gain = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : 1;
+    });
+    bindClipControl('cvl_clipPan', (value) => {
+      selectedClip.params.pan = Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+    });
+    bindClipControl('cvl_clipPitch', (value) => {
+      selectedClip.params.pitch = Number.isFinite(value) ? Math.max(-24, Math.min(24, value)) : 0;
+    });
+    bindClipControl('cvl_clipDrive', (value) => {
+      selectedClip.effects.drive = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    });
+    bindClipControl('cvl_clipDelay', (value) => {
+      selectedClip.effects.delay = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    });
+    bindClipControl('cvl_clipReverb', (value) => {
+      selectedClip.effects.reverb = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    });
 
     // Engine params
     if (eng === 'synth') {
