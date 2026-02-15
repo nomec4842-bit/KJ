@@ -1050,6 +1050,9 @@ function renderParamsPanel(){
       syncTrackEffects(track);
       saveProjectToStorage();
     },
+    onCvlClipChange: () => {
+      saveProjectToStorage();
+    },
     onParamsRerender: () => {
       renderParamsPanel();
       saveProjectToStorage();
@@ -1167,39 +1170,6 @@ function renderCvlPanel() {
     </div>
   `).join('');
 
-  const selectedClip = clips.find((clip) => clip.id === track.cvl?.selectedClipId) || null;
-  const selectedClipParams = selectedClip?.params || { gain: 1, pan: 0, pitch: 0 };
-  const selectedClipEffects = selectedClip?.effects || { drive: 0, delay: 0, reverb: 0 };
-  const clipInspectorMarkup = selectedClip
-    ? `
-      <div class="cvl-clip-editor-fields">
-        <label class="ctrl">
-          Gain
-          <input id="cvl_clipGain" type="range" min="0" max="2" step="0.01" value="${selectedClipParams.gain}">
-        </label>
-        <label class="ctrl">
-          Pan
-          <input id="cvl_clipPan" type="range" min="-1" max="1" step="0.01" value="${selectedClipParams.pan}">
-        </label>
-        <label class="ctrl">
-          Pitch
-          <input id="cvl_clipPitch" type="range" min="-24" max="24" step="1" value="${selectedClipParams.pitch}">
-        </label>
-        <label class="ctrl">
-          Drive
-          <input id="cvl_clipDrive" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.drive}">
-        </label>
-        <label class="ctrl">
-          Delay
-          <input id="cvl_clipDelay" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.delay}">
-        </label>
-        <label class="ctrl">
-          Reverb
-          <input id="cvl_clipReverb" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.reverb}">
-        </label>
-      </div>
-    `
-    : '<p class="cvl-empty">Double tap a left trim handle to edit clip params + effects.</p>';
 
   cvlRoot.innerHTML = `
     <div class="cvl-window">
@@ -1238,11 +1208,6 @@ function renderCvlPanel() {
           </div>
           ${laneRows}
         </div>
-        <aside class="cvl-clip-editor">
-          <h4>Clip Params & Effects</h4>
-          <div class="cvl-clip-editor-title">${selectedClip ? escapeHtml(selectedClip.sampleName || 'Sample') : 'No clip selected'}</div>
-          ${clipInspectorMarkup}
-        </aside>
       </div>
     </div>
   `;
@@ -1285,38 +1250,6 @@ function renderCvlPanel() {
       saveProjectToStorage();
     };
   }
-  const selectedClipId = track.cvl?.selectedClipId;
-  const inspectorClip = Array.isArray(track.cvl?.clips)
-    ? track.cvl.clips.find((clip) => clip.id === selectedClipId)
-    : null;
-  const bindClipControl = (selector, updater) => {
-    const control = document.getElementById(selector);
-    if (!control || !inspectorClip) return;
-    control.oninput = (ev) => {
-      updater(Number(ev.target.value));
-    };
-    control.onchange = () => {
-      saveProjectToStorage();
-    };
-  };
-  bindClipControl('cvl_clipGain', (value) => {
-    inspectorClip.params.gain = Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : 1;
-  });
-  bindClipControl('cvl_clipPan', (value) => {
-    inspectorClip.params.pan = Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
-  });
-  bindClipControl('cvl_clipPitch', (value) => {
-    inspectorClip.params.pitch = Number.isFinite(value) ? Math.max(-24, Math.min(24, value)) : 0;
-  });
-  bindClipControl('cvl_clipDrive', (value) => {
-    inspectorClip.effects.drive = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-  });
-  bindClipControl('cvl_clipDelay', (value) => {
-    inspectorClip.effects.delay = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-  });
-  bindClipControl('cvl_clipReverb', (value) => {
-    inspectorClip.effects.reverb = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-  });
 
   const sampleItems = cvlRoot.querySelectorAll('.cvl-sample[data-sample-name]');
   sampleItems.forEach((item) => {
@@ -1492,6 +1425,7 @@ function renderCvlPanel() {
           track.cvl.selectedClipId = clipId;
           saveProjectToStorage();
           renderCvlPanel();
+          renderParamsPanel();
           return;
         }
       }
