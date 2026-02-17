@@ -1478,6 +1478,20 @@ function createTrackFxPanel(rootEl, track) {
   const wrap = document.createElement('div');
   wrap.className = 'track-fx-controls';
 
+  const effectSelectWrap = document.createElement('label');
+  effectSelectWrap.className = 'track-fx-effect-select';
+  const effectSelectLabel = document.createElement('span');
+  effectSelectLabel.textContent = 'Effect';
+  const effectSelect = document.createElement('select');
+  effectSelect.setAttribute('aria-label', 'Track effect type');
+  const compressionOption = document.createElement('option');
+  compressionOption.value = 'compression';
+  compressionOption.textContent = 'Compression';
+  effectSelect.appendChild(compressionOption);
+  effectSelectWrap.appendChild(effectSelectLabel);
+  effectSelectWrap.appendChild(effectSelect);
+  wrap.appendChild(effectSelectWrap);
+
   const toggleLabel = document.createElement('label');
   toggleLabel.className = 'track-fx-toggle';
   const toggleInput = document.createElement('input');
@@ -1648,6 +1662,7 @@ function createTrackFxPanel(rootEl, track) {
   const refresh = () => {
     const comp = ensureCompressionState();
     suppress = true;
+    effectSelect.value = 'compression';
     const enabled = !!comp.enabled;
     toggleInput.checked = enabled;
     setControlsEnabled(enabled);
