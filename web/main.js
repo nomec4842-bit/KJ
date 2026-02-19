@@ -50,6 +50,8 @@ const saveProjectBtn = document.getElementById('saveProject');
 const loadProjectBtn = document.getElementById('loadProject');
 const loadProjectInput = document.getElementById('loadProjectFile');
 const resetProjectBtn = document.getElementById('resetProject');
+const projectMenuEl = document.getElementById('projectMenu');
+const projectMenuToggleBtn = document.getElementById('projectMenuToggle');
 
 function applyCvlLayout(isCvl) {
   if (timelinePanel) timelinePanel.classList.toggle('is-hidden', isCvl);
@@ -1545,6 +1547,14 @@ function renderArpControls() {
   updateArpPanelVisibility(track);
 }
 let isTrackDropdownOpen = false;
+let isProjectMenuOpen = false;
+
+function setProjectMenuOpen(open) {
+  isProjectMenuOpen = !!open;
+  if (!projectMenuEl || !projectMenuToggleBtn) return;
+  projectMenuEl.classList.toggle('open', isProjectMenuOpen);
+  projectMenuToggleBtn.setAttribute('aria-expanded', isProjectMenuOpen ? 'true' : 'false');
+}
 
 function closeTrackDropdown() {
   isTrackDropdownOpen = false;
@@ -1670,13 +1680,31 @@ trackSel.onchange = () => {
   saveProjectToStorage();
 };
 
+if (projectMenuToggleBtn) {
+  projectMenuToggleBtn.addEventListener('click', () => {
+    setProjectMenuOpen(!isProjectMenuOpen);
+  });
+}
+
 document.addEventListener('pointerdown', (event) => {
+  if (isProjectMenuOpen && projectMenuEl) {
+    const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    if (!(eventPath.includes(projectMenuEl) || projectMenuEl.contains(event.target))) {
+      setProjectMenuOpen(false);
+    }
+  }
+
   if (!isTrackDropdownOpen || !trackDropdownEl) return;
   const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
   if (eventPath.includes(trackDropdownEl) || trackDropdownEl.contains(event.target)) return;
   closeTrackDropdown();
 });
 
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (isTrackDropdownOpen) closeTrackDropdown();
+  if (isProjectMenuOpen) setProjectMenuOpen(false);
+});
 
 engineSel.onchange = () => {
   const track = currentTrack();
@@ -2041,10 +2069,12 @@ function downloadProjectJSON() {
 
 if (saveProjectBtn) saveProjectBtn.onclick = () => {
   downloadProjectJSON();
+  setProjectMenuOpen(false);
 };
 
 if (loadProjectBtn) loadProjectBtn.onclick = () => {
   loadProjectInput?.click();
+  setProjectMenuOpen(false);
 };
 
 if (loadProjectInput) {
@@ -2079,6 +2109,7 @@ if (resetProjectBtn) resetProjectBtn.onclick = () => {
   applyProjectData(createDefaultProject());
   clearProjectStorage();
   saveProjectToStorage();
+  setProjectMenuOpen(false);
 };
 
 /* ---------- Transport ---------- */

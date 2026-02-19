@@ -93,6 +93,36 @@ h3 { margin:0 0 8px; font-weight:600; }
 }
 .track-remove-btn:disabled { opacity:0.45; cursor:not-allowed; }
 
+.project-menu { position:relative; }
+.project-menu-toggle {
+  min-width:38px;
+  min-height:32px;
+  font-size:18px;
+  line-height:1;
+  padding:4px 10px;
+}
+.project-menu-panel {
+  position:absolute;
+  top:calc(100% + 6px);
+  right:0;
+  z-index:30;
+  min-width:140px;
+  background:#10131a;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:6px;
+  display:none;
+  flex-direction:column;
+  gap:4px;
+  box-shadow:0 10px 26px rgba(0,0,0,0.35);
+}
+.project-menu.open .project-menu-panel { display:flex; }
+.project-menu-item {
+  width:100%;
+  justify-content:flex-start;
+  border-radius:8px;
+}
+
 .field { margin:10px 0; }
 .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
 .field .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
