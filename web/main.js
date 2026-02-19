@@ -17,6 +17,7 @@ await dspReady;
 /* ---------- DOM ---------- */
 const tempoInput   = document.getElementById('tempo');
 const trackSel     = document.getElementById('trackSelect');
+const trackSelectListEl = document.getElementById('trackSelectList');
 const addTrackBtn  = document.getElementById('addTrack');
 const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
@@ -1543,10 +1544,61 @@ function renderArpControls() {
   }
   updateArpPanelVisibility(track);
 }
+function renderTrackSelectList() {
+  if (!trackSelectListEl) return;
+  trackSelectListEl.innerHTML = '';
+
+  tracks.forEach((track, index) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'track-select-item';
+    if (index === selectedTrackIndex) item.classList.add('active');
+    item.setAttribute('aria-pressed', index === selectedTrackIndex ? 'true' : 'false');
+
+    const label = document.createElement('span');
+    label.className = 'track-select-item-label';
+    label.textContent = track?.name || `Track ${index + 1}`;
+    item.appendChild(label);
+
+    item.addEventListener('click', () => {
+      if (selectedTrackIndex === index) return;
+      selectedTrackIndex = index;
+      refreshAndSelect(selectedTrackIndex);
+      saveProjectToStorage();
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'track-remove-btn';
+    removeBtn.textContent = '×';
+    removeBtn.setAttribute('aria-label', `Remove ${track?.name || `Track ${index + 1}`}`);
+    removeBtn.title = 'Remove track';
+    removeBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (tracks.length <= 1) return;
+      tracks.splice(index, 1);
+      if (selectedTrackIndex >= tracks.length) {
+        selectedTrackIndex = tracks.length - 1;
+      } else if (selectedTrackIndex > index) {
+        selectedTrackIndex -= 1;
+      }
+      selectedTrackIndex = Math.max(0, selectedTrackIndex);
+      applyMixer(tracks);
+      refreshAndSelect(selectedTrackIndex);
+      saveProjectToStorage();
+    });
+    if (tracks.length <= 1) removeBtn.disabled = true;
+
+    item.appendChild(removeBtn);
+    trackSelectListEl.appendChild(item);
+  });
+}
+
 function refreshAndSelect(i = selectedTrackIndex){
   const track = currentTrack();
   if (track) normalizeTrack(track);
   refreshTrackSelect(trackSel, tracks, i);
+  renderTrackSelectList();
   if (track) {
     if (track.type === 'cvl') {
       track.engine = 'sampler';
