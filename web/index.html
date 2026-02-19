@@ -23,20 +23,6 @@
     </label>
     <button id="addTrack">+ Track</button>
 
-    <label class="ctrl">
-      Engine
-      <select id="engine">
-        <option value="synth">Synth</option>
-        <option value="noise">Noise Synth</option>
-        <option value="kick808">808 Kick</option>
-        <option value="snare808">808 Snare</option>
-        <option value="hat808">808 Hat</option>
-        <option value="clap909">909 Clap</option>
-        <option value="sampler">Sampler</option>
-        <option value="cvl">CVL</option>
-      </select>
-    </label>
-
     <span style="flex:1"></span>
     <div id="projectMenu" class="project-menu">
       <button id="projectMenuToggle" class="ghost project-menu-toggle" type="button" aria-expanded="false" aria-controls="projectMenuPanel" aria-label="Project menu">
@@ -72,6 +58,19 @@
 
     <section class="panel">
       <h3>Track Mixer & Params</h3>
+      <label class="ctrl">
+        Track Engine
+        <select id="engine">
+          <option value="synth">Synth</option>
+          <option value="noise">Noise Synth</option>
+          <option value="kick808">808 Kick</option>
+          <option value="snare808">808 Snare</option>
+          <option value="hat808">808 Hat</option>
+          <option value="clap909">909 Clap</option>
+          <option value="sampler">Sampler</option>
+          <option value="cvl">CVL</option>
+        </select>
+      </label>
       <div id="params"></div>
     </section>
 
