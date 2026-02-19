@@ -1855,7 +1855,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   if (t.type === 'cvl') {
     const clips = Array.isArray(t.cvl?.clips) ? t.cvl.clips : [];
     const selectedClip = clips.find((clip) => clip.id === t.cvl?.selectedClipId) || null;
-    const selectedClipParams = selectedClip?.params || { gain: 1, pan: 0, pitch: 0 };
+    const selectedClipParams = selectedClip?.params || { start: 0, end: 1, gain: 1, pan: 0, pitch: 0 };
     const selectedClipEffects = selectedClip?.effects || { drive: 0, delay: 0, reverb: 0 };
     const cvlClipPanel = selectedClip
       ? `
@@ -1871,6 +1871,14 @@ export function renderParams(containerEl, track, makeFieldHtml) {
           <label class="ctrl">
             Pitch
             <input id="cvl_clipPitch" type="range" min="-24" max="24" step="1" value="${selectedClipParams.pitch}">
+          </label>
+          <label class="ctrl">
+            Start
+            <input id="cvl_clipStart" type="range" min="0" max="1" step="0.001" value="${selectedClipParams.start}">
+          </label>
+          <label class="ctrl">
+            End
+            <input id="cvl_clipEnd" type="range" min="0" max="1" step="0.001" value="${selectedClipParams.end}">
           </label>
           <label class="ctrl">
             Drive
@@ -2147,6 +2155,16 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     });
     bindClipControl('cvl_clipPitch', (value) => {
       selectedClip.params.pitch = Number.isFinite(value) ? Math.max(-24, Math.min(24, value)) : 0;
+    });
+    bindClipControl('cvl_clipStart', (value) => {
+      const next = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+      const currentEnd = Number.isFinite(Number(selectedClip.params.end)) ? Number(selectedClip.params.end) : 1;
+      selectedClip.params.start = Math.min(next, currentEnd);
+    });
+    bindClipControl('cvl_clipEnd', (value) => {
+      const next = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
+      const currentStart = Number.isFinite(Number(selectedClip.params.start)) ? Number(selectedClip.params.start) : 0;
+      selectedClip.params.end = Math.max(next, currentStart);
     });
     bindClipControl('cvl_clipDrive', (value) => {
       selectedClip.effects.drive = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;

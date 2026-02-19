@@ -559,6 +559,8 @@ function normalizeTrack(t) {
         const gain = Number(rawParams.gain);
         const pan = Number(rawParams.pan);
         const pitch = Number(rawParams.pitch);
+        const start = Number(rawParams.start);
+        const end = Number(rawParams.end);
         const drive = Number(rawEffects.drive);
         const delay = Number(rawEffects.delay);
         const reverb = Number(rawEffects.reverb);
@@ -569,6 +571,8 @@ function normalizeTrack(t) {
           lengthBeats: Number.isFinite(lengthBeats) ? Math.max(CVL_SNAP_GRID, lengthBeats) : 1,
           sampleName: typeof clip.sampleName === 'string' ? clip.sampleName : 'Sample',
           params: {
+            start: Number.isFinite(start) ? Math.max(0, Math.min(1, start)) : 0,
+            end: Number.isFinite(end) ? Math.max(0, Math.min(1, end)) : 1,
             gain: Number.isFinite(gain) ? Math.max(0, Math.min(2, gain)) : 1,
             pan: Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0,
             pitch: Number.isFinite(pitch) ? Math.max(-24, Math.min(24, pitch)) : 0,
@@ -1294,7 +1298,7 @@ function renderCvlPanel() {
         startBeat: clippedStart,
         lengthBeats: Math.max(minClipLength, 1),
         sampleName,
-        params: { gain: 1, pan: 0, pitch: 0 },
+        params: { start: 0, end: 1, gain: 1, pan: 0, pitch: 0 },
         effects: { drive: 0, delay: 0, reverb: 0 },
       };
       if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
@@ -2349,9 +2353,25 @@ playBtn.onclick = async () => {
               const buffer = sampleName ? sampleCache[sampleName] : null;
               if (!buffer) continue;
               const previousSample = t.sample;
+              const previousSamplerParams = { ...(t.params?.sampler || {}) };
+              const clipParams = clip.params && typeof clip.params === 'object' ? clip.params : {};
               t.sample = { buffer, name: sampleName };
+              const clipStart = Number(clipParams.start);
+              const clipEnd = Number(clipParams.end);
+              const clipGain = Number(clipParams.gain);
+              const clipPitch = Number(clipParams.pitch);
+              if (!t.params || typeof t.params !== 'object') t.params = {};
+              if (!t.params.sampler || typeof t.params.sampler !== 'object') t.params.sampler = {};
+              t.params.sampler = {
+                ...previousSamplerParams,
+                start: Number.isFinite(clipStart) ? Math.max(0, Math.min(1, clipStart)) : 0,
+                end: Number.isFinite(clipEnd) ? Math.max(0, Math.min(1, clipEnd)) : 1,
+                gain: Number.isFinite(clipGain) ? Math.max(0, Math.min(2, clipGain)) : 1,
+                semis: Number.isFinite(clipPitch) ? Math.max(-24, Math.min(24, clipPitch)) : 0,
+              };
               const durationSec = clipLength * secondsPerBeat;
               triggerEngine?.(t, 1, 0, scheduledTime, durationSec);
+              t.params.sampler = previousSamplerParams;
               t.sample = previousSample;
             }
           }
