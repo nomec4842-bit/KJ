@@ -2356,16 +2356,16 @@ playBtn.onclick = async () => {
               const previousSamplerParams = { ...(t.params?.sampler || {}) };
               const clipParams = clip.params && typeof clip.params === 'object' ? clip.params : {};
               t.sample = { buffer, name: sampleName };
-              const clipStart = Number(clipParams.start);
-              const clipEnd = Number(clipParams.end);
+              const clipRangeStart = Number(clipParams.start);
+              const clipRangeEnd = Number(clipParams.end);
               const clipGain = Number(clipParams.gain);
               const clipPitch = Number(clipParams.pitch);
               if (!t.params || typeof t.params !== 'object') t.params = {};
               if (!t.params.sampler || typeof t.params.sampler !== 'object') t.params.sampler = {};
               t.params.sampler = {
                 ...previousSamplerParams,
-                start: Number.isFinite(clipStart) ? Math.max(0, Math.min(1, clipStart)) : 0,
-                end: Number.isFinite(clipEnd) ? Math.max(0, Math.min(1, clipEnd)) : 1,
+                start: Number.isFinite(clipRangeStart) ? Math.max(0, Math.min(1, clipRangeStart)) : 0,
+                end: Number.isFinite(clipRangeEnd) ? Math.max(0, Math.min(1, clipRangeEnd)) : 1,
                 gain: Number.isFinite(clipGain) ? Math.max(0, Math.min(2, clipGain)) : 1,
                 semis: Number.isFinite(clipPitch) ? Math.max(-24, Math.min(24, clipPitch)) : 0,
               };
