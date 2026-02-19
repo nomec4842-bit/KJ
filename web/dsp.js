@@ -250,7 +250,6 @@ export function renderKickSamples(params, velocity = 1) {
   const length = calculateKickSamples(ampDecay);
   const freq = toNumber(params?.freq, 55);
   const pitchDecay = toNumber(params?.pitchDecay, 0.08);
-  const click = toNumber(params?.click, 0.12);
   const vel = toNumber(velocity, 1);
 
   const out = new Float32Array(length);
@@ -259,7 +258,6 @@ export function renderKickSamples(params, velocity = 1) {
   const baseFreq = clamp(freq, 20, 200);
   const pitchDecaySec = clamp(pitchDecay, 0.001, 1);
   const ampDecaySec = clamp(ampDecay, 0.05, 2);
-  const clickAmount = clamp(click, 0, 1);
   const velClamped = clamp(vel, 0, 2);
 
   let phase = 0;
@@ -271,9 +269,6 @@ export function renderKickSamples(params, velocity = 1) {
     if (phase >= 1) phase -= Math.floor(phase);
     const env = Math.exp(-t / ampDecaySec);
     let sample = Math.sin(phase * 2 * PI) * env * velClamped;
-    if (t < 0.01 && clickAmount > 0) {
-      sample += randomNoise() * clickAmount * (1 - t / 0.01) * velClamped;
-    }
     out[i] = sample;
   }
 

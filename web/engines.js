@@ -9,6 +9,24 @@ import {
   renderClapSamples,
 } from './dsp.js';
 
+const DECLICK_TIME_SEC = 0.004;
+
+function applyDeclickEnvelope(gainNode, peakGain, startTime, playDurationSec) {
+  const peak = Number.isFinite(peakGain) ? Math.max(0, peakGain) : 1;
+  const duration = Number.isFinite(playDurationSec) ? Math.max(0.001, playDurationSec) : 0.001;
+  const fadeTime = Math.min(DECLICK_TIME_SEC, duration * 0.45);
+  const fadeInEnd = startTime + fadeTime;
+  const fadeOutStart = startTime + Math.max(fadeTime, duration - fadeTime);
+  const stopTime = startTime + duration;
+
+  gainNode.gain.cancelScheduledValues(startTime);
+  gainNode.gain.setValueAtTime(0, startTime);
+  gainNode.gain.linearRampToValueAtTime(peak, fadeInEnd);
+  gainNode.gain.setValueAtTime(peak, fadeOutStart);
+  gainNode.gain.linearRampToValueAtTime(0, stopTime);
+  return stopTime;
+}
+
 function playSamples(samples, dest, when, durationSec) {
   if (!samples || samples.length === 0) return null;
   const target = dest || ctx.destination;
@@ -17,20 +35,19 @@ function playSamples(samples, dest, when, durationSec) {
 
   const source = ctx.createBufferSource();
   const gain = ctx.createGain();
-  gain.gain.value = 1;
   source.buffer = buffer;
   source.connect(gain).connect(target);
   const startTime = Number.isFinite(when) ? when : ctx.currentTime;
-  const maxDuration = Number.isFinite(durationSec) && durationSec > 0
+  const playDuration = Number.isFinite(durationSec) && durationSec > 0
     ? Math.min(buffer.duration, durationSec)
-    : null;
-  if (maxDuration) {
-    source.start(startTime, 0, maxDuration);
+    : buffer.duration;
+  const stopTime = applyDeclickEnvelope(gain, 1, startTime, playDuration);
+  if (playDuration) {
+    source.start(startTime, 0, playDuration);
   } else {
     source.start(startTime);
   }
-  const stopTime = startTime + (maxDuration ?? buffer.duration) + 0.05;
-  source.stop(stopTime);
+  source.stop(stopTime + 0.005);
   source.onended = () => {
     try { source.disconnect(); } catch {}
     try { gain.disconnect(); } catch {}
@@ -119,12 +136,13 @@ export function samplerPlay(p, dest, vel = 1, sample, semis = 0, when, durationS
   }
 
   const vca = ctx.createGain();
-  vca.gain.value = (p.gain ?? 1) * vel;
 
   src.connect(vca).connect(dest || ctx.destination);
   const maxDur = Math.max(0.005, endSec - startSec);
   const duration = Number.isFinite(durationSec) && durationSec > 0
     ? Math.min(maxDur, durationSec)
     : maxDur;
+  applyDeclickEnvelope(vca, (p.gain ?? 1) * vel, startTime, duration);
   src.start(startTime, startSec, duration);
+  src.stop(startTime + duration + 0.005);
 }

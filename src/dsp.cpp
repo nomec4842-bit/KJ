@@ -192,13 +192,13 @@ void generateKick(
 {
   if (!out || length <= 0) return;
   std::fill(out, out + length, 0.0f);
+  (void)click;
 
   const double sr = gSampleRate > 0 ? gSampleRate : kDefaultSampleRate;
   const double dt = 1.0 / sr;
   const double baseFreq = clamp(freq, 20.0, 200.0);
   const double pitchDecaySec = clamp(pitchDecay, 0.001, 1.0);
   const double ampDecaySec = clamp(ampDecay, 0.05, 2.0);
-  const double clickAmount = clamp(click, 0.0, 1.0);
   const double vel = clamp(velocity, 0.0, 2.0);
 
   double phase = 0.0;
@@ -210,9 +210,6 @@ void generateKick(
     if (phase >= 1.0) phase -= std::floor(phase);
     const double env = std::exp(-t / ampDecaySec);
     double sample = std::sin(phase * 2.0 * kPi) * env * vel;
-    if (t < 0.01 && clickAmount > 0.0) {
-      sample += randomNoise() * clickAmount * (1.0 - t / 0.01) * vel;
-    }
     out[i] = static_cast<float>(sample);
   }
 
