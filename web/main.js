@@ -1672,7 +1672,8 @@ trackSel.onchange = () => {
 
 document.addEventListener('click', (event) => {
   if (!isTrackDropdownOpen || !trackDropdownEl) return;
-  if (trackDropdownEl.contains(event.target)) return;
+  const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
+  if (eventPath.includes(trackDropdownEl) || trackDropdownEl.contains(event.target)) return;
   closeTrackDropdown();
 });
 
