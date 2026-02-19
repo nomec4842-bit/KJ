@@ -36,11 +36,6 @@
       </select>
     </label>
 
-    <label class="ctrl" style="margin-left:12px">
-      <input id="togglePiano" type="checkbox">
-      Piano Roll
-    </label>
-
     <span style="flex:1"></span>
     <button id="saveProject" class="ghost">Save JSON</button>
     <button id="loadProject" class="ghost">Load JSON</button>
@@ -52,6 +47,10 @@
     <section class="panel" id="timelinePanel">
       <h3>Timeline</h3>
       <div id="sequencer"></div>
+      <label class="ctrl" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px">
+        <input id="togglePiano" type="checkbox">
+        Piano Roll
+      </label>
       <div id="arpPanel" class="arp-panel is-hidden"></div>
       <div id="pianoNoteParams" class="step-detail piano-note-params placeholder">
         <span class="hint">Select a piano roll note to edit velocity, chance, and length.</span>
