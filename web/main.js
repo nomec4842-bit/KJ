@@ -17,7 +17,7 @@ await dspReady;
 /* ---------- DOM ---------- */
 const tempoInput   = document.getElementById('tempo');
 const trackSel     = document.getElementById('trackSelect');
-const trackSelectListEl = document.getElementById('trackSelectList');
+const trackDropdownEl = document.getElementById('trackDropdown');
 const addTrackBtn  = document.getElementById('addTrack');
 const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
@@ -1544,27 +1544,79 @@ function renderArpControls() {
   }
   updateArpPanelVisibility(track);
 }
-function renderTrackSelectList() {
-  if (!trackSelectListEl) return;
-  trackSelectListEl.innerHTML = '';
+let isTrackDropdownOpen = false;
+
+function closeTrackDropdown() {
+  isTrackDropdownOpen = false;
+  renderTrackDropdown();
+}
+
+function removeTrackAt(index) {
+  if (tracks.length <= 1) return;
+  tracks.splice(index, 1);
+  if (selectedTrackIndex >= tracks.length) {
+    selectedTrackIndex = tracks.length - 1;
+  } else if (selectedTrackIndex > index) {
+    selectedTrackIndex -= 1;
+  }
+  selectedTrackIndex = Math.max(0, selectedTrackIndex);
+  applyMixer(tracks);
+  refreshAndSelect(selectedTrackIndex);
+  saveProjectToStorage();
+}
+
+function renderTrackDropdown() {
+  if (!trackDropdownEl) return;
+  trackDropdownEl.innerHTML = '';
+
+  const selectedTrack = tracks[selectedTrackIndex];
+  const selectedName = selectedTrack?.name || `Track ${selectedTrackIndex + 1}`;
+  const selectedType = selectedTrack?.type === 'cvl' ? 'CVL' : 'Standard';
+  const selectedEngine = selectedTrack?.engine || '';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'track-dropdown-toggle';
+  toggle.setAttribute('aria-expanded', isTrackDropdownOpen ? 'true' : 'false');
+  const toggleLabel = document.createElement('span');
+  toggleLabel.className = 'track-dropdown-label';
+  toggleLabel.textContent = `${selectedName} (${selectedType}${selectedEngine ? ` • ${selectedEngine}` : ''})`;
+  const toggleCaret = document.createElement('span');
+  toggleCaret.className = 'track-dropdown-caret';
+  toggleCaret.textContent = '▾';
+  toggle.append(toggleLabel, toggleCaret);
+  toggle.addEventListener('click', () => {
+    isTrackDropdownOpen = !isTrackDropdownOpen;
+    renderTrackDropdown();
+  });
+  trackDropdownEl.appendChild(toggle);
+
+  if (!isTrackDropdownOpen) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'track-dropdown-menu';
+  menu.setAttribute('role', 'listbox');
 
   tracks.forEach((track, index) => {
     const item = document.createElement('button');
     item.type = 'button';
-    item.className = 'track-select-item';
+    item.className = 'track-dropdown-item';
+    item.setAttribute('role', 'option');
     if (index === selectedTrackIndex) item.classList.add('active');
-    item.setAttribute('aria-pressed', index === selectedTrackIndex ? 'true' : 'false');
 
-    const label = document.createElement('span');
-    label.className = 'track-select-item-label';
-    label.textContent = track?.name || `Track ${index + 1}`;
-    item.appendChild(label);
+    const typeLabel = track?.type === 'cvl' ? 'CVL' : 'Standard';
+    const itemLabel = document.createElement('span');
+    itemLabel.className = 'track-dropdown-item-label';
+    itemLabel.textContent = `${index + 1}. ${track?.name || `Track ${index + 1}`} (${typeLabel} • ${track?.engine || ''})`;
+    item.appendChild(itemLabel);
 
     item.addEventListener('click', () => {
-      if (selectedTrackIndex === index) return;
-      selectedTrackIndex = index;
-      refreshAndSelect(selectedTrackIndex);
-      saveProjectToStorage();
+      if (selectedTrackIndex !== index) {
+        selectedTrackIndex = index;
+        refreshAndSelect(selectedTrackIndex);
+        saveProjectToStorage();
+      }
+      closeTrackDropdown();
     });
 
     const removeBtn = document.createElement('button');
@@ -1573,32 +1625,25 @@ function renderTrackSelectList() {
     removeBtn.textContent = '×';
     removeBtn.setAttribute('aria-label', `Remove ${track?.name || `Track ${index + 1}`}`);
     removeBtn.title = 'Remove track';
+    removeBtn.disabled = tracks.length <= 1;
     removeBtn.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (tracks.length <= 1) return;
-      tracks.splice(index, 1);
-      if (selectedTrackIndex >= tracks.length) {
-        selectedTrackIndex = tracks.length - 1;
-      } else if (selectedTrackIndex > index) {
-        selectedTrackIndex -= 1;
-      }
-      selectedTrackIndex = Math.max(0, selectedTrackIndex);
-      applyMixer(tracks);
-      refreshAndSelect(selectedTrackIndex);
-      saveProjectToStorage();
+      removeTrackAt(index);
+      closeTrackDropdown();
     });
-    if (tracks.length <= 1) removeBtn.disabled = true;
 
     item.appendChild(removeBtn);
-    trackSelectListEl.appendChild(item);
+    menu.appendChild(item);
   });
+
+  trackDropdownEl.appendChild(menu);
 }
 
 function refreshAndSelect(i = selectedTrackIndex){
   const track = currentTrack();
   if (track) normalizeTrack(track);
   refreshTrackSelect(trackSel, tracks, i);
-  renderTrackSelectList();
+  renderTrackDropdown();
   if (track) {
     if (track.type === 'cvl') {
       track.engine = 'sampler';
@@ -1624,6 +1669,12 @@ trackSel.onchange = () => {
   refreshAndSelect(selectedTrackIndex);
   saveProjectToStorage();
 };
+
+document.addEventListener('click', (event) => {
+  if (!isTrackDropdownOpen || !trackDropdownEl) return;
+  if (trackDropdownEl.contains(event.target)) return;
+  closeTrackDropdown();
+});
 
 
 engineSel.onchange = () => {
@@ -1735,6 +1786,7 @@ function loadPattern(index) {
   if (!tracks.length) {
     refreshTrackSelect(trackSel, tracks, selectedTrackIndex);
     if (trackSel) trackSel.value = '';
+    renderTrackDropdown();
     renderParamsPanel();
     return;
   }

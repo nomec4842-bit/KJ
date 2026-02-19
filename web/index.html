@@ -16,11 +16,11 @@
       <input id="tempo" type="number" value="120" min="40" max="300" step="1">
     </label>
 
-    <label class="ctrl">
-      Track
-      <select id="trackSelect"></select>
+    <label class="ctrl track-dropdown-ctrl">
+      <span>Track</span>
+      <select id="trackSelect" hidden aria-hidden="true"></select>
+      <div id="trackDropdown" class="track-dropdown" aria-label="Track selector"></div>
     </label>
-    <div id="trackSelectList" class="track-select-list" aria-label="Track selector list"></div>
     <button id="addTrack">+ Track</button>
 
     <label class="ctrl">
