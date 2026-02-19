@@ -1639,7 +1639,6 @@ function renderTrackDropdown() {
     removeBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       removeTrackAt(index);
-      closeTrackDropdown();
     });
 
     item.appendChild(removeBtn);
