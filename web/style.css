@@ -11,11 +11,86 @@ h3 { margin:0 0 8px; font-weight:600; }
 .toggle.active { background:#243145; border-color:#35506e; }
 .hint { color:var(--muted); }
 
-.track-select-list { display:flex; align-items:center; gap:6px; flex-wrap:wrap; max-width:420px; }
-.track-select-item { display:inline-flex; align-items:center; gap:6px; padding:4px 6px 4px 8px; border-radius:999px; border:1px solid var(--border); background:#171a21; color:var(--fg); }
-.track-select-item.active { background:#243145; border-color:#35506e; }
-.track-select-item-label { font-size:12px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.track-remove-btn { width:20px; height:20px; border-radius:999px; padding:0; display:inline-flex; align-items:center; justify-content:center; line-height:1; font-size:14px; }
+.track-dropdown-ctrl { position:relative; }
+.track-dropdown { position:relative; min-width:220px; }
+.track-dropdown-toggle {
+  width:100%;
+  min-height:32px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:#191b22;
+  color:var(--fg);
+  padding:6px 10px;
+}
+.track-dropdown-toggle:focus-visible,
+.track-dropdown-item:focus-visible,
+.track-remove-btn:focus-visible {
+  outline:2px solid var(--accent);
+  outline-offset:1px;
+}
+.track-dropdown-label {
+  max-width:180px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.track-dropdown-caret { font-size:10px; opacity:0.75; }
+.track-dropdown-menu {
+  position:absolute;
+  top:calc(100% + 6px);
+  left:0;
+  right:0;
+  z-index:25;
+  background:#10131a;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:6px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  box-shadow:0 10px 26px rgba(0,0,0,0.35);
+  max-height:280px;
+  overflow:auto;
+}
+.track-dropdown-item {
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  border-radius:8px;
+  border:1px solid transparent;
+  background:#171a21;
+  color:var(--fg);
+  padding:6px 8px;
+}
+.track-dropdown-item.active {
+  background:#243145;
+  border-color:#35506e;
+}
+.track-dropdown-item-label {
+  font-size:12px;
+  max-width:170px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  text-align:left;
+}
+.track-remove-btn {
+  width:20px;
+  height:20px;
+  border-radius:999px;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  line-height:1;
+  font-size:14px;
+}
 .track-remove-btn:disabled { opacity:0.45; cursor:not-allowed; }
 
 .field { margin:10px 0; }
