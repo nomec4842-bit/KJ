@@ -10,6 +10,14 @@ h3 { margin:0 0 8px; font-weight:600; }
 .primary { background:#1e2633; border-color:#2d3644; }
 .toggle.active { background:#243145; border-color:#35506e; }
 .hint { color:var(--muted); }
+
+.track-select-list { display:flex; align-items:center; gap:6px; flex-wrap:wrap; max-width:420px; }
+.track-select-item { display:inline-flex; align-items:center; gap:6px; padding:4px 6px 4px 8px; border-radius:999px; border:1px solid var(--border); background:#171a21; color:var(--fg); }
+.track-select-item.active { background:#243145; border-color:#35506e; }
+.track-select-item-label { font-size:12px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.track-remove-btn { width:20px; height:20px; border-radius:999px; padding:0; display:inline-flex; align-items:center; justify-content:center; line-height:1; font-size:14px; }
+.track-remove-btn:disabled { opacity:0.45; cursor:not-allowed; }
+
 .field { margin:10px 0; }
 .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
 .field .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
