@@ -1904,6 +1904,7 @@ function gotoChainSlot(slotIndex) {
   const patIndex = clampPatternIndex(slot?.pattern ?? 0);
   song.current = patIndex;
   loadPattern(patIndex);
+  realignPlaybackToNextStep();
 }
 
 function refreshPatternSelect() {
@@ -2071,6 +2072,8 @@ if (resetProjectBtn) resetProjectBtn.onclick = () => {
   stopHandle = null;
   currentStepIntervalMs = 0;
   clearPendingDelayTriggers();
+  lastTransportStepIndex = -1;
+  playbackPatternStepOffset = 0;
   for (const t of tracks) t.pos = -1;
   paintPlayhead();
   applyProjectData(createDefaultProject());
@@ -2373,12 +2376,22 @@ function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, al
 }
 
 let stopHandle = null;
+let lastTransportStepIndex = -1;
+let playbackPatternStepOffset = 0;
+
+function realignPlaybackToNextStep() {
+  if (!stopHandle || !Number.isFinite(lastTransportStepIndex)) return;
+  playbackPatternStepOffset = Math.max(0, Math.trunc(lastTransportStepIndex) + 1);
+}
 
 playBtn.onclick = async () => {
   await ensureAudioReady();
   const bpm = Math.min(300, Math.max(40, Number(tempoInput?.value) || 120));
   currentStepIntervalMs = 60000 / (bpm * 4);
+  lastTransportStepIndex = -1;
+  playbackPatternStepOffset = 0;
   startTransport(bpm, (stepIndex, scheduledTime) => {
+    lastTransportStepIndex = stepIndex;
     applyMixer?.(tracks);
     const secondsPerBeat = 60 / bpm;
     const stepSeconds = secondsPerBeat / 4;
@@ -2392,7 +2405,8 @@ playBtn.onclick = async () => {
       const t = normalizeTrack(_t);
       const L = t.length;
       const previousPos = Number.isInteger(t.pos) ? t.pos : -1;
-      t.pos = L > 0 ? (stepIndex % L) : 0;
+      const localStepIndex = Math.max(0, stepIndex - playbackPatternStepOffset);
+      t.pos = L > 0 ? (localStepIndex % L) : 0;
 
       if (!patternCompleted && anchorTrack && _t === anchorTrack && L > 0 && t.pos === 0 && previousPos >= 0) {
         patternCompleted = true;
@@ -2564,6 +2578,8 @@ playBtn.onclick = async () => {
     stopTransport();
     currentStepIntervalMs = 0;
     clearPendingDelayTriggers();
+    lastTransportStepIndex = -1;
+    playbackPatternStepOffset = 0;
   };
 };
 
@@ -2572,6 +2588,8 @@ stopBtn.onclick = () => {
   stopHandle = null;
   currentStepIntervalMs = 0;
   clearPendingDelayTriggers();
+  lastTransportStepIndex = -1;
+  playbackPatternStepOffset = 0;
   for (const t of tracks) t.pos = -1;
   paintPlayhead();
 };
