@@ -117,6 +117,13 @@ function getCvlRateBeats(rate) {
   return beats;
 }
 
+function getCvlScrubberOffset(trackLengthBeats, elapsedSeconds, rateSeconds, depth) {
+  if (!(trackLengthBeats > 0) || !(rateSeconds > 0) || !(depth > 0)) return 0;
+  const phase = (elapsedSeconds / rateSeconds) % 1;
+  const smooth = Math.sin(phase * Math.PI * 2);
+  return smooth * depth * trackLengthBeats;
+}
+
 function shuffleArray(source) {
   const arr = [...source];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -2313,18 +2320,17 @@ playBtn.onclick = async () => {
           if (trackLengthBeats > 0 && Array.isArray(t.cvl?.clips) && t.cvl.clips.length) {
             const rateBeats = getCvlRateBeats(t.cvl?.scrubberRate);
             const rateSeconds = rateBeats * secondsPerBeat;
-            const scrubberPhase = rateSeconds > 0 ? (elapsedSeconds / rateSeconds) % 1 : 0;
             const depth = Number.isFinite(t.cvl?.scrubberDepth) ? t.cvl.scrubberDepth : 0;
-            const offsetBeats = (scrubberPhase * 2 - 1) * depth * trackLengthBeats;
+            const offsetBeats = getCvlScrubberOffset(trackLengthBeats, elapsedSeconds, rateSeconds, depth);
             const baseBeat = t.pos >= 0 ? t.pos / 4 : 0;
-            const modulatedBeat = Math.max(0, Math.min(trackLengthBeats, baseBeat + offsetBeats));
+            const maxBeat = Math.max(0, trackLengthBeats - 1e-4);
+            const modulatedBeat = Math.max(0, Math.min(maxBeat, baseBeat + offsetBeats));
 
             let prevModulatedBeat = null;
             if (previousPos >= 0 && rateSeconds > 0 && stepIndex > 0) {
-              const prevPhase = (prevElapsedSeconds / rateSeconds) % 1;
-              const prevOffset = (prevPhase * 2 - 1) * depth * trackLengthBeats;
+              const prevOffset = getCvlScrubberOffset(trackLengthBeats, prevElapsedSeconds, rateSeconds, depth);
               const prevBaseBeat = previousPos / 4;
-              prevModulatedBeat = Math.max(0, Math.min(trackLengthBeats, prevBaseBeat + prevOffset));
+              prevModulatedBeat = Math.max(0, Math.min(maxBeat, prevBaseBeat + prevOffset));
             }
 
             const clips = t.cvl.clips;
