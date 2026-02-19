@@ -18,7 +18,6 @@ await dspReady;
 const tempoInput   = document.getElementById('tempo');
 const trackSel     = document.getElementById('trackSelect');
 const addTrackBtn  = document.getElementById('addTrack');
-const trackTypeSel = document.getElementById('trackType');
 const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
 const arpEl        = document.getElementById('arpPanel');
@@ -1549,15 +1548,12 @@ function refreshAndSelect(i = selectedTrackIndex){
   if (track) normalizeTrack(track);
   refreshTrackSelect(trackSel, tracks, i);
   if (track) {
-    if (trackTypeSel) trackTypeSel.value = track.type || 'standard';
     if (track.type === 'cvl') {
       track.engine = 'sampler';
-      engineSel.value = 'sampler';
-      engineSel.disabled = true;
+      engineSel.value = 'cvl';
       togglePiano.checked = false;
       togglePiano.disabled = true;
     } else {
-      engineSel.disabled = false;
       togglePiano.disabled = false;
       engineSel.value = track.engine;
       togglePiano.checked = track.mode === 'piano';
@@ -1565,7 +1561,6 @@ function refreshAndSelect(i = selectedTrackIndex){
   } else {
     engineSel.value = '';
     togglePiano.checked = false;
-    if (trackTypeSel) trackTypeSel.value = 'standard';
   }
   showEditorForTrack();
   renderParamsPanel();
@@ -1578,23 +1573,19 @@ trackSel.onchange = () => {
   saveProjectToStorage();
 };
 
-if (trackTypeSel) {
-  trackTypeSel.onchange = () => {
-    const track = currentTrack();
-    if (!track) return;
-    track.type = trackTypeSel.value === 'cvl' ? 'cvl' : 'standard';
-    if (track.type === 'cvl') {
-      track.engine = 'sampler';
-      track.mode = 'steps';
-      track.selectedNote = null;
-    }
-    refreshAndSelect(selectedTrackIndex);
-    saveProjectToStorage();
-  };
-}
 
 engineSel.onchange = () => {
-  currentTrack().engine = engineSel.value;
+  const track = currentTrack();
+  if (!track) return;
+  if (engineSel.value === 'cvl') {
+    track.type = 'cvl';
+    track.engine = 'sampler';
+    track.mode = 'steps';
+    track.selectedNote = null;
+  } else {
+    if (track.type === 'cvl') track.type = 'standard';
+    track.engine = engineSel.value;
+  }
   refreshAndSelect(selectedTrackIndex);
   saveProjectToStorage();
 };
@@ -1614,7 +1605,7 @@ togglePiano.onchange = () => {
 };
 
 addTrackBtn.onclick = () => {
-  const type = trackTypeSel?.value === 'cvl' ? 'cvl' : 'standard';
+  const type = engineSel.value === 'cvl' ? 'cvl' : 'standard';
   const eng = type === 'cvl' ? 'sampler' : (engineSel.value || 'synth');
   const name = `Track ${tracks.length + 1}`;
   const newTrack = createTrack(name, eng, 16);
