@@ -1448,6 +1448,7 @@ function renderCvlPanel() {
       const startBeat = clip.startBeat;
       const startLength = clip.lengthBeats;
       const maxEnd = timelineBeats;
+      let hasResized = false;
       beginClipInteraction('resize');
       const onPointerMove = (moveEvent) => {
         const deltaBeat = (moveEvent.clientX - startX) / pixelsPerBeat;
@@ -1456,12 +1457,16 @@ function renderCvlPanel() {
           const rawStart = Math.max(0, Math.min(endBeat - minClipLength, startBeat + deltaBeat));
           const snappedStart = snapBeat(rawStart);
           const nextStart = Math.max(0, Math.min(endBeat - minClipLength, snappedStart));
+          if (nextStart === clip.startBeat) return;
+          hasResized = true;
           clip.startBeat = nextStart;
           clip.lengthBeats = Math.max(minClipLength, endBeat - nextStart);
         } else {
           const rawEnd = Math.max(startBeat + minClipLength, Math.min(maxEnd, startBeat + startLength + deltaBeat));
           const snappedEnd = snapBeat(rawEnd);
           const nextEnd = Math.max(startBeat + minClipLength, Math.min(maxEnd, snappedEnd));
+          if (nextEnd === startBeat + clip.lengthBeats) return;
+          hasResized = true;
           clip.lengthBeats = Math.max(minClipLength, nextEnd - startBeat);
         }
         clipEl.style.left = `${clip.startBeat * pixelsPerBeat}px`;
@@ -1471,8 +1476,10 @@ function renderCvlPanel() {
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
         endClipInteraction();
-        saveProjectToStorage();
-        renderCvlPanel();
+        if (hasResized) {
+          saveProjectToStorage();
+          renderCvlPanel();
+        }
       };
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
