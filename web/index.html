@@ -49,23 +49,6 @@
     </label>
 
     <span style="flex:1"></span>
-    <label class="ctrl">
-      Pattern
-      <select id="patternSelect"></select>
-    </label>
-    <button id="addPattern">+ Pattern</button>
-    <button id="dupPattern">Duplicate</button>
-    <label class="ctrl">
-      Len (16ths)
-      <input id="patLen" type="number" value="16" min="4" max="512" step="1" style="width:72px">
-    </label>
-    <button id="chainAdd">Chain ⤴︎</button>
-    <label class="ctrl">
-      <input id="followChain" type="checkbox">
-      Follow Chain
-    </label>
-
-    <span style="flex:1"></span>
     <button id="saveProject" class="ghost">Save JSON</button>
     <button id="loadProject" class="ghost">Load JSON</button>
     <input id="loadProjectFile" type="file" accept="application/json" hidden>
@@ -94,6 +77,23 @@
 
     <section class="panel">
       <h3>Chain</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px">
+        <label class="ctrl">
+          Pattern
+          <select id="patternSelect"></select>
+        </label>
+        <button id="addPattern">+ Pattern</button>
+        <button id="dupPattern">Duplicate</button>
+        <label class="ctrl">
+          Len (16ths)
+          <input id="patLen" type="number" value="16" min="4" max="512" step="1" style="width:72px">
+        </label>
+        <button id="chainAdd">Chain ⤴︎</button>
+        <label class="ctrl">
+          <input id="followChain" type="checkbox">
+          Follow Chain
+        </label>
+      </div>
       <div id="chainView" style="display:flex;flex-wrap:wrap;gap:6px"></div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
         <button id="chainClear" class="ghost">Clear Chain</button>
