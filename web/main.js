@@ -1670,7 +1670,7 @@ trackSel.onchange = () => {
   saveProjectToStorage();
 };
 
-document.addEventListener('click', (event) => {
+document.addEventListener('pointerdown', (event) => {
   if (!isTrackDropdownOpen || !trackDropdownEl) return;
   const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
   if (eventPath.includes(trackDropdownEl) || trackDropdownEl.contains(event.target)) return;
