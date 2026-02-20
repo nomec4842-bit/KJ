@@ -337,12 +337,6 @@ export function syncTrackEffects(track) {
   const eqNodes = track._fxNodes?.eq3 || null;
   const compression = normalized.compression;
   const eq3 = normalized.eq3;
-  if (compression && !compressionNode) {
-    compression.enabled = false;
-  }
-  if (eq3 && !eqNodes) {
-    eq3.enabled = false;
-  }
   if (compressionNode && compression) {
     const now = ctx.currentTime;
     try { compressionNode.threshold.setValueAtTime(compression.threshold, now); } catch {}
