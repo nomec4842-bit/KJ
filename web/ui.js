@@ -1506,12 +1506,15 @@ function createTrackFxPanel(rootEl, track) {
   effectSelectWrap.appendChild(effectSelect);
   wrap.appendChild(effectSelectWrap);
 
-  const toggleLabel = document.createElement('label');
+  const toggleLabel = document.createElement('div');
   toggleLabel.className = 'track-fx-toggle';
   const toggleInput = document.createElement('input');
   toggleInput.type = 'checkbox';
+  const toggleInputId = `trackFxToggle_${Math.random().toString(36).slice(2, 10)}`;
+  toggleInput.id = toggleInputId;
   toggleInput.setAttribute('aria-label', 'Enable compression');
-  const toggleText = document.createElement('span');
+  const toggleText = document.createElement('label');
+  toggleText.htmlFor = toggleInputId;
   toggleText.textContent = 'Compression';
   toggleLabel.appendChild(toggleInput);
   toggleLabel.appendChild(toggleText);
@@ -1694,8 +1697,9 @@ function createTrackFxPanel(rootEl, track) {
   };
 
   const applyUpdate = (partial = {}) => {
-    const comp = ensureCompressionState();
-    const eq = ensureEq3State();
+    const effects = ensureTrackEffectState();
+    const comp = effects.compression;
+    const eq = effects.eq3;
     let changed = false;
 
     if (partial.enabled !== undefined) {
