@@ -2508,7 +2508,12 @@ playBtn.onclick = async () => {
               const clipRangeStart = Number(clipParams.start);
               const clipRangeEnd = Number(clipParams.end);
               const clipGain = Number(clipParams.gain);
+              const clipPan = Number(clipParams.pan);
               const clipPitch = Number(clipParams.pitch);
+              const clipEffects = clip.effects && typeof clip.effects === 'object' ? clip.effects : {};
+              const clipDrive = Number(clipEffects.drive);
+              const clipDelay = Number(clipEffects.delay);
+              const clipReverb = Number(clipEffects.reverb);
               if (!t.params || typeof t.params !== 'object') t.params = {};
               if (!t.params.sampler || typeof t.params.sampler !== 'object') t.params.sampler = {};
               t.params.sampler = {
@@ -2519,7 +2524,12 @@ playBtn.onclick = async () => {
                 semis: Number.isFinite(clipPitch) ? Math.max(-24, Math.min(24, clipPitch)) : 0,
               };
               const durationSec = clipLength * secondsPerBeat;
-              triggerEngine?.(t, 1, 0, scheduledTime, durationSec);
+              triggerEngine?.(t, 1, 0, scheduledTime, durationSec, {
+                pan: Number.isFinite(clipPan) ? Math.max(-1, Math.min(1, clipPan)) : 0,
+                drive: Number.isFinite(clipDrive) ? Math.max(0, Math.min(1, clipDrive)) : 0,
+                delay: Number.isFinite(clipDelay) ? Math.max(0, Math.min(1, clipDelay)) : 0,
+                reverb: Number.isFinite(clipReverb) ? Math.max(0, Math.min(1, clipReverb)) : 0,
+              });
               t.params.sampler = previousSamplerParams;
               t.sample = previousSample;
             }
