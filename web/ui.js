@@ -1456,15 +1456,25 @@ function createTrackFxPanel(rootEl, track) {
 
   let onChange = null;
   let suppress = false;
+  let selectedEffect = 'compression';
 
   const compressionDefaults = TRACK_FX_DEFAULTS?.compression || {};
+  const eq3Defaults = TRACK_FX_DEFAULTS?.eq3 || {};
 
-  const ensureCompressionState = () => {
+  const ensureTrackEffectState = () => {
     const normalized = normalizeTrackEffects(track.effects);
     if (track.effects !== normalized) {
       track.effects = normalized;
     }
-    return track.effects.compression;
+    return track.effects;
+  };
+
+  const ensureCompressionState = () => {
+    return ensureTrackEffectState().compression;
+  };
+
+  const ensureEq3State = () => {
+    return ensureTrackEffectState().eq3;
   };
 
   const clamp = (value, min, max) => {
@@ -1488,6 +1498,10 @@ function createTrackFxPanel(rootEl, track) {
   compressionOption.value = 'compression';
   compressionOption.textContent = 'Compression';
   effectSelect.appendChild(compressionOption);
+  const eq3Option = document.createElement('option');
+  eq3Option.value = 'eq3';
+  eq3Option.textContent = '3-Band EQ';
+  effectSelect.appendChild(eq3Option);
   effectSelectWrap.appendChild(effectSelectLabel);
   effectSelectWrap.appendChild(effectSelect);
   wrap.appendChild(effectSelectWrap);
@@ -1507,7 +1521,21 @@ function createTrackFxPanel(rootEl, track) {
   controls.className = 'track-fx-grid';
   wrap.appendChild(controls);
 
-  const addControlRow = (labelText, sliderControl) => {
+  const effectPanels = {
+    compression: document.createElement('div'),
+    eq3: document.createElement('div'),
+  };
+  effectPanels.compression.className = 'track-fx-effect-panel';
+  effectPanels.eq3.className = 'track-fx-effect-panel';
+  controls.appendChild(effectPanels.compression);
+  controls.appendChild(effectPanels.eq3);
+
+  const hints = {
+    compression: document.createElement('span'),
+    eq3: document.createElement('span'),
+  };
+
+  const addControlRow = (panel, labelText, sliderControl) => {
     const row = document.createElement('div');
     row.className = 'track-fx-row';
     const label = document.createElement('span');
@@ -1515,7 +1543,7 @@ function createTrackFxPanel(rootEl, track) {
     label.textContent = labelText;
     row.appendChild(label);
     row.appendChild(sliderControl.wrap);
-    controls.appendChild(row);
+    panel.appendChild(row);
     return row;
   };
 
@@ -1531,7 +1559,7 @@ function createTrackFxPanel(rootEl, track) {
       return clamp(raw, -60, 0);
     },
   });
-  addControlRow('Threshold (dB)', thresholdControl);
+  addControlRow(effectPanels.compression, 'Threshold (dB)', thresholdControl);
 
   const ratioControl = createSliderControl({
     min: 1,
@@ -1545,7 +1573,7 @@ function createTrackFxPanel(rootEl, track) {
       return clamp(raw, 1, 20);
     },
   });
-  addControlRow('Ratio', ratioControl);
+  addControlRow(effectPanels.compression, 'Ratio', ratioControl);
 
   const attackControl = createSliderControl({
     min: 0.001,
@@ -1559,7 +1587,7 @@ function createTrackFxPanel(rootEl, track) {
       return clamp(raw, 0.001, 1);
     },
   });
-  addControlRow('Attack (s)', attackControl);
+  addControlRow(effectPanels.compression, 'Attack (s)', attackControl);
 
   const releaseControl = createSliderControl({
     min: 0.01,
@@ -1573,7 +1601,7 @@ function createTrackFxPanel(rootEl, track) {
       return clamp(raw, 0.01, 2);
     },
   });
-  addControlRow('Release (s)', releaseControl);
+  addControlRow(effectPanels.compression, 'Release (s)', releaseControl);
 
   const kneeControl = createSliderControl({
     min: 0,
@@ -1587,31 +1615,97 @@ function createTrackFxPanel(rootEl, track) {
       return clamp(raw, 0, 40);
     },
   });
-  addControlRow('Knee (dB)', kneeControl);
+  addControlRow(effectPanels.compression, 'Knee (dB)', kneeControl);
 
-  const hint = document.createElement('span');
-  hint.className = 'track-fx-hint';
-  hint.textContent = 'Smooth out peaks and glue the track together with gentle compression.';
-  controls.appendChild(hint);
+  const eqLowControl = createSliderControl({
+    min: -24,
+    max: 24,
+    step: 0.5,
+    value: Number.isFinite(eq3Defaults.lowGain) ? eq3Defaults.lowGain : 0,
+    format: (val) => formatSliderValue(val, 1),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, -24, 24);
+    },
+  });
+  addControlRow(effectPanels.eq3, 'Low (dB)', eqLowControl);
+
+  const eqMidControl = createSliderControl({
+    min: -24,
+    max: 24,
+    step: 0.5,
+    value: Number.isFinite(eq3Defaults.midGain) ? eq3Defaults.midGain : 0,
+    format: (val) => formatSliderValue(val, 1),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, -24, 24);
+    },
+  });
+  addControlRow(effectPanels.eq3, 'Mid (dB)', eqMidControl);
+
+  const eqHighControl = createSliderControl({
+    min: -24,
+    max: 24,
+    step: 0.5,
+    value: Number.isFinite(eq3Defaults.highGain) ? eq3Defaults.highGain : 0,
+    format: (val) => formatSliderValue(val, 1),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, -24, 24);
+    },
+  });
+  addControlRow(effectPanels.eq3, 'High (dB)', eqHighControl);
+
+  hints.compression.className = 'track-fx-hint';
+  hints.compression.textContent = 'Smooth out peaks and glue the track together with gentle compression.';
+  effectPanels.compression.appendChild(hints.compression);
+  hints.eq3.className = 'track-fx-hint';
+  hints.eq3.textContent = 'Shape low, mid, and high tone on the track bus.';
+  effectPanels.eq3.appendChild(hints.eq3);
 
   const sliderControls = [thresholdControl, ratioControl, attackControl, releaseControl, kneeControl];
+  const eqControls = [eqLowControl, eqMidControl, eqHighControl];
+
+  const selectEffect = (effect) => {
+    selectedEffect = effect === 'eq3' ? 'eq3' : 'compression';
+    effectPanels.compression.hidden = selectedEffect !== 'compression';
+    effectPanels.eq3.hidden = selectedEffect !== 'eq3';
+    toggleText.textContent = selectedEffect === 'eq3' ? '3-Band EQ' : 'Compression';
+    toggleInput.setAttribute('aria-label', selectedEffect === 'eq3' ? 'Enable 3-band EQ' : 'Enable compression');
+  };
 
   const setControlsEnabled = (enabled) => {
-    sliderControls.forEach(ctrl => {
+    const activeControls = selectedEffect === 'eq3' ? eqControls : sliderControls;
+    const inactiveControls = selectedEffect === 'eq3' ? sliderControls : eqControls;
+    activeControls.forEach(ctrl => {
       ctrl.input.disabled = !enabled;
       ctrl.valueEl.contentEditable = enabled ? 'true' : 'false';
       ctrl.valueEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    });
+    inactiveControls.forEach(ctrl => {
+      ctrl.input.disabled = true;
+      ctrl.valueEl.contentEditable = 'false';
+      ctrl.valueEl.setAttribute('aria-disabled', 'true');
     });
     controls.classList.toggle('track-fx-disabled', !enabled);
   };
 
   const applyUpdate = (partial = {}) => {
     const comp = ensureCompressionState();
+    const eq = ensureEq3State();
     let changed = false;
 
     if (partial.enabled !== undefined) {
       const enabled = !!partial.enabled;
-      if (comp.enabled !== enabled) {
+      if (selectedEffect === 'eq3') {
+        if (eq.enabled !== enabled) {
+          eq.enabled = enabled;
+          changed = true;
+        }
+      } else if (comp.enabled !== enabled) {
         comp.enabled = enabled;
         changed = true;
       }
@@ -1651,6 +1745,28 @@ function createTrackFxPanel(rootEl, track) {
         changed = true;
       }
     }
+    if (partial.lowGain !== undefined) {
+      const next = clamp(partial.lowGain, -24, 24);
+      if (next !== null && eq.lowGain !== next) {
+        eq.lowGain = next;
+        changed = true;
+      }
+    }
+    if (partial.midGain !== undefined) {
+      const next = clamp(partial.midGain, -24, 24);
+      if (next !== null && eq.midGain !== next) {
+        eq.midGain = next;
+        changed = true;
+      }
+    }
+    if (partial.highGain !== undefined) {
+      const next = clamp(partial.highGain, -24, 24);
+      if (next !== null && eq.highGain !== next) {
+        eq.highGain = next;
+        changed = true;
+      }
+    }
+
 
     suppress = true;
     refresh();
@@ -1661,9 +1777,11 @@ function createTrackFxPanel(rootEl, track) {
 
   const refresh = () => {
     const comp = ensureCompressionState();
+    const eq = ensureEq3State();
     suppress = true;
-    effectSelect.value = 'compression';
-    const enabled = !!comp.enabled;
+    effectSelect.value = selectedEffect;
+    selectEffect(selectedEffect);
+    const enabled = selectedEffect === 'eq3' ? !!eq.enabled : !!comp.enabled;
     toggleInput.checked = enabled;
     setControlsEnabled(enabled);
     thresholdControl.setValue(comp.threshold, { silent: true });
@@ -1671,9 +1789,19 @@ function createTrackFxPanel(rootEl, track) {
     attackControl.setValue(comp.attack, { silent: true });
     releaseControl.setValue(comp.release, { silent: true });
     kneeControl.setValue(comp.knee, { silent: true });
+    eqLowControl.setValue(eq.lowGain, { silent: true });
+    eqMidControl.setValue(eq.midGain, { silent: true });
+    eqHighControl.setValue(eq.highGain, { silent: true });
     sliderControls.forEach(ctrl => ctrl.updateDisplay());
+    eqControls.forEach(ctrl => ctrl.updateDisplay());
     suppress = false;
   };
+
+  effectSelect.addEventListener('change', () => {
+    if (suppress) return;
+    selectedEffect = effectSelect.value === 'eq3' ? 'eq3' : 'compression';
+    refresh();
+  });
 
   toggleInput.addEventListener('change', () => {
     if (suppress) return;
@@ -1698,6 +1826,18 @@ function createTrackFxPanel(rootEl, track) {
   kneeControl.setOnChange((val) => {
     if (suppress) return;
     applyUpdate({ knee: val });
+  });
+  eqLowControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ lowGain: val });
+  });
+  eqMidControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ midGain: val });
+  });
+  eqHighControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ highGain: val });
   });
 
   rootEl.innerHTML = '';
