@@ -63,8 +63,16 @@ const TRACK_COMPRESSION_DEFAULT = Object.freeze({
   release: 0.25,
 });
 
+const TRACK_EQ3_DEFAULT = Object.freeze({
+  enabled: false,
+  lowGain: 0,
+  midGain: 0,
+  highGain: 0,
+});
+
 export const TRACK_FX_DEFAULTS = Object.freeze({
   compression: TRACK_COMPRESSION_DEFAULT,
+  eq3: TRACK_EQ3_DEFAULT,
 });
 
 export const ARP_DEFAULTS = Object.freeze({
@@ -211,6 +219,33 @@ function ensureTrackFxNodes(track) {
       track._fxNodes.compression = null;
     }
   }
+  if (!track._fxNodes.eq3) {
+    try {
+      const low = ctx.createBiquadFilter();
+      low.type = 'lowshelf';
+      low.frequency.value = 200;
+      low.Q.value = 0.707;
+      low.gain.value = 0;
+
+      const mid = ctx.createBiquadFilter();
+      mid.type = 'peaking';
+      mid.frequency.value = 1000;
+      mid.Q.value = 1;
+      mid.gain.value = 0;
+
+      const high = ctx.createBiquadFilter();
+      high.type = 'highshelf';
+      high.frequency.value = 4000;
+      high.Q.value = 0.707;
+      high.gain.value = 0;
+
+      low.connect(mid);
+      mid.connect(high);
+      track._fxNodes.eq3 = { low, mid, high, input: low, output: high };
+    } catch (err) {
+      track._fxNodes.eq3 = null;
+    }
+  }
 }
 
 function rebuildTrackFxChain(track) {
@@ -228,6 +263,10 @@ function rebuildTrackFxChain(track) {
   }
 
   const activeNodes = [];
+  const eqEnabled = !!track?.effects?.eq3?.enabled;
+  if (eqEnabled && track?._fxNodes?.eq3?.input) {
+    activeNodes.push(track._fxNodes.eq3);
+  }
   const compressionEnabled = !!track?.effects?.compression?.enabled;
   if (compressionEnabled && track?._fxNodes?.compression) {
     activeNodes.push(track._fxNodes.compression);
@@ -238,6 +277,11 @@ function rebuildTrackFxChain(track) {
 
   let previous = track.inputNode;
   for (const node of activeNodes) {
+    if (node?.input && node?.output) {
+      try { previous.connect(node.input); } catch {}
+      previous = node.output;
+      continue;
+    }
     try { previous.connect(node); } catch {}
     previous = node;
   }
@@ -262,6 +306,8 @@ export function normalizeTrackEffects(effects = {}) {
     ? source.compression
     : {};
   const defaults = TRACK_COMPRESSION_DEFAULT;
+  const eqSource = source.eq3 && typeof source.eq3 === 'object' ? source.eq3 : {};
+  const eqDefaults = TRACK_EQ3_DEFAULT;
   const normalizedCompression = {
     enabled: compressionSource.enabled === true,
     threshold: clampNumber(compressionSource.threshold, -60, 0, defaults.threshold),
@@ -270,7 +316,16 @@ export function normalizeTrackEffects(effects = {}) {
     attack: clampNumber(compressionSource.attack, 0.001, 1, defaults.attack),
     release: clampNumber(compressionSource.release, 0.01, 2, defaults.release),
   };
-  return { compression: normalizedCompression };
+  const normalizedEq3 = {
+    enabled: eqSource.enabled === true,
+    lowGain: clampNumber(eqSource.lowGain, -24, 24, eqDefaults.lowGain),
+    midGain: clampNumber(eqSource.midGain, -24, 24, eqDefaults.midGain),
+    highGain: clampNumber(eqSource.highGain, -24, 24, eqDefaults.highGain),
+  };
+  return {
+    compression: normalizedCompression,
+    eq3: normalizedEq3,
+  };
 }
 
 export function syncTrackEffects(track) {
@@ -279,9 +334,14 @@ export function syncTrackEffects(track) {
   track.effects = normalized;
   ensureTrackFxNodes(track);
   const compressionNode = track._fxNodes?.compression || null;
+  const eqNodes = track._fxNodes?.eq3 || null;
   const compression = normalized.compression;
+  const eq3 = normalized.eq3;
   if (compression && !compressionNode) {
     compression.enabled = false;
+  }
+  if (eq3 && !eqNodes) {
+    eq3.enabled = false;
   }
   if (compressionNode && compression) {
     const now = ctx.currentTime;
@@ -290,6 +350,12 @@ export function syncTrackEffects(track) {
     try { compressionNode.ratio.setValueAtTime(compression.ratio, now); } catch {}
     try { compressionNode.attack.setValueAtTime(compression.attack, now); } catch {}
     try { compressionNode.release.setValueAtTime(compression.release, now); } catch {}
+  }
+  if (eqNodes && eq3) {
+    const now = ctx.currentTime;
+    try { eqNodes.low.gain.setValueAtTime(eq3.lowGain, now); } catch {}
+    try { eqNodes.mid.gain.setValueAtTime(eq3.midGain, now); } catch {}
+    try { eqNodes.high.gain.setValueAtTime(eq3.highGain, now); } catch {}
   }
   rebuildTrackFxChain(track);
   return normalized;
