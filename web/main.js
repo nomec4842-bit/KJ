@@ -1548,6 +1548,7 @@ function renderArpControls() {
 }
 let isTrackDropdownOpen = false;
 let isProjectMenuOpen = false;
+const TRACK_DROPDOWN_OVERLAY_PRIORITY = 40;
 
 function setProjectMenuOpen(open) {
   isProjectMenuOpen = !!open;
@@ -1606,6 +1607,7 @@ function renderTrackDropdown() {
   const menu = document.createElement('div');
   menu.className = 'track-dropdown-menu';
   menu.setAttribute('role', 'listbox');
+  menu.style.zIndex = String(TRACK_DROPDOWN_OVERLAY_PRIORITY);
 
   tracks.forEach((track, index) => {
     const item = document.createElement('button');
