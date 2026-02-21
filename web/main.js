@@ -495,6 +495,8 @@ function normalizeTrack(t) {
     tb303.s = toNumber(tb303.s, defaults.tb303.s);
     tb303.r = toNumber(tb303.r, defaults.tb303.r);
     tb303.accent = toNumber(tb303.accent, defaults.tb303.accent);
+    tb303.wavetable = !!tb303.wavetable;
+    tb303.morph = toNumber(tb303.morph, defaults.tb303.morph);
   }
   if (!t.params.noise || typeof t.params.noise !== 'object') {
     t.params.noise = JSON.parse(JSON.stringify(defaults.noise));
