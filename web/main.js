@@ -483,6 +483,19 @@ function normalizeTrack(t) {
       return normalized;
     });
   }
+  if (!t.params.tb303 || typeof t.params.tb303 !== 'object') {
+    t.params.tb303 = JSON.parse(JSON.stringify(defaults.tb303));
+  } else {
+    const tb303 = t.params.tb303;
+    tb303.baseFreq = toNumber(tb303.baseFreq, defaults.tb303.baseFreq);
+    tb303.cutoff = toNumber(tb303.cutoff, defaults.tb303.cutoff);
+    tb303.q = toNumber(tb303.q, defaults.tb303.q);
+    tb303.a = toNumber(tb303.a, defaults.tb303.a);
+    tb303.d = toNumber(tb303.d, defaults.tb303.d);
+    tb303.s = toNumber(tb303.s, defaults.tb303.s);
+    tb303.r = toNumber(tb303.r, defaults.tb303.r);
+    tb303.accent = toNumber(tb303.accent, defaults.tb303.accent);
+  }
   if (!t.params.noise || typeof t.params.noise !== 'object') {
     t.params.noise = JSON.parse(JSON.stringify(defaults.noise));
   } else {
