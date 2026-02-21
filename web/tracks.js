@@ -1,5 +1,5 @@
 import { ctx, master, clampInt } from './core.js';
-import { synthBlip, noiseSynth, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
+import { synthBlip, tb303Blip, noiseSynth, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
 import { normalizeStepFx } from './stepfx.js';
 
 export { STEP_FX_TYPES, STEP_FX_DEFAULTS, createStepFx, normalizeStepFx } from './stepfx.js';
@@ -16,6 +16,17 @@ const SYNTH_OSC_DEFAULT = Object.freeze({
   baseFreq: 220,
   wavetable: false,
   morph: 0,
+});
+
+const TB303_DEFAULT = Object.freeze({
+  cutoff: 1800,
+  q: 12,
+  a: 0.003,
+  d: 0.2,
+  s: 0.15,
+  r: 0.08,
+  baseFreq: 110,
+  accent: 0.35,
 });
 
 const NOISE_DEFAULT = Object.freeze({
@@ -35,6 +46,7 @@ export const defaults = {
     activeOsc: 0,
     oscillators: Array.from({ length: 3 }, () => ({ ...SYNTH_OSC_DEFAULT })),
   },
+  tb303: { ...TB303_DEFAULT },
   noise:  { ...NOISE_DEFAULT },
   kick808: { freq:55, pitchDecay:0.08, ampDecay:0.45, click:0.12 },
   snare808:{ tone:180, noise:0.6, decay:0.22 },
@@ -186,6 +198,7 @@ export function createTrack(name, engine='synth', length=16){
 
     params: {
       synth:   clone(defaults.synth),
+      tb303:  clone(defaults.tb303),
       noise:   clone(defaults.noise),
       kick808: clone(defaults.kick808),
       snare808:clone(defaults.snare808),
@@ -428,6 +441,7 @@ export function triggerEngine(track, vel=1, semis=0, when, gateSec, options){
   const dest = track?.inputNode || track?.gainNode;
   switch(track.engine){
     case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when, gateSec);
+    case 'tb303':    return tb303Blip(track.params.tb303,    dest, vel, semis, when, gateSec);
     case 'noise':    return noiseSynth(track.params.noise,   dest, vel, semis, when, gateSec);
     case 'kick808':  return kick808(track.params.kick808,    dest, vel, when, gateSec);
     case 'snare808': return snare808(track.params.snare808,  dest, vel, when, gateSec);

@@ -40,6 +40,16 @@ const SYNTH_MORPH_TARGET = { value: 'synth.morph', label: 'Morph' };
 
 const TARGETS_BY_ENGINE = {
   synth: [...SYNTH_BASE_TARGETS],
+  tb303: [
+    { value: 'tb303.baseFreq', label: 'Base Freq' },
+    { value: 'tb303.cutoff', label: 'Filter Cutoff' },
+    { value: 'tb303.q', label: 'Resonance' },
+    { value: 'tb303.a', label: 'Env Attack' },
+    { value: 'tb303.d', label: 'Env Decay' },
+    { value: 'tb303.s', label: 'Env Sustain' },
+    { value: 'tb303.r', label: 'Env Release' },
+    { value: 'tb303.accent', label: 'Accent' },
+  ],
   noise: [
     { value: 'noise.cutoff', label: 'Filter Cutoff' },
     { value: 'noise.q', label: 'Filter Q' },
@@ -2099,6 +2109,19 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     }
   }
 
+  if (eng === 'tb303') {
+    html += field('Base Freq', `<input id="tb_base" type="number" min="40" max="500" step="1" value="${p.baseFreq}">`, 'Hz');
+    html += field('Cutoff', `<input id="tb_cutoff" type="range" min="80" max="8000" step="1" value="${p.cutoff}">`, 'LPF Hz');
+    html += field('Resonance', `<input id="tb_q" type="range" min="0.1" max="20" step="0.1" value="${p.q}">`);
+    html += field('ADSR',
+      `<input id="tb_a" type="range" min="0" max="1" step="0.001" value="${p.a}">
+       <input id="tb_d" type="range" min="0" max="1.5" step="0.01" value="${p.d}">
+       <input id="tb_s" type="range" min="0" max="1" step="0.01" value="${p.s}">
+       <input id="tb_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`,
+      'A / D / S / R');
+    html += field('Accent', `<input id="tb_accent" type="range" min="0" max="1" step="0.01" value="${p.accent}">`);
+  }
+
   if (eng === 'kick808') {
     html += field('Pitch (Hz)',   `<input id="k_freq" type="range" min="20" max="200" step="1" value="${p.freq}">`);
     html += field('Pitch Decay',  `<input id="k_pdec" type="range" min="0.005" max="1" step="0.005" value="${p.pitchDecay}">`, 'sec');
@@ -2431,6 +2454,23 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       } else {
         bindOscInputs('p', synth);
       }
+    }
+
+    if (eng === 'tb303') {
+      ['tb_base','tb_cutoff','tb_q','tb_a','tb_d','tb_s','tb_r','tb_accent'].forEach(id=>{
+        const el=document.getElementById(id);
+        if (el) el.oninput = () => {
+          const p = t.params.tb303;
+          p.baseFreq = +document.getElementById('tb_base').value;
+          p.cutoff = +document.getElementById('tb_cutoff').value;
+          p.q = +document.getElementById('tb_q').value;
+          p.a = +document.getElementById('tb_a').value;
+          p.d = +document.getElementById('tb_d').value;
+          p.s = +document.getElementById('tb_s').value;
+          p.r = +document.getElementById('tb_r').value;
+          p.accent = +document.getElementById('tb_accent').value;
+        };
+      });
     }
 
     if (eng === 'kick808') {
