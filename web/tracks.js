@@ -27,6 +27,8 @@ const TB303_DEFAULT = Object.freeze({
   r: 0.08,
   baseFreq: 110,
   accent: 0.35,
+  wavetable: false,
+  morph: 0,
 });
 
 const NOISE_DEFAULT = Object.freeze({

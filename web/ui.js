@@ -49,6 +49,7 @@ const TARGETS_BY_ENGINE = {
     { value: 'tb303.s', label: 'Env Sustain' },
     { value: 'tb303.r', label: 'Env Release' },
     { value: 'tb303.accent', label: 'Accent' },
+    { value: 'tb303.morph', label: 'Morph' },
   ],
   noise: [
     { value: 'noise.cutoff', label: 'Filter Cutoff' },
@@ -2120,6 +2121,14 @@ export function renderParams(containerEl, track, makeFieldHtml) {
        <input id="tb_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`,
       'A / D / S / R');
     html += field('Accent', `<input id="tb_accent" type="range" min="0" max="1" step="0.01" value="${p.accent}">`);
+    const tbWavetableEnabled = !!p.wavetable;
+    const tbMorphValue = Number.isFinite(p.morph) ? p.morph : 0;
+    html += field('Wavetable',
+      `<button id="tb_wavetable" class="toggle ${tbWavetableEnabled ? 'active' : ''}">${tbWavetableEnabled ? 'On' : 'Off'}</button>`,
+      'Enable wavetable morphing');
+    html += `<div id="tb_wavetablePanel" class="wavetable-morph ${tbWavetableEnabled ? 'visible' : ''}">`;
+    html += field('Morph', `<input id="tb_morph" type="range" min="0" max="2048" step="1" value="${tbMorphValue}">`, '0–2048 samples');
+    html += `</div>`;
   }
 
   if (eng === 'kick808') {
@@ -2471,6 +2480,28 @@ export function renderParams(containerEl, track, makeFieldHtml) {
           p.accent = +document.getElementById('tb_accent').value;
         };
       });
+
+      const tbWavetableBtn = document.getElementById('tb_wavetable');
+      const tbMorphSlider = document.getElementById('tb_morph');
+      const tbWavetablePanel = document.getElementById('tb_wavetablePanel');
+
+      if (tbWavetableBtn) {
+        tbWavetableBtn.onclick = () => {
+          const p = t.params.tb303;
+          p.wavetable = !p.wavetable;
+          tbWavetableBtn.classList.toggle('active', p.wavetable);
+          tbWavetableBtn.textContent = p.wavetable ? 'On' : 'Off';
+          if (tbWavetablePanel) tbWavetablePanel.classList.toggle('visible', p.wavetable);
+          if (modRackEl) renderModulationRack(modRackEl, t);
+        };
+      }
+
+      if (tbMorphSlider) {
+        tbMorphSlider.oninput = (e) => {
+          const value = Math.round(+e.target.value || 0);
+          t.params.tb303.morph = Math.max(0, Math.min(2048, value));
+        };
+      }
     }
 
     if (eng === 'kick808') {
