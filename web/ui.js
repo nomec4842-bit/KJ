@@ -2915,23 +2915,6 @@ export function renderModulationRack(rootEl, track) {
   };
   actions.appendChild(addBtn);
 
-  const addLfoBtn = document.createElement('button');
-  addLfoBtn.type = 'button';
-  addLfoBtn.className = 'ghost';
-  addLfoBtn.textContent = '+ Add LFO';
-  addLfoBtn.onclick = () => {
-    addModWithDefaults({ source: 'lfo' });
-  };
-  actions.appendChild(addLfoBtn);
-
-  const addSampleHoldBtn = document.createElement('button');
-  addSampleHoldBtn.type = 'button';
-  addSampleHoldBtn.className = 'ghost';
-  addSampleHoldBtn.textContent = '+ Add Sample & Hold';
-  addSampleHoldBtn.onclick = () => {
-    addModWithDefaults({ source: 'sampleHold' });
-  };
-  actions.appendChild(addSampleHoldBtn);
   rootEl.appendChild(actions);
 }
 
