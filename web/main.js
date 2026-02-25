@@ -1,5 +1,5 @@
 // main.js
-import { ctx, startTransport, stopTransport, dspReady, ensureAudioReady } from './core.js';
+import { ctx, master, startTransport, stopTransport, dspReady, ensureAudioReady } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
@@ -50,6 +50,8 @@ const saveProjectBtn = document.getElementById('saveProject');
 const loadProjectBtn = document.getElementById('loadProject');
 const loadProjectInput = document.getElementById('loadProjectFile');
 const resetProjectBtn = document.getElementById('resetProject');
+const startRecordingBtn = document.getElementById('startRecording');
+const stopRecordingBtn = document.getElementById('stopRecording');
 const projectMenuEl = document.getElementById('projectMenu');
 const projectMenuToggleBtn = document.getElementById('projectMenuToggle');
 
@@ -1565,6 +1567,84 @@ let isTrackDropdownOpen = false;
 let isProjectMenuOpen = false;
 const TRACK_DROPDOWN_OVERLAY_PRIORITY = 40;
 
+
+let recordingDestination = null;
+let sessionRecorder = null;
+let recordedChunks = [];
+let isSessionRecording = false;
+
+function setRecordingButtonsState(recording) {
+  isSessionRecording = !!recording;
+  if (startRecordingBtn) startRecordingBtn.hidden = isSessionRecording;
+  if (stopRecordingBtn) stopRecordingBtn.hidden = !isSessionRecording;
+}
+
+function getRecordingMimeType() {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function downloadRecordedSession(blob, mimeType) {
+  if (!blob || !blob.size) return;
+  const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `kj-session-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function startSessionRecording() {
+  if (isSessionRecording) return;
+  if (typeof MediaRecorder === 'undefined') {
+    window.alert?.('Recording is not supported in this browser.');
+    return;
+  }
+
+  if (!recordingDestination) {
+    recordingDestination = ctx.createMediaStreamDestination();
+    master.connect(recordingDestination);
+  }
+
+  const mimeType = getRecordingMimeType();
+  sessionRecorder = mimeType
+    ? new MediaRecorder(recordingDestination.stream, { mimeType })
+    : new MediaRecorder(recordingDestination.stream);
+  recordedChunks = [];
+
+  sessionRecorder.addEventListener('dataavailable', (event) => {
+    if (event.data?.size) recordedChunks.push(event.data);
+  });
+
+  sessionRecorder.addEventListener('stop', () => {
+    const finalMimeType = sessionRecorder?.mimeType || mimeType || 'audio/webm';
+    const blob = new Blob(recordedChunks, { type: finalMimeType });
+    downloadRecordedSession(blob, finalMimeType);
+    sessionRecorder = null;
+    recordedChunks = [];
+    setRecordingButtonsState(false);
+  });
+
+  sessionRecorder.addEventListener('error', (event) => {
+    console.error('Session recording failed', event?.error || event);
+    window.alert?.('Session recording failed.');
+    setRecordingButtonsState(false);
+  });
+
+  sessionRecorder.start();
+  setRecordingButtonsState(true);
+}
+
+function stopSessionRecording() {
+  if (!sessionRecorder || sessionRecorder.state === 'inactive') {
+    setRecordingButtonsState(false);
+    return;
+  }
+  sessionRecorder.stop();
+}
+
 function setProjectMenuOpen(open) {
   isProjectMenuOpen = !!open;
   if (!projectMenuEl || !projectMenuToggleBtn) return;
@@ -2093,6 +2173,17 @@ if (loadProjectBtn) loadProjectBtn.onclick = () => {
   setProjectMenuOpen(false);
 };
 
+if (startRecordingBtn) startRecordingBtn.onclick = async () => {
+  await ensureAudioReady();
+  startSessionRecording();
+  setProjectMenuOpen(false);
+};
+
+if (stopRecordingBtn) stopRecordingBtn.onclick = () => {
+  stopSessionRecording();
+  setProjectMenuOpen(false);
+};
+
 if (loadProjectInput) {
   loadProjectInput.onchange = async (event) => {
     const file = event.target?.files?.[0];
@@ -2114,6 +2205,7 @@ if (loadProjectInput) {
 }
 
 if (resetProjectBtn) resetProjectBtn.onclick = () => {
+  if (isSessionRecording) stopSessionRecording();
   stopHandle && stopHandle();
   stopHandle = null;
   currentStepIntervalMs = 0;
@@ -2650,6 +2742,8 @@ stopBtn.onclick = () => {
   for (const t of tracks) t.pos = -1;
   paintPlayhead();
 };
+
+setRecordingButtonsState(false);
 
 /* ---------- Boot ---------- */
 const defaultProject = createDefaultProject();
