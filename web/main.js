@@ -1585,9 +1585,58 @@ function getRecordingMimeType() {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
 
+function audioBufferToWavBlob(audioBuffer) {
+  const channelCount = audioBuffer.numberOfChannels;
+  const frameCount = audioBuffer.length;
+  const sampleRate = audioBuffer.sampleRate;
+  const bytesPerSample = 2;
+  const blockAlign = channelCount * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + frameCount * blockAlign);
+  const view = new DataView(buffer);
+
+  const writeString = (offset, value) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + frameCount * blockAlign, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, frameCount * blockAlign, true);
+
+  let offset = 44;
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const sample = audioBuffer.getChannelData(channel)[frame] || 0;
+      const clamped = Math.max(-1, Math.min(1, sample));
+      const int16 = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+      view.setInt16(offset, int16, true);
+      offset += bytesPerSample;
+    }
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function convertBlobToWav(blob) {
+  const sourceBuffer = await blob.arrayBuffer();
+  const audioBuffer = await ctx.decodeAudioData(sourceBuffer.slice(0));
+  return audioBufferToWavBlob(audioBuffer);
+}
+
 function downloadRecordedSession(blob, mimeType) {
   if (!blob || !blob.size) return;
-  const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
+  const extension = mimeType.includes('wav') ? 'wav' : (mimeType.includes('mp4') ? 'm4a' : 'webm');
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -1618,10 +1667,16 @@ function startSessionRecording() {
     if (event.data?.size) recordedChunks.push(event.data);
   });
 
-  sessionRecorder.addEventListener('stop', () => {
+  sessionRecorder.addEventListener('stop', async () => {
     const finalMimeType = sessionRecorder?.mimeType || mimeType || 'audio/webm';
     const blob = new Blob(recordedChunks, { type: finalMimeType });
-    downloadRecordedSession(blob, finalMimeType);
+    try {
+      const wavBlob = await convertBlobToWav(blob);
+      downloadRecordedSession(wavBlob, 'audio/wav');
+    } catch (error) {
+      console.warn('Could not convert recording to WAV, saving original format instead.', error);
+      downloadRecordedSession(blob, finalMimeType);
+    }
     sessionRecorder = null;
     recordedChunks = [];
     setRecordingButtonsState(false);
