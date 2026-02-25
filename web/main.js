@@ -646,7 +646,7 @@ const stepGrid = createGrid(
       const nextVel = prevVel > 0 ? prevVel : 1;
       setStepVelocity(st, nextVel);
     } else {
-      setStepVelocity(st, prevVel);
+      setStepVelocity(st, 0);
     }
     renderCurrentEditor();
     saveProjectToStorage();
