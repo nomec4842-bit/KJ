@@ -54,6 +54,8 @@ const startRecordingBtn = document.getElementById('startRecording');
 const stopRecordingBtn = document.getElementById('stopRecording');
 const projectMenuEl = document.getElementById('projectMenu');
 const projectMenuToggleBtn = document.getElementById('projectMenuToggle');
+const undoProjectBtn = document.getElementById('undoProject');
+const redoProjectBtn = document.getElementById('redoProject');
 
 function applyCvlLayout(isCvl) {
   if (timelinePanel) timelinePanel.classList.toggle('is-hidden', isCvl);
@@ -83,6 +85,11 @@ const song = {
 
 let currentStepIntervalMs = 0;
 const PROJECT_STORAGE_KEY = 'kj.project.v1';
+const PROJECT_HISTORY_LIMIT = 100;
+const projectUndoStack = [];
+const projectRedoStack = [];
+let isApplyingProjectHistory = false;
+let projectLastSnapshot = '';
 
 const CVL_RATES = [
   { value: '1/1', label: '1/1 (Whole)' },
@@ -302,10 +309,70 @@ function applyProjectData(rawProject) {
   renderChain();
 }
 
+function updateProjectHistoryButtons() {
+  if (undoProjectBtn) undoProjectBtn.disabled = projectUndoStack.length === 0;
+  if (redoProjectBtn) redoProjectBtn.disabled = projectRedoStack.length === 0;
+}
+
+function recordProjectHistorySnapshot(snapshot) {
+  if (isApplyingProjectHistory) return;
+  if (!projectLastSnapshot) {
+    projectLastSnapshot = snapshot;
+    updateProjectHistoryButtons();
+    return;
+  }
+  if (snapshot === projectLastSnapshot) return;
+  projectUndoStack.push(projectLastSnapshot);
+  if (projectUndoStack.length > PROJECT_HISTORY_LIMIT) {
+    projectUndoStack.splice(0, projectUndoStack.length - PROJECT_HISTORY_LIMIT);
+  }
+  projectRedoStack.length = 0;
+  projectLastSnapshot = snapshot;
+  updateProjectHistoryButtons();
+}
+
+function applyProjectSnapshot(snapshot, { fromHistory = false } = {}) {
+  if (typeof snapshot !== 'string' || !snapshot) return;
+  try {
+    isApplyingProjectHistory = true;
+    const parsed = JSON.parse(snapshot);
+    applyProjectData(parsed);
+    localStorage.setItem(PROJECT_STORAGE_KEY, snapshot);
+    projectLastSnapshot = snapshot;
+    if (!fromHistory) {
+      projectUndoStack.length = 0;
+      projectRedoStack.length = 0;
+    }
+  } catch (err) {
+    console.warn('Failed to apply project snapshot', err);
+  } finally {
+    isApplyingProjectHistory = false;
+    updateProjectHistoryButtons();
+  }
+}
+
+function undoProjectChange() {
+  if (!projectUndoStack.length) return;
+  const currentSnapshot = JSON.stringify(serializeProject());
+  const previousSnapshot = projectUndoStack.pop();
+  projectRedoStack.push(currentSnapshot);
+  applyProjectSnapshot(previousSnapshot, { fromHistory: true });
+}
+
+function redoProjectChange() {
+  if (!projectRedoStack.length) return;
+  const currentSnapshot = JSON.stringify(serializeProject());
+  const nextSnapshot = projectRedoStack.pop();
+  projectUndoStack.push(currentSnapshot);
+  applyProjectSnapshot(nextSnapshot, { fromHistory: true });
+}
+
 function saveProjectToStorage() {
   try {
     const data = serializeProject();
-    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(data));
+    const snapshot = JSON.stringify(data);
+    recordProjectHistorySnapshot(snapshot);
+    localStorage.setItem(PROJECT_STORAGE_KEY, snapshot);
   } catch (err) {
     console.warn('Failed to autosave project', err);
   }
@@ -323,8 +390,7 @@ function loadProjectFromStorage() {
   try {
     const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
     if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    applyProjectData(parsed);
+    applyProjectSnapshot(raw);
     return true;
   } catch (err) {
     console.warn('Failed to load autosave', err);
@@ -1837,6 +1903,14 @@ if (projectMenuToggleBtn) {
   });
 }
 
+if (undoProjectBtn) undoProjectBtn.addEventListener('click', () => {
+  undoProjectChange();
+});
+
+if (redoProjectBtn) redoProjectBtn.addEventListener('click', () => {
+  redoProjectChange();
+});
+
 document.addEventListener('pointerdown', (event) => {
   if (isProjectMenuOpen && projectMenuEl) {
     const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
@@ -1852,6 +1926,17 @@ document.addEventListener('pointerdown', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  const isMod = event.metaKey || event.ctrlKey;
+  if (isMod && event.key.toLowerCase() === 'z' && !event.shiftKey) {
+    event.preventDefault();
+    undoProjectChange();
+    return;
+  }
+  if (isMod && (event.key.toLowerCase() === 'y' || (event.key.toLowerCase() === 'z' && event.shiftKey))) {
+    event.preventDefault();
+    redoProjectChange();
+    return;
+  }
   if (event.key !== 'Escape') return;
   if (isTrackDropdownOpen) closeTrackDropdown();
   if (isProjectMenuOpen) setProjectMenuOpen(false);
@@ -2246,8 +2331,7 @@ if (loadProjectInput) {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
-      applyProjectData(parsed);
-      saveProjectToStorage();
+      applyProjectSnapshot(JSON.stringify(parsed));
     } catch (err) {
       console.error('Failed to load project file', err);
       if (typeof window !== 'undefined' && typeof window.alert === 'function') {
@@ -2269,7 +2353,7 @@ if (resetProjectBtn) resetProjectBtn.onclick = () => {
   playbackPatternStepOffset = 0;
   for (const t of tracks) t.pos = -1;
   paintPlayhead();
-  applyProjectData(createDefaultProject());
+  applyProjectSnapshot(JSON.stringify(createDefaultProject()));
   clearProjectStorage();
   saveProjectToStorage();
   setProjectMenuOpen(false);
@@ -2806,5 +2890,6 @@ setRecordingButtonsState(false);
 
 /* ---------- Boot ---------- */
 const defaultProject = createDefaultProject();
-applyProjectData(defaultProject);
-loadProjectFromStorage();
+applyProjectSnapshot(JSON.stringify(defaultProject));
+if (!loadProjectFromStorage()) saveProjectToStorage();
+updateProjectHistoryButtons();
