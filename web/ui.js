@@ -1980,11 +1980,15 @@ export function renderParams(containerEl, track, makeFieldHtml) {
      <button id="mx_solo" class="toggle ${t.solo?'active':''}">Solo</button>`);
 
   // Steps per track
-  const stepInline = `
-    <div class="step-inline">
-      <div id="trk_stepEditor" class="step-inline-grid" role="group" aria-label="Track steps"></div>
-    </div>`;
-  html += field('Steps', stepInline, 'hold to select in sequencer');
+  const stepCountOptions = [4, 8, 16, 32, 64, 128, 256, 512];
+  const normalizedLength = Math.max(1, Math.trunc(Number.isFinite(Number(t.length)) ? Number(t.length) : 16));
+  const lengthOptions = stepCountOptions.includes(normalizedLength)
+    ? stepCountOptions
+    : [...stepCountOptions, normalizedLength].sort((a, b) => a - b);
+  const stepCountSelect = `<select id="trk_stepCount">${lengthOptions
+    .map((count) => `<option value="${count}" ${count === normalizedLength ? 'selected' : ''}>${count}</option>`)
+    .join('')}</select>`;
+  html += field('Step Count', stepCountSelect, 'Sequence length for this track');
 
   const stepParamsPanel = `
     <div id="trk_stepParams" class="step-detail placeholder">
@@ -2185,13 +2189,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
   containerEl.innerHTML = html;
 
-  const stepEditorRoot = containerEl.querySelector('#trk_stepEditor');
-  const inlineStepEditor = createInlineStepEditor(stepEditorRoot);
-  if (inlineStepEditor) {
-    containerEl._inlineStepEditor = inlineStepEditor;
-  } else if (containerEl._inlineStepEditor) {
-    delete containerEl._inlineStepEditor;
-  }
+  if (containerEl._inlineStepEditor) delete containerEl._inlineStepEditor;
 
   const stepParamsRoot = containerEl.querySelector('#trk_stepParams');
   const stepParamsEditor = createStepParamsPanel(stepParamsRoot, track);
@@ -2228,14 +2226,13 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     const sb=document.getElementById('mx_solo'); if (sb) sb.onclick = () => { t.solo = !t.solo; sb.classList.toggle('active', t.solo); applyMixer(); };
 
     // Steps
-    if (inlineStepEditor) {
-      inlineStepEditor.setOnSelect((index) => {
-        if (!Number.isInteger(index)) return;
-        if (typeof onStepSelect === 'function') onStepSelect(index);
-      });
-      inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
-      inlineStepEditor.update(t.steps);
-      inlineStepEditor.paint(t.pos ?? -1);
+    const stepCountSelectEl = document.getElementById('trk_stepCount');
+    if (stepCountSelectEl) {
+      stepCountSelectEl.onchange = (event) => {
+        const nextLength = Number.parseInt(event?.target?.value ?? '', 10);
+        if (!Number.isFinite(nextLength) || nextLength < 1) return;
+        if (typeof onStepsChange === 'function') onStepsChange(nextLength);
+      };
     }
 
     if (containerEl._stepParamsSelectionHandler) {
