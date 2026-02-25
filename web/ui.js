@@ -330,76 +330,6 @@ export function refreshTrackSelect(selectEl, tracks, selectedIndex) {
   selectEl.value = String(selectedIndex);
 }
 
-function createInlineStepEditor(rootEl) {
-  if (!rootEl) return null;
-
-  let onSelect = null;
-  let buttons = [];
-
-  function handleClick(index) {
-    if (typeof onSelect === 'function') {
-      onSelect(index);
-    }
-  }
-
-  function rebuild(length) {
-    const len = Math.max(0, Number.isFinite(length) ? Math.trunc(length) : 0);
-    buttons = [];
-    rootEl.innerHTML = '';
-    for (let i = 0; i < len; i++) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'mini-step';
-      btn.dataset.index = String(i);
-      btn.setAttribute('aria-label', `Select step ${i + 1}`);
-      btn.setAttribute('aria-pressed', 'false');
-      btn.title = `Step ${i + 1}`;
-      const velBar = document.createElement('div');
-      velBar.className = 'vel';
-      velBar.style.height = '0%';
-      btn.appendChild(velBar);
-      btn.addEventListener('click', () => handleClick(i));
-      rootEl.appendChild(btn);
-      buttons.push(btn);
-    }
-  }
-
-  function update(steps = []) {
-    buttons.forEach((btn, idx) => {
-      const step = steps[idx];
-      const active = !!step?.on;
-      btn.classList.toggle('on', active);
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-      const bar = btn.querySelector('.vel');
-      if (bar) {
-        const vel = getStepVelocity(step, active ? 1 : 0);
-        const clamped = Math.max(0, Math.min(1, vel));
-        bar.style.height = Math.round(clamped * 100) + '%';
-      }
-      if (step) {
-        const vel = getStepVelocity(step, 0);
-        const clamped = Math.max(0, Math.min(1, vel));
-        btn.title = `Step ${idx + 1} • Vel ${Math.round(clamped * 127)}`;
-      } else {
-        btn.title = `Step ${idx + 1}`;
-      }
-    });
-  }
-
-  function paint(stepIndex) {
-    buttons.forEach(btn => btn.classList.remove('playhead'));
-    if (stepIndex >= 0 && stepIndex < buttons.length) {
-      buttons[stepIndex].classList.add('playhead');
-    }
-  }
-
-  function setOnSelect(fn) {
-    onSelect = typeof fn === 'function' ? fn : null;
-  }
-
-  return { rebuild, update, paint, setOnSelect };
-}
-
 function createStepParamsPanel(rootEl, track) {
   if (!rootEl) return null;
 
@@ -2000,9 +1930,8 @@ export function renderParams(containerEl, track, makeFieldHtml) {
         ${hasPresetStepLength ? 'hidden' : ''}
         aria-label="Custom step count"
       >
-      <div id="trk_stepEditor" class="step-inline-grid" role="group" aria-label="Track steps"></div>
     </div>`;
-  html += field('Steps', stepInline, 'per-track length & toggles');
+  html += field('Steps', stepInline, 'per-track length');
 
   const stepParamsPanel = `
     <div id="trk_stepParams" class="step-detail placeholder">
@@ -2203,14 +2132,6 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
   containerEl.innerHTML = html;
 
-  const stepEditorRoot = containerEl.querySelector('#trk_stepEditor');
-  const inlineStepEditor = createInlineStepEditor(stepEditorRoot);
-  if (inlineStepEditor) {
-    containerEl._inlineStepEditor = inlineStepEditor;
-  } else if (containerEl._inlineStepEditor) {
-    delete containerEl._inlineStepEditor;
-  }
-
   const stepParamsRoot = containerEl.querySelector('#trk_stepParams');
   const stepParamsEditor = createStepParamsPanel(stepParamsRoot, track);
   if (stepParamsEditor) {
@@ -2238,7 +2159,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const modRackEl = containerEl.querySelector('#modRack');
   renderModulationRack(modRackEl, track);
 
-  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepSelect, onStepParamsChange, onStepFxChange, onTrackFxChange, onCvlClipChange, onParamsRerender }) {
+  return function bindParamEvents({ applyMixer, t, onStepsChange, onSampleFile, onStepParamsChange, onStepFxChange, onTrackFxChange, onCvlClipChange, onParamsRerender }) {
     // Mixer
     const mg=document.getElementById('mx_gain'); if (mg) mg.oninput = e => { t.gain = +e.target.value; applyMixer(); };
     const mp=document.getElementById('mx_pan');  if (mp) mp.oninput = e => { t.pan  = +e.target.value; applyMixer(); };
@@ -2258,22 +2179,8 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       if (Number.isNaN(parsedValue)) return;
       const next = Math.max(1, parsedValue);
       onStepsChange && onStepsChange(next);
-      if (inlineStepEditor) {
-        inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
-        inlineStepEditor.update(t.steps);
-        inlineStepEditor.paint(t.pos ?? -1);
-      }
     };
 
-    if (inlineStepEditor) {
-      inlineStepEditor.setOnSelect((index) => {
-        if (!Number.isInteger(index)) return;
-        if (typeof onStepSelect === 'function') onStepSelect(index);
-      });
-      inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
-      inlineStepEditor.update(t.steps);
-      inlineStepEditor.paint(t.pos ?? -1);
-    }
     if (sSel) {
       updateCustomVisibility(sSel.value);
       sSel.onchange = (e) => {

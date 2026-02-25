@@ -950,10 +950,6 @@ function renderCurrentEditor(){
   seqEl.classList.toggle('step-sequencer', t.mode !== 'piano');
   if (t.mode === 'piano') piano.update();
   else stepGrid.update((i)=>t.steps[i]);
-  const inlineStep = paramsEl?._inlineStepEditor;
-  if (inlineStep && Array.isArray(t.steps)) {
-    inlineStep.update(t.steps);
-  }
   const stepParams = paramsEl?._stepParamsEditor;
   if (stepParams && typeof stepParams.refresh === 'function') {
     stepParams.refresh();
@@ -968,14 +964,10 @@ function paintPlayhead(){
   const t = currentTrack();
   if (!t) {
     stepGrid.paint(-1);
-    const inlineStep = paramsEl?._inlineStepEditor;
-    if (inlineStep) inlineStep.paint(-1);
     return;
   }
   if (t.mode === 'piano') piano.paint(t.pos);
   else stepGrid.paint(t.pos);
-  const inlineStep = paramsEl?._inlineStepEditor;
-  if (inlineStep) inlineStep.paint(t.pos ?? -1);
   updateCvlPlayhead();
 }
 
@@ -1104,7 +1096,6 @@ function renderParamsPanel(){
   const track = currentTrack();
   if (!track) {
     paramsEl.innerHTML = '';
-    if (paramsEl._inlineStepEditor) delete paramsEl._inlineStepEditor;
     syncSelectionUI();
     return;
   }
@@ -1117,23 +1108,10 @@ function renderParamsPanel(){
       normalizeTrack(track);
       showEditorForTrack();
       paintPlayhead();
-      const inlineStep = paramsEl?._inlineStepEditor;
-      if (inlineStep && Array.isArray(track.steps)) {
-        inlineStep.rebuild(track.length ?? track.steps.length);
-        inlineStep.update(track.steps);
-        inlineStep.paint(track.pos ?? -1);
-      }
       setTrackSelectedStep(track, track.selectedStep, { force: true });
       saveProjectToStorage();
     },
     onSampleFile,
-    onStepSelect: (index) => {
-      if (index !== undefined && index !== null) {
-        setTrackSelectedStep(track, index);
-      }
-      renderCurrentEditor();
-      paintPlayhead();
-    },
     onStepParamsChange: () => {
       renderCurrentEditor();
       saveProjectToStorage();
@@ -1154,11 +1132,6 @@ function renderParamsPanel(){
       saveProjectToStorage();
     },
   });
-  const inlineStep = paramsEl?._inlineStepEditor;
-  if (inlineStep && track && Array.isArray(track.steps)) {
-    inlineStep.update(track.steps);
-    inlineStep.paint(track.pos ?? -1);
-  }
   const stepParams = paramsEl?._stepParamsEditor;
   if (stepParams && typeof stepParams.refresh === 'function') {
     stepParams.refresh();
