@@ -2602,7 +2602,7 @@ playBtn.onclick = async () => {
       const localStepIndex = Math.max(0, stepIndex - playbackPatternStepOffset);
       t.pos = L > 0 ? (localStepIndex % L) : 0;
 
-      if (!patternCompleted && anchorTrack && _t === anchorTrack && L > 0 && t.pos === 0 && previousPos >= 0) {
+      if (!patternCompleted && anchorTrack && _t === anchorTrack && L > 0 && t.pos === L - 1 && previousPos >= 0) {
         patternCompleted = true;
       }
 
