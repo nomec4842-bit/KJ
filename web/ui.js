@@ -1980,14 +1980,17 @@ export function renderParams(containerEl, track, makeFieldHtml) {
      <button id="mx_solo" class="toggle ${t.solo?'active':''}">Solo</button>`);
 
   // Steps per track
-  const stepCountOptions = [4, 8, 16, 32, 64, 128, 256, 512];
+  const stepCountOptions = [4, 8, 16, 32, 64];
   const normalizedLength = Math.max(1, Math.trunc(Number.isFinite(Number(t.length)) ? Number(t.length) : 16));
-  const lengthOptions = stepCountOptions.includes(normalizedLength)
-    ? stepCountOptions
-    : [...stepCountOptions, normalizedLength].sort((a, b) => a - b);
-  const stepCountSelect = `<select id="trk_stepCount">${lengthOptions
-    .map((count) => `<option value="${count}" ${count === normalizedLength ? 'selected' : ''}>${count}</option>`)
-    .join('')}</select>`;
+  const isCustomLength = !stepCountOptions.includes(normalizedLength);
+  const stepCountSelect = `<div class="step-count-inputs">
+    <select id="trk_stepCount">${stepCountOptions
+      .map((count) => `<option value="${count}" ${count === normalizedLength ? 'selected' : ''}>${count}</option>`)
+      .join('')}
+      <option value="custom" ${isCustomLength ? 'selected' : ''}>custom</option>
+    </select>
+    <input id="trk_stepCountCustom" type="number" min="1" step="1" value="${normalizedLength}" ${isCustomLength ? '' : 'disabled'}>
+  </div>`;
   html += field('Step Count', stepCountSelect, 'Sequence length for this track');
 
   const stepParamsPanel = `
@@ -2227,11 +2230,29 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
     // Steps
     const stepCountSelectEl = document.getElementById('trk_stepCount');
+    const stepCountCustomEl = document.getElementById('trk_stepCountCustom');
+    const applyStepCount = (value) => {
+      const nextLength = Math.trunc(Number(value));
+      if (!Number.isFinite(nextLength) || nextLength < 1) return;
+      if (typeof onStepsChange === 'function') onStepsChange(nextLength);
+    };
     if (stepCountSelectEl) {
       stepCountSelectEl.onchange = (event) => {
-        const nextLength = Number.parseInt(event?.target?.value ?? '', 10);
-        if (!Number.isFinite(nextLength) || nextLength < 1) return;
-        if (typeof onStepsChange === 'function') onStepsChange(nextLength);
+        const selected = event?.target?.value ?? '';
+        const isCustom = selected === 'custom';
+        if (stepCountCustomEl) stepCountCustomEl.disabled = !isCustom;
+        if (!isCustom) applyStepCount(selected);
+      };
+    }
+    if (stepCountCustomEl) {
+      stepCountCustomEl.oninput = (event) => {
+        const raw = event?.target?.value ?? '';
+        if (raw === '') return;
+        if (stepCountSelectEl && stepCountSelectEl.value !== 'custom') {
+          stepCountSelectEl.value = 'custom';
+          stepCountCustomEl.disabled = false;
+        }
+        applyStepCount(raw);
       };
     }
 
