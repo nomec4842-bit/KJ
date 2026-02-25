@@ -2599,7 +2599,11 @@ playBtn.onclick = async () => {
       const t = normalizeTrack(_t);
       const L = t.length;
       const previousPos = Number.isInteger(t.pos) ? t.pos : -1;
-      const localStepIndex = Math.max(0, stepIndex - playbackPatternStepOffset);
+      const localStepIndex = stepIndex - playbackPatternStepOffset;
+      if (localStepIndex < 0) {
+        t.pos = -1;
+        continue;
+      }
       t.pos = L > 0 ? (localStepIndex % L) : 0;
 
       if (!patternCompleted && anchorTrack && _t === anchorTrack && L > 0 && t.pos === L - 1 && previousPos >= 0) {
