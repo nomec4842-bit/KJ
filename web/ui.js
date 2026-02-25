@@ -1981,10 +1981,25 @@ export function renderParams(containerEl, track, makeFieldHtml) {
      <button id="mx_solo" class="toggle ${t.solo?'active':''}">Solo</button>`);
 
   // Steps per track
-  const opts = STEP_CHOICES.map(n => `<option value="${n}" ${n===t.length?'selected':''}>${n}</option>`).join('');
+  const hasPresetStepLength = STEP_CHOICES.includes(t.length);
+  const opts = STEP_CHOICES
+    .map(n => `<option value="${n}" ${n===t.length?'selected':''}>${n}</option>`)
+    .join('');
   const stepInline = `
     <div class="step-inline">
-      <select id="trk_steps">${opts}</select>
+      <select id="trk_steps">
+        ${opts}
+        <option value="custom" ${hasPresetStepLength ? '' : 'selected'}>Custom</option>
+      </select>
+      <input
+        id="trk_steps_custom"
+        type="number"
+        min="1"
+        step="1"
+        value="${Math.max(1, parseInt(t.length, 10) || 16)}"
+        ${hasPresetStepLength ? 'hidden' : ''}
+        aria-label="Custom step count"
+      >
       <div id="trk_stepEditor" class="step-inline-grid" role="group" aria-label="Track steps"></div>
     </div>`;
   html += field('Steps', stepInline, 'per-track length & toggles');
@@ -2232,6 +2247,24 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
     // Steps
     const sSel = document.getElementById('trk_steps');
+    const customStepsInput = document.getElementById('trk_steps_custom');
+    const updateCustomVisibility = (selectedValue) => {
+      if (!customStepsInput) return;
+      customStepsInput.hidden = selectedValue !== 'custom';
+    };
+
+    const applyStepCount = (value) => {
+      const parsedValue = parseInt(value, 10);
+      if (Number.isNaN(parsedValue)) return;
+      const next = Math.max(1, parsedValue);
+      onStepsChange && onStepsChange(next);
+      if (inlineStepEditor) {
+        inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
+        inlineStepEditor.update(t.steps);
+        inlineStepEditor.paint(t.pos ?? -1);
+      }
+    };
+
     if (inlineStepEditor) {
       inlineStepEditor.setOnSelect((index) => {
         if (!Number.isInteger(index)) return;
@@ -2241,17 +2274,35 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       inlineStepEditor.update(t.steps);
       inlineStepEditor.paint(t.pos ?? -1);
     }
-    if (sSel) sSel.onchange = e => {
-      const v = parseInt(e.target.value, 10);
-      if (!Number.isNaN(v)) {
-        onStepsChange && onStepsChange(v);
-        if (inlineStepEditor) {
-          inlineStepEditor.rebuild(t.length ?? (t.steps ? t.steps.length : 0));
-          inlineStepEditor.update(t.steps);
-          inlineStepEditor.paint(t.pos ?? -1);
+    if (sSel) {
+      updateCustomVisibility(sSel.value);
+      sSel.onchange = (e) => {
+        const selectedValue = e.target.value;
+        updateCustomVisibility(selectedValue);
+        if (selectedValue === 'custom') {
+          applyStepCount(customStepsInput ? customStepsInput.value : t.length);
+          return;
         }
-      }
-    };
+        applyStepCount(selectedValue);
+      };
+    }
+
+    if (customStepsInput) {
+      customStepsInput.onchange = (e) => {
+        if (sSel && sSel.value === 'custom') {
+          applyStepCount(e.target.value);
+        }
+      };
+      customStepsInput.oninput = (e) => {
+        if (sSel && sSel.value === 'custom') {
+          applyStepCount(e.target.value);
+        }
+      };
+      customStepsInput.onblur = () => {
+        const normalized = Math.max(1, parseInt(customStepsInput.value, 10) || 1);
+        customStepsInput.value = String(normalized);
+      };
+    }
 
     if (containerEl._stepParamsSelectionHandler) {
       containerEl.removeEventListener('stepselectionchange', containerEl._stepParamsSelectionHandler);
