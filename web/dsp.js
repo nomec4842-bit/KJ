@@ -209,6 +209,77 @@ export function renderSynthSamples(params, velocity = 1, semitoneOffset = 0) {
   return out;
 }
 
+export function renderJunoSamples(params, velocity = 1, semitoneOffset = 0) {
+  const a = toNumber(params?.a, 0.01);
+  const d = toNumber(params?.d, 0.25);
+  const r = toNumber(params?.r, 0.3);
+  const length = calculateSynthSamples(a, d, r);
+  const baseFreq = toNumber(params?.baseFreq, 110);
+  const cutoff = toNumber(params?.cutoff, 3200);
+  const q = toNumber(params?.q, 0.8);
+  const sustain = toNumber(params?.s, 0.65);
+  const pulseWidth = clamp(toNumber(params?.pulseWidth, 0.5), 0.05, 0.95);
+  const sawLevel = clamp(toNumber(params?.sawLevel, 0.8), 0, 1);
+  const pulseLevel = clamp(toNumber(params?.pulseLevel, 0.7), 0, 1);
+  const subLevel = clamp(toNumber(params?.subLevel, 0.45), 0, 1);
+  const noiseLevel = clamp(toNumber(params?.noiseLevel, 0.08), 0, 1);
+  const chorusDepth = clamp(toNumber(params?.chorusDepth, 0.25), 0, 1);
+  const chorusRate = clamp(toNumber(params?.chorusRate, 0.8), 0.05, 8);
+  const detune = clamp(toNumber(params?.detune, 7), 0, 40);
+  const vel = toNumber(velocity, 1);
+  const semis = toNumber(semitoneOffset, 0);
+
+  const out = new Float32Array(length);
+  const sr = currentSampleRate > 0 ? currentSampleRate : 44100;
+  const dt = 1 / sr;
+  const base = clamp(baseFreq, 20, 20000) * Math.pow(2, semis / 12);
+  const detuneMul = Math.pow(2, detune / 1200);
+  const freqA = base / detuneMul;
+  const freqB = base * detuneMul;
+  const subFreq = Math.max(20, base * 0.5);
+  const amp = clamp(vel, 0, 1.5) * 0.36;
+  const sustainDuration = 0.3;
+
+  const lpf = new Biquad();
+  lpf.configureLowpass(cutoff, q <= 0 ? 0.8 : q);
+
+  let phaseA = 0;
+  let phaseB = 0;
+  let phaseSub = 0;
+  let chorusPhase = 0;
+  let prev = 0;
+
+  for (let i = 0; i < length; i += 1) {
+    const t = i * dt;
+    const env = envelopeValue(t, a, d, sustain, sustainDuration, r);
+    phaseA = (phaseA + freqA * dt) % 1;
+    phaseB = (phaseB + freqB * dt) % 1;
+    phaseSub = (phaseSub + subFreq * dt) % 1;
+
+    const saw = ((2 * phaseA - 1) + (2 * phaseB - 1)) * 0.5;
+    const pulse = (phaseA < pulseWidth ? 1 : -1);
+    const sub = phaseSub < 0.5 ? 1 : -1;
+    const noise = randomNoise();
+    let dry =
+      saw * sawLevel +
+      pulse * pulseLevel +
+      sub * subLevel +
+      noise * noiseLevel;
+
+    dry = lpf.process(dry);
+
+    chorusPhase = (chorusPhase + chorusRate * dt) % 1;
+    const chorusLfo = Math.sin(chorusPhase * 2 * PI);
+    const chorus = prev + (dry - prev) * (0.35 + chorusDepth * 0.45 * (chorusLfo * 0.5 + 0.5));
+    prev = chorus;
+
+    out[i] = (dry * (1 - chorusDepth * 0.6) + chorus * chorusDepth * 0.75) * env * amp;
+  }
+
+  clampBuffer(out);
+  return out;
+}
+
 export function renderNoiseSamples(params, velocity = 1, semitoneOffset = 0) {
   const a = toNumber(params?.a, 0.01);
   const d = toNumber(params?.d, 0.2);

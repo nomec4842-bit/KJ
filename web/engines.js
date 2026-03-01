@@ -2,6 +2,7 @@ import { ctx } from './core.js';
 import {
   isDspReady,
   renderSynthSamples,
+  renderJunoSamples,
   renderNoiseSamples,
   renderKickSamples,
   renderSnareSamples,
@@ -61,6 +62,13 @@ function playSamples(samples, dest, when, durationSec) {
 export function synthBlip(p, dest, vel = 1, semis = 0, when, durationSec) {
   if (!isDspReady()) return;
   const samples = renderSynthSamples(p, vel, semis);
+  playSamples(samples, dest, when, durationSec);
+}
+
+
+export function juno60Blip(p, dest, vel = 1, semis = 0, when, durationSec) {
+  if (!isDspReady()) return;
+  const samples = renderJunoSamples(p, vel, semis);
   playSamples(samples, dest, when, durationSec);
 }
 

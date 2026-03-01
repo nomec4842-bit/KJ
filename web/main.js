@@ -551,6 +551,27 @@ function normalizeTrack(t) {
       return normalized;
     });
   }
+  if (!t.params.juno60 || typeof t.params.juno60 !== 'object') {
+    t.params.juno60 = JSON.parse(JSON.stringify(defaults.juno60));
+  } else {
+    const juno60 = t.params.juno60;
+    juno60.baseFreq = toNumber(juno60.baseFreq, defaults.juno60.baseFreq);
+    juno60.cutoff = toNumber(juno60.cutoff, defaults.juno60.cutoff);
+    juno60.q = toNumber(juno60.q, defaults.juno60.q);
+    juno60.a = toNumber(juno60.a, defaults.juno60.a);
+    juno60.d = toNumber(juno60.d, defaults.juno60.d);
+    juno60.s = toNumber(juno60.s, defaults.juno60.s);
+    juno60.r = toNumber(juno60.r, defaults.juno60.r);
+    juno60.sawLevel = toNumber(juno60.sawLevel, defaults.juno60.sawLevel);
+    juno60.pulseLevel = toNumber(juno60.pulseLevel, defaults.juno60.pulseLevel);
+    juno60.pulseWidth = toNumber(juno60.pulseWidth, defaults.juno60.pulseWidth);
+    juno60.subLevel = toNumber(juno60.subLevel, defaults.juno60.subLevel);
+    juno60.noiseLevel = toNumber(juno60.noiseLevel, defaults.juno60.noiseLevel);
+    juno60.chorusDepth = toNumber(juno60.chorusDepth, defaults.juno60.chorusDepth);
+    juno60.chorusRate = toNumber(juno60.chorusRate, defaults.juno60.chorusRate);
+    juno60.detune = toNumber(juno60.detune, defaults.juno60.detune);
+  }
+
   if (!t.params.tb303 || typeof t.params.tb303 !== 'object') {
     t.params.tb303 = JSON.parse(JSON.stringify(defaults.tb303));
   } else {
