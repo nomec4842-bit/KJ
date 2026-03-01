@@ -1,5 +1,5 @@
 import { ctx, master, clampInt } from './core.js';
-import { synthBlip, tb303Blip, noiseSynth, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
+import { synthBlip, juno60Blip, tb303Blip, noiseSynth, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
 import { normalizeStepFx } from './stepfx.js';
 
 export { STEP_FX_TYPES, STEP_FX_DEFAULTS, createStepFx, normalizeStepFx } from './stepfx.js';
@@ -16,6 +16,25 @@ const SYNTH_OSC_DEFAULT = Object.freeze({
   baseFreq: 220,
   wavetable: false,
   morph: 0,
+});
+
+
+const JUNO60_DEFAULT = Object.freeze({
+  cutoff: 3200,
+  q: 0.8,
+  a: 0.01,
+  d: 0.25,
+  s: 0.65,
+  r: 0.3,
+  baseFreq: 110,
+  sawLevel: 0.8,
+  pulseLevel: 0.7,
+  pulseWidth: 0.5,
+  subLevel: 0.45,
+  noiseLevel: 0.08,
+  chorusDepth: 0.25,
+  chorusRate: 0.8,
+  detune: 7,
 });
 
 const TB303_DEFAULT = Object.freeze({
@@ -48,6 +67,7 @@ export const defaults = {
     activeOsc: 0,
     oscillators: Array.from({ length: 3 }, () => ({ ...SYNTH_OSC_DEFAULT })),
   },
+  juno60: { ...JUNO60_DEFAULT },
   tb303: { ...TB303_DEFAULT },
   noise:  { ...NOISE_DEFAULT },
   kick808: { freq:55, pitchDecay:0.08, ampDecay:0.45, click:0.12 },
@@ -200,6 +220,7 @@ export function createTrack(name, engine='synth', length=16){
 
     params: {
       synth:   clone(defaults.synth),
+      juno60: clone(defaults.juno60),
       tb303:  clone(defaults.tb303),
       noise:   clone(defaults.noise),
       kick808: clone(defaults.kick808),
@@ -443,6 +464,7 @@ export function triggerEngine(track, vel=1, semis=0, when, gateSec, options){
   const dest = track?.inputNode || track?.gainNode;
   switch(track.engine){
     case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when, gateSec);
+    case 'juno60':   return juno60Blip(track.params.juno60,   dest, vel, semis, when, gateSec);
     case 'tb303':    return tb303Blip(track.params.tb303,    dest, vel, semis, when, gateSec);
     case 'noise':    return noiseSynth(track.params.noise,   dest, vel, semis, when, gateSec);
     case 'kick808':  return kick808(track.params.kick808,    dest, vel, when, gateSec);

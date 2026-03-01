@@ -39,6 +39,23 @@ const SYNTH_MORPH_TARGET = { value: 'synth.morph', label: 'Morph' };
 
 const TARGETS_BY_ENGINE = {
   synth: [...SYNTH_BASE_TARGETS],
+  juno60: [
+    { value: 'juno60.baseFreq', label: 'Base Freq' },
+    { value: 'juno60.cutoff', label: 'Filter Cutoff' },
+    { value: 'juno60.q', label: 'Filter Q' },
+    { value: 'juno60.a', label: 'Env Attack' },
+    { value: 'juno60.d', label: 'Env Decay' },
+    { value: 'juno60.s', label: 'Env Sustain' },
+    { value: 'juno60.r', label: 'Env Release' },
+    { value: 'juno60.sawLevel', label: 'Saw Level' },
+    { value: 'juno60.pulseLevel', label: 'Pulse Level' },
+    { value: 'juno60.pulseWidth', label: 'Pulse Width' },
+    { value: 'juno60.subLevel', label: 'Sub Level' },
+    { value: 'juno60.noiseLevel', label: 'Noise Level' },
+    { value: 'juno60.chorusDepth', label: 'Chorus Depth' },
+    { value: 'juno60.chorusRate', label: 'Chorus Rate' },
+    { value: 'juno60.detune', label: 'Detune' },
+  ],
   tb303: [
     { value: 'tb303.baseFreq', label: 'Base Freq' },
     { value: 'tb303.cutoff', label: 'Filter Cutoff' },
@@ -2114,6 +2131,31 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     }
   }
 
+
+  if (eng === 'juno60') {
+    html += field('Base Freq', `<input id="j60_base" type="number" min="40" max="500" step="1" value="${p.baseFreq}">`, 'Hz');
+    html += field('Cutoff', `<input id="j60_cutoff" type="range" min="80" max="12000" step="1" value="${p.cutoff}">`, 'LPF Hz');
+    html += field('Resonance', `<input id="j60_q" type="range" min="0.1" max="20" step="0.1" value="${p.q}">`);
+    html += field('ADSR',
+      `<input id="j60_a" type="range" min="0" max="1" step="0.001" value="${p.a}">
+       <input id="j60_d" type="range" min="0" max="1.5" step="0.01" value="${p.d}">
+       <input id="j60_s" type="range" min="0" max="1" step="0.01" value="${p.s}">
+       <input id="j60_r" type="range" min="0" max="2" step="0.01" value="${p.r}">`,
+      'A / D / S / R');
+    html += field('Osc Mix',
+      `<input id="j60_saw" type="range" min="0" max="1" step="0.01" value="${p.sawLevel}">
+       <input id="j60_pulse" type="range" min="0" max="1" step="0.01" value="${p.pulseLevel}">
+       <input id="j60_sub" type="range" min="0" max="1" step="0.01" value="${p.subLevel}">
+       <input id="j60_noise" type="range" min="0" max="1" step="0.01" value="${p.noiseLevel}">`,
+      'Saw / Pulse / Sub / Noise');
+    html += field('Pulse Width', `<input id="j60_pw" type="range" min="0.05" max="0.95" step="0.01" value="${p.pulseWidth}">`);
+    html += field('Chorus',
+      `<input id="j60_chorusDepth" type="range" min="0" max="1" step="0.01" value="${p.chorusDepth}">
+       <input id="j60_chorusRate" type="range" min="0.05" max="8" step="0.01" value="${p.chorusRate}">`,
+      'Depth / Rate');
+    html += field('Detune', `<input id="j60_detune" type="range" min="0" max="40" step="0.1" value="${p.detune}">`, 'cents');
+  }
+
   if (eng === 'tb303') {
     html += field('Base Freq', `<input id="tb_base" type="number" min="40" max="500" step="1" value="${p.baseFreq}">`, 'Hz');
     html += field('Cutoff', `<input id="tb_cutoff" type="range" min="80" max="8000" step="1" value="${p.cutoff}">`, 'LPF Hz');
@@ -2468,7 +2510,32 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       }
     }
 
-    if (eng === 'tb303') {
+
+    if (eng === 'juno60') {
+      ['j60_base','j60_cutoff','j60_q','j60_a','j60_d','j60_s','j60_r','j60_saw','j60_pulse','j60_sub','j60_noise','j60_pw','j60_chorusDepth','j60_chorusRate','j60_detune'].forEach(id=>{
+        const el=document.getElementById(id);
+        if (el) el.oninput = () => {
+          const p = t.params.juno60;
+          p.baseFreq = +document.getElementById('j60_base').value;
+          p.cutoff = +document.getElementById('j60_cutoff').value;
+          p.q = +document.getElementById('j60_q').value;
+          p.a = +document.getElementById('j60_a').value;
+          p.d = +document.getElementById('j60_d').value;
+          p.s = +document.getElementById('j60_s').value;
+          p.r = +document.getElementById('j60_r').value;
+          p.sawLevel = +document.getElementById('j60_saw').value;
+          p.pulseLevel = +document.getElementById('j60_pulse').value;
+          p.subLevel = +document.getElementById('j60_sub').value;
+          p.noiseLevel = +document.getElementById('j60_noise').value;
+          p.pulseWidth = +document.getElementById('j60_pw').value;
+          p.chorusDepth = +document.getElementById('j60_chorusDepth').value;
+          p.chorusRate = +document.getElementById('j60_chorusRate').value;
+          p.detune = +document.getElementById('j60_detune').value;
+        };
+      });
+    }
+
+  if (eng === 'tb303') {
       ['tb_base','tb_cutoff','tb_q','tb_a','tb_d','tb_s','tb_r','tb_accent'].forEach(id=>{
         const el=document.getElementById(id);
         if (el) el.oninput = () => {
