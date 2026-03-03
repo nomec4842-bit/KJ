@@ -2158,8 +2158,8 @@ function getSlotRepeatCount(slot) {
   return Math.floor(rawRepeats);
 }
 
-function gotoChainSlot(slotIndex) {
-  saveCurrentPattern();
+function gotoChainSlot(slotIndex, { savePattern = true } = {}) {
+  if (savePattern) saveCurrentPattern();
 
   if (!Array.isArray(song.chain) || !song.chain.length) {
     ensureChainPosition();
@@ -2882,7 +2882,7 @@ playBtn.onclick = async () => {
       song.chainRepeatsLeft -= 1;
 
       if (song.chainRepeatsLeft <= 0) {
-        gotoChainSlot(song.chainPos + 1);
+        gotoChainSlot(song.chainPos + 1, { savePattern: false });
         renderChain();
       }
     }
