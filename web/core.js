@@ -1,9 +1,16 @@
 import { initDsp } from './dsp.js';
 
+const EARRAPE_GAIN = 2.2;
+let earrapeMode = false;
+
+function getMasterBaseGain() {
+  return earrapeMode ? EARRAPE_GAIN : 0.9;
+}
+
 export const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
 export const master = ctx.createGain();
-master.gain.value = 0.9;
+master.gain.value = getMasterBaseGain();
 master.connect(ctx.destination);
 
 export const dspReady = initDsp(ctx.sampleRate);
@@ -58,4 +65,13 @@ export async function ensureAudioReady() {
     try { await ctx.resume(); } catch (err) { console.warn('Audio resume failed', err); }
   }
   await dspReady;
+}
+
+export function setEarrapeMode(enabled) {
+  earrapeMode = !!enabled;
+  master.gain.value = getMasterBaseGain();
+}
+
+export function getEarrapeMode() {
+  return earrapeMode;
 }
