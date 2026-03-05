@@ -1,5 +1,5 @@
 // main.js
-import { ctx, master, startTransport, stopTransport, dspReady, ensureAudioReady } from './core.js';
+import { ctx, master, startTransport, stopTransport, dspReady, ensureAudioReady, setEarrapeMode, getEarrapeMode } from './core.js';
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
@@ -54,6 +54,11 @@ const startRecordingBtn = document.getElementById('startRecording');
 const stopRecordingBtn = document.getElementById('stopRecording');
 const projectMenuEl = document.getElementById('projectMenu');
 const projectMenuToggleBtn = document.getElementById('projectMenuToggle');
+const openPreferencesBtn = document.getElementById('openPreferences');
+const preferencesModalEl = document.getElementById('preferencesModal');
+const preferencesBackdropEl = document.getElementById('preferencesBackdrop');
+const closePreferencesBtn = document.getElementById('closePreferences');
+const earrapeToggleEl = document.getElementById('earrapeToggle');
 const undoProjectBtn = document.getElementById('undoProject');
 const redoProjectBtn = document.getElementById('redoProject');
 
@@ -90,6 +95,7 @@ const projectUndoStack = [];
 const projectRedoStack = [];
 let isApplyingProjectHistory = false;
 let projectLastSnapshot = '';
+let isPreferencesOpen = false;
 
 const CVL_RATES = [
   { value: '1/1', label: '1/1 (Whole)' },
@@ -1794,6 +1800,18 @@ function setProjectMenuOpen(open) {
   projectMenuToggleBtn.setAttribute('aria-expanded', isProjectMenuOpen ? 'true' : 'false');
 }
 
+function setPreferencesOpen(open) {
+  isPreferencesOpen = !!open;
+  if (preferencesModalEl) preferencesModalEl.hidden = !isPreferencesOpen;
+  if (isPreferencesOpen) setProjectMenuOpen(false);
+}
+
+function applyEarrapePreference(enabled) {
+  const isEnabled = !!enabled;
+  setEarrapeMode(isEnabled);
+  if (earrapeToggleEl) earrapeToggleEl.checked = isEnabled;
+}
+
 function closeTrackDropdown() {
   isTrackDropdownOpen = false;
   renderTrackDropdown();
@@ -1924,6 +1942,27 @@ if (projectMenuToggleBtn) {
   });
 }
 
+if (openPreferencesBtn) {
+  openPreferencesBtn.addEventListener('click', () => {
+    setPreferencesOpen(true);
+  });
+}
+
+if (closePreferencesBtn) {
+  closePreferencesBtn.addEventListener('click', () => setPreferencesOpen(false));
+}
+
+if (preferencesBackdropEl) {
+  preferencesBackdropEl.addEventListener('click', () => setPreferencesOpen(false));
+}
+
+if (earrapeToggleEl) {
+  earrapeToggleEl.checked = getEarrapeMode();
+  earrapeToggleEl.addEventListener('change', () => {
+    applyEarrapePreference(earrapeToggleEl.checked);
+  });
+}
+
 if (undoProjectBtn) undoProjectBtn.addEventListener('click', () => {
   undoProjectChange();
 });
@@ -1932,12 +1971,29 @@ if (redoProjectBtn) redoProjectBtn.addEventListener('click', () => {
   redoProjectChange();
 });
 
+
+function preferencesPanelContainsTarget(event) {
+  if (!preferencesModalEl) return false;
+  const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
+  const panel = preferencesModalEl.querySelector('.preferences-panel');
+  if (!panel) return false;
+  return eventPath.includes(panel) || panel.contains(event.target);
+}
+
 document.addEventListener('pointerdown', (event) => {
+  if (isPreferencesOpen && !preferencesPanelContainsTarget(event)) {
+    setPreferencesOpen(false);
+  }
+
   if (isProjectMenuOpen && projectMenuEl) {
     const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
     if (!(eventPath.includes(projectMenuEl) || projectMenuEl.contains(event.target))) {
       setProjectMenuOpen(false);
     }
+  }
+
+  if (isPreferencesOpen && preferencesPanelContainsTarget(event)) {
+    return;
   }
 
   if (!isTrackDropdownOpen || !trackDropdownEl) return;
@@ -1961,6 +2017,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (isTrackDropdownOpen) closeTrackDropdown();
   if (isProjectMenuOpen) setProjectMenuOpen(false);
+  if (isPreferencesOpen) setPreferencesOpen(false);
 });
 
 engineSel.onchange = () => {
