@@ -30,38 +30,40 @@ function cloneSynthParams(params) {
 
 const BEEPBOX_PRESETS = Object.freeze({
   beepbox_chip: {
-    a: 0.001, d: 0.12, s: 0.35, r: 0.08,
-    cutoff: 6000, q: 0.7,
+    // BeepBox legacy chip default cutoff setting is 6, which maps to ~2000 Hz.
+    a: 0.001, d: 0.02, s: 1.0, r: 0.06,
+    cutoff: 2000, q: 0.5,
     wavetable: true, morph: 2048,
   },
   beepbox_fm: {
-    a: 0.002, d: 0.18, s: 0.45, r: 0.16,
-    cutoff: 10000, q: 0.9,
+    // BeepBox non-chip synth defaults use legacy cutoff setting 10 (~8000 Hz).
+    a: 0.001, d: 0.02, s: 1.0, r: 0.06,
+    cutoff: 8000, q: 0.5,
     wavetable: true, morph: 0,
   },
   beepbox_pwm: {
-    a: 0.003, d: 0.2, s: 0.55, r: 0.18,
-    cutoff: 2400, q: 4,
+    a: 0.001, d: 0.02, s: 1.0, r: 0.06,
+    cutoff: 8000, q: 0.5,
     wavetable: true, morph: 2048,
   },
   beepbox_harmonics: {
-    a: 0.01, d: 0.22, s: 0.6, r: 0.24,
-    cutoff: 5200, q: 1.4,
-    wavetable: true, morph: 1365,
+    a: 0.001, d: 0.02, s: 1.0, r: 0.06,
+    cutoff: 8000, q: 0.5,
+    wavetable: false, morph: 0,
   },
   beepbox_pickedString: {
-    a: 0.001, d: 0.08, s: 0.1, r: 0.1,
-    cutoff: 1800, q: 3.5,
+    a: 0.001, d: 0.08, s: 0.2, r: 0.08,
+    cutoff: 8000, q: 0.5,
     wavetable: false, morph: 0,
   },
   beepbox_spectrum: {
-    a: 0.004, d: 0.24, s: 0.5, r: 0.22,
-    cutoff: 12000, q: 0.8,
+    a: 0.001, d: 0.02, s: 1.0, r: 0.06,
+    cutoff: 8000, q: 0.5,
     wavetable: true, morph: 512,
   },
   beepbox_supersaw: {
-    a: 0.008, d: 0.25, s: 0.65, r: 0.24,
-    cutoff: 7000, q: 0.75,
+    a: 0.001, d: 0.02, s: 1.0, r: 0.06,
+    cutoff: 8000, q: 0.5,
     wavetable: false, morph: 0,
     threeOsc: true,
     oscillatorPitches: [-0.07, 0, 0.07],
