@@ -11,6 +11,7 @@ import { createGrid } from './sequencer.js';
 import { createPianoRoll } from './pianoroll.js';
 import { refreshTrackSelect, renderParams, makeField, renderArpPanel, createPianoNoteParamsPanel } from './ui.js';
 import { serializePattern, instantiatePattern, clonePatternData } from './patterns.js';
+import { BEEPBOX_SYNTH_ENGINES, isBeepboxSynthEngine } from './beepbox-engines.js';
 
 await dspReady;
 
@@ -59,6 +60,7 @@ const preferencesModalEl = document.getElementById('preferencesModal');
 const preferencesBackdropEl = document.getElementById('preferencesBackdrop');
 const closePreferencesBtn = document.getElementById('closePreferences');
 const earrapeToggleEl = document.getElementById('earrapeToggle');
+const beepboxSynthImportsToggleEl = document.getElementById('beepboxSynthImportsToggle');
 const undoProjectBtn = document.getElementById('undoProject');
 const redoProjectBtn = document.getElementById('redoProject');
 
@@ -90,12 +92,14 @@ const song = {
 
 let currentStepIntervalMs = 0;
 const PROJECT_STORAGE_KEY = 'kj.project.v1';
+const BEEPBOX_SYNTH_IMPORTS_STORAGE_KEY = 'kj.pref.beepboxSynthImports';
 const PROJECT_HISTORY_LIMIT = 100;
 const projectUndoStack = [];
 const projectRedoStack = [];
 let isApplyingProjectHistory = false;
 let projectLastSnapshot = '';
 let isPreferencesOpen = false;
+const beepboxSynthImportsEnabled = getBeepboxSynthImportsPreference();
 
 const CVL_RATES = [
   { value: '1/1', label: '1/1 (Whole)' },
@@ -1812,6 +1816,60 @@ function applyEarrapePreference(enabled) {
   if (earrapeToggleEl) earrapeToggleEl.checked = isEnabled;
 }
 
+function getBeepboxSynthImportsPreference() {
+  try {
+    const raw = localStorage.getItem(BEEPBOX_SYNTH_IMPORTS_STORAGE_KEY);
+    return raw === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setBeepboxSynthImportsPreference(enabled) {
+  try {
+    localStorage.setItem(BEEPBOX_SYNTH_IMPORTS_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+function updateEngineSelectorBeepboxOptions(enabled) {
+  if (!engineSel) return;
+  const previous = engineSel.value;
+  const previousWasBeepbox = isBeepboxSynthEngine(previous);
+  const existing = Array.from(engineSel.querySelectorAll('option[data-beepbox-synth="true"]'));
+  existing.forEach((option) => option.remove());
+  if (enabled) {
+    const fragment = document.createDocumentFragment();
+    BEEPBOX_SYNTH_ENGINES.forEach((engine) => {
+      const option = document.createElement('option');
+      option.value = engine.id;
+      option.textContent = engine.label;
+      option.dataset.beepboxSynth = 'true';
+      fragment.appendChild(option);
+    });
+    engineSel.appendChild(fragment);
+  }
+  if (enabled && previousWasBeepbox) {
+    engineSel.value = previous;
+  } else if (!enabled && previousWasBeepbox) {
+    engineSel.value = 'synth';
+  }
+}
+
+function applyBeepboxSynthImportsPreference(enabled) {
+  const isEnabled = !!enabled;
+  setBeepboxSynthImportsPreference(isEnabled);
+  if (!isEnabled) {
+    tracks.forEach((track) => {
+      if (isBeepboxSynthEngine(track.engine)) track.engine = 'synth';
+    });
+  }
+  updateEngineSelectorBeepboxOptions(isEnabled);
+  if (beepboxSynthImportsToggleEl) beepboxSynthImportsToggleEl.checked = isEnabled;
+  refreshAndSelect(selectedTrackIndex);
+}
+
 function closeTrackDropdown() {
   isTrackDropdownOpen = false;
   renderTrackDropdown();
@@ -1919,6 +1977,10 @@ function refreshAndSelect(i = selectedTrackIndex){
     } else {
       togglePiano.disabled = false;
       engineSel.value = track.engine;
+      if (!getBeepboxSynthImportsPreference() && isBeepboxSynthEngine(track.engine)) {
+        track.engine = 'synth';
+        engineSel.value = 'synth';
+      }
       togglePiano.checked = track.mode === 'piano';
     }
   } else {
@@ -1960,6 +2022,14 @@ if (earrapeToggleEl) {
   earrapeToggleEl.checked = getEarrapeMode();
   earrapeToggleEl.addEventListener('change', () => {
     applyEarrapePreference(earrapeToggleEl.checked);
+  });
+}
+
+if (beepboxSynthImportsToggleEl) {
+  beepboxSynthImportsToggleEl.checked = getBeepboxSynthImportsPreference();
+  beepboxSynthImportsToggleEl.addEventListener('change', () => {
+    applyBeepboxSynthImportsPreference(beepboxSynthImportsToggleEl.checked);
+    saveProjectToStorage();
   });
 }
 
@@ -2019,6 +2089,9 @@ document.addEventListener('keydown', (event) => {
   if (isProjectMenuOpen) setProjectMenuOpen(false);
   if (isPreferencesOpen) setPreferencesOpen(false);
 });
+
+updateEngineSelectorBeepboxOptions(beepboxSynthImportsEnabled);
+if (beepboxSynthImportsToggleEl) beepboxSynthImportsToggleEl.checked = beepboxSynthImportsEnabled;
 
 engineSel.onchange = () => {
   const track = currentTrack();
