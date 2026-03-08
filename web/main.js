@@ -2104,6 +2104,12 @@ engineSel.onchange = () => {
   } else {
     if (track.type === 'cvl') track.type = 'standard';
     track.engine = engineSel.value;
+    if (isBeepboxSynthEngine(track.engine)) {
+      if (!track.params || typeof track.params !== 'object') track.params = {};
+      if (!track.params[track.engine] || typeof track.params[track.engine] !== 'object') {
+        track.params[track.engine] = JSON.parse(JSON.stringify(track.params.synth || defaults.synth));
+      }
+    }
   }
   refreshAndSelect(selectedTrackIndex);
   saveProjectToStorage();

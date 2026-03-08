@@ -464,7 +464,10 @@ export function resizeTrackSteps(track, newLen){
 export function triggerEngine(track, vel=1, semis=0, when, gateSec, options){
   const dest = track?.inputNode || track?.gainNode;
   if (isBeepboxSynthEngine(track.engine)) {
-    const beepboxParams = getBeepboxSynthParams(track.engine, track.params.synth);
+    const sourceParams = track.params[track.engine] && typeof track.params[track.engine] === 'object'
+      ? track.params[track.engine]
+      : track.params.synth;
+    const beepboxParams = getBeepboxSynthParams(track.engine, sourceParams);
     return synthBlip(beepboxParams, dest, vel, semis, when, gateSec);
   }
   switch(track.engine){

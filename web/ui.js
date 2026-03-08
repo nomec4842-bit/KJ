@@ -1979,7 +1979,10 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   const t = track;
   const eng = t.engine;
   const effectiveEngine = isBeepboxSynthEngine(eng) ? 'synth' : eng;
-  const p = t.params[effectiveEngine];
+  const beepboxParams = isBeepboxSynthEngine(eng) && t.params[eng] && typeof t.params[eng] === 'object'
+    ? t.params[eng]
+    : null;
+  const p = beepboxParams || t.params[effectiveEngine];
   const field = (label, inputHtml, hint='') => makeFieldHtml(label, inputHtml, hint);
   const escapeHtml = (value) => `${value}`
     .replace(/&/g, '&amp;')
@@ -2401,7 +2404,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
 
     // Engine params
     if (effectiveEngine === 'synth') {
-      const synth = t.params.synth;
+      const synth = p;
       const cloneOsc = (osc) => ({
         baseFreq: osc.baseFreq,
         cutoff: osc.cutoff,
