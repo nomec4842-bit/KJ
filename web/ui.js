@@ -38,6 +38,21 @@ const SYNTH_BASE_TARGETS = [
 
 const SYNTH_MORPH_TARGET = { value: 'synth.morph', label: 'Morph' };
 
+const SYNTH_CORE_PARAM_KEYS = new Set([
+  'baseFreq',
+  'cutoff',
+  'q',
+  'a',
+  'd',
+  's',
+  'r',
+  'wavetable',
+  'morph',
+  'threeOsc',
+  'activeOsc',
+  'oscillators',
+]);
+
 const TARGETS_BY_ENGINE = {
   synth: [...SYNTH_BASE_TARGETS],
   juno60: [
@@ -145,17 +160,46 @@ function withNoteTargets(track, options) {
   return [...options, ...noteOptions];
 }
 
+function getBeepboxExtraParamEntries(track) {
+  if (!isBeepboxSynthEngine(track?.engine)) return [];
+  const params = track?.params?.[track.engine];
+  if (!params || typeof params !== 'object') return [];
+  return Object.entries(params)
+    .filter(([key, value]) => {
+      if (SYNTH_CORE_PARAM_KEYS.has(key)) return false;
+      return typeof value === 'number' || typeof value === 'boolean';
+    })
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+function formatParamLabel(key) {
+  const normalized = `${key}`
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+    .trim();
+  if (!normalized) return 'Param';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function getTargetOptionsForTrack(track) {
-  const engine = isBeepboxSynthEngine(track?.engine) ? 'synth' : track?.engine;
+  const isBeepbox = isBeepboxSynthEngine(track?.engine);
+  const engine = isBeepbox ? 'synth' : track?.engine;
+  const targetPrefix = isBeepbox ? track?.engine : engine;
   const isCvl = track?.type === 'cvl';
   if (engine && TARGETS_BY_ENGINE[engine]) {
     if (engine === 'synth') {
-      const synthParams = track?.params?.synth || {};
+      const synthParams = isBeepbox
+        ? (track?.params?.[track?.engine] || {})
+        : (track?.params?.synth || {});
+      const mapTarget = (value) => {
+        if (!targetPrefix || !value.startsWith('synth.')) return value;
+        return `${targetPrefix}.${value.slice('synth.'.length)}`;
+      };
       if (synthParams.threeOsc) {
         const oscillators = Array.isArray(synthParams.oscillators) ? synthParams.oscillators : [];
         const options = [];
         oscillators.slice(0, 3).forEach((osc, index) => {
-          const prefix = `synth.oscillators.${index}`;
+          const prefix = `${targetPrefix}.oscillators.${index}`;
           const labelPrefix = `Osc ${index + 1}`;
           SYNTH_BASE_TARGETS.forEach((target) => {
             const suffix = target.value.replace('synth.', '');
@@ -171,13 +215,31 @@ function getTargetOptionsForTrack(track) {
             });
           }
         });
+        getBeepboxExtraParamEntries(track).forEach(([key]) => {
+          options.push({
+            value: `${targetPrefix}.${key}`,
+            label: formatParamLabel(key),
+          });
+        });
         const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
         return withNoteTargets(track, merged);
       }
-      const options = [...TARGETS_BY_ENGINE.synth];
+      const options = TARGETS_BY_ENGINE.synth.map((target) => ({
+        ...target,
+        value: mapTarget(target.value),
+      }));
       if (synthParams.wavetable) {
-        options.push(SYNTH_MORPH_TARGET);
+        options.push({
+          ...SYNTH_MORPH_TARGET,
+          value: mapTarget(SYNTH_MORPH_TARGET.value),
+        });
       }
+      getBeepboxExtraParamEntries(track).forEach(([key]) => {
+        options.push({
+          value: `${targetPrefix}.${key}`,
+          label: formatParamLabel(key),
+        });
+      });
       const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
       return withNoteTargets(track, merged);
     }
@@ -2134,6 +2196,27 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     } else {
       html += synthFields('p', p);
     }
+
+    if (isBeepboxSynthEngine(eng)) {
+      const extraParamEntries = getBeepboxExtraParamEntries(t);
+      if (extraParamEntries.length) {
+        html += '<div class="badge">BeepBox Extra Params</div>';
+        extraParamEntries.forEach(([key, value], index) => {
+          const safeKey = escapeHtml(key);
+          if (typeof value === 'boolean') {
+            html += field(
+              formatParamLabel(key),
+              `<button id="bbx_extra_${index}" data-bbx-extra-key="${safeKey}" class="toggle ${value ? 'active' : ''}">${value ? 'On' : 'Off'}</button>`,
+            );
+          } else {
+            html += field(
+              formatParamLabel(key),
+              `<input id="bbx_extra_${index}" data-bbx-extra-key="${safeKey}" type="number" step="0.01" value="${Number(value)}">`,
+            );
+          }
+        });
+      }
+    }
   }
 
 
@@ -2512,6 +2595,27 @@ export function renderParams(containerEl, track, makeFieldHtml) {
         });
       } else {
         bindOscInputs('p', synth);
+      }
+
+      if (isBeepboxSynthEngine(eng)) {
+        const extraControls = containerEl.querySelectorAll('[data-bbx-extra-key]');
+        extraControls.forEach((control) => {
+          const key = control.getAttribute('data-bbx-extra-key');
+          if (!key || !(key in synth)) return;
+          if (control.tagName === 'BUTTON') {
+            control.onclick = () => {
+              synth[key] = !synth[key];
+              control.classList.toggle('active', !!synth[key]);
+              control.textContent = synth[key] ? 'On' : 'Off';
+            };
+            return;
+          }
+          control.oninput = (e) => {
+            const value = Number(e.target.value);
+            if (!Number.isFinite(value)) return;
+            synth[key] = value;
+          };
+        });
       }
     }
 
