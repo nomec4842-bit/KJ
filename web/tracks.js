@@ -1,7 +1,7 @@
 import { ctx, master, clampInt } from './core.js';
 import { synthBlip, juno60Blip, tb303Blip, noiseSynth, kick808, snare808, hat808, clap909, samplerPlay } from './engines.js';
 import { normalizeStepFx } from './stepfx.js';
-import { isBeepboxSynthEngine } from './beepbox-engines.js';
+import { isBeepboxSynthEngine, getBeepboxSynthParams } from './beepbox-engines.js';
 
 export { STEP_FX_TYPES, STEP_FX_DEFAULTS, createStepFx, normalizeStepFx } from './stepfx.js';
 
@@ -464,7 +464,8 @@ export function resizeTrackSteps(track, newLen){
 export function triggerEngine(track, vel=1, semis=0, when, gateSec, options){
   const dest = track?.inputNode || track?.gainNode;
   if (isBeepboxSynthEngine(track.engine)) {
-    return synthBlip(track.params.synth, dest, vel, semis, when, gateSec);
+    const beepboxParams = getBeepboxSynthParams(track.engine, track.params.synth);
+    return synthBlip(beepboxParams, dest, vel, semis, when, gateSec);
   }
   switch(track.engine){
     case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when, gateSec);
