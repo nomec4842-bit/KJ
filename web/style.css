@@ -505,6 +505,13 @@ h3 { margin:0 0 8px; font-weight:600; }
 .cvl-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .cvl-controls select, .cvl-controls input[type="range"] { min-width:120px; }
 
+
+#selectMultipleToggle.active {
+  background: var(--accent);
+  color: #081018;
+  border-color: var(--accent);
+}
+
 #sequencer { display:grid; grid-template-columns: repeat(16, minmax(22px,1fr)); gap:6px; }
 .cell { position:relative; height:28px; background:#171a21; border:1px solid var(--border); border-radius:8px; }
 .cell.selected { border-color:var(--accent); box-shadow:0 0 0 2px rgba(90,200,250,0.4); }

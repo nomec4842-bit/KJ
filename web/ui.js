@@ -484,6 +484,7 @@ function createStepParamsPanel(rootEl, track) {
 
   let onChange = null;
   let selectedIndex = -1;
+  let selectedIndices = [];
   let suppressEvents = false;
 
   const slider = document.createElement('input');
@@ -526,28 +527,38 @@ function createStepParamsPanel(rootEl, track) {
     rootEl.appendChild(controls);
   };
 
-  const updateStateLabel = (step) => {
-    if (!step) {
+  const updateStateLabel = (steps = []) => {
+    if (!Array.isArray(steps) || !steps.length) {
       stateLabel.textContent = '';
       return;
     }
-    stateLabel.textContent = step.on ? 'On' : 'Off';
+    if (steps.length > 1) {
+      stateLabel.textContent = `${steps.length} selected`;
+      return;
+    }
+    stateLabel.textContent = steps[0]?.on ? 'On' : 'Off';
   };
 
   const commitVelocity = (value) => {
-    if (selectedIndex < 0) return;
+    if (!selectedIndices.length) return;
     const steps = track?.steps;
     if (!Array.isArray(steps)) return;
-    const step = steps[selectedIndex];
-    if (!step) return;
     const normalized = Math.max(0, Math.min(1, Number(value) || 0));
-    setStepVelocity(step, normalized);
+    let updated = false;
+    for (const index of selectedIndices) {
+      const step = steps[index];
+      if (!step) continue;
+      setStepVelocity(step, normalized);
+      updated = true;
+    }
+    if (!updated) return;
     suppressEvents = true;
     slider.value = String(normalized);
     numberInput.value = String(Math.round(normalized * 127));
     suppressEvents = false;
-    updateStateLabel(step);
-    if (typeof onChange === 'function') onChange(selectedIndex, step);
+    const selectedSteps = selectedIndices.map((index) => steps[index]).filter(Boolean);
+    updateStateLabel(selectedSteps);
+    if (typeof onChange === 'function') onChange(selectedIndex, selectedSteps[0] || null);
   };
 
   slider.addEventListener('input', (ev) => {
@@ -565,18 +576,31 @@ function createStepParamsPanel(rootEl, track) {
     commitVelocity(normalized);
   });
 
-  const updateSelection = (index) => {
-    selectedIndex = Number.isInteger(index) ? index : -1;
+  const updateSelection = (selection) => {
+    if (Array.isArray(selection)) {
+      selectedIndices = selection.filter((index) => Number.isInteger(index));
+      selectedIndex = selectedIndices.length ? selectedIndices[0] : -1;
+    } else {
+      selectedIndex = Number.isInteger(selection) ? selection : -1;
+      selectedIndices = selectedIndex >= 0 ? [selectedIndex] : [];
+    }
     if (!track || track.mode !== 'steps') {
       showPlaceholder('Step parameters are available in Steps mode.');
       return;
     }
     const steps = track.steps;
-    if (!Array.isArray(steps) || selectedIndex < 0 || selectedIndex >= steps.length) {
+    if (!Array.isArray(steps) || !selectedIndices.length) {
       showPlaceholder('Select a step to edit velocity.');
       return;
     }
-    const step = steps[selectedIndex];
+    const targetSteps = selectedIndices
+      .map((index) => (index >= 0 && index < steps.length ? steps[index] : null))
+      .filter(Boolean);
+    if (!targetSteps.length) {
+      showPlaceholder('Select a step to edit velocity.');
+      return;
+    }
+    const step = targetSteps[0];
     ensureControls();
     const vel = getStepVelocity(step, step?.on ? 1 : 0);
     const clamped = Math.max(0, Math.min(1, vel));
@@ -586,15 +610,15 @@ function createStepParamsPanel(rootEl, track) {
     suppressEvents = false;
     slider.disabled = false;
     numberInput.disabled = false;
-    updateStateLabel(step);
+    updateStateLabel(targetSteps);
   };
 
-  showPlaceholder('Select a step to edit velocity.');
+  showPlaceholder('Select step(s) to edit velocity.');
 
   return {
     updateSelection,
     refresh() {
-      updateSelection(selectedIndex);
+      updateSelection(selectedIndices.length ? selectedIndices : selectedIndex);
     },
     setOnChange(fn) {
       onChange = typeof fn === 'function' ? fn : null;
@@ -2395,8 +2419,8 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       const paramsHandler = (ev) => {
         const detail = ev?.detail;
         if (!detail || detail.track !== t) return;
-        const idx = Number.isInteger(detail.index) ? detail.index : -1;
-        stepParamsEditor.updateSelection(idx);
+        const indices = Array.isArray(detail.indices) ? detail.indices.filter((idx) => Number.isInteger(idx)) : [];
+        stepParamsEditor.updateSelection(indices.length ? indices : (Number.isInteger(detail.index) ? detail.index : -1));
       };
       containerEl._stepParamsSelectionHandler = paramsHandler;
       containerEl.addEventListener('stepselectionchange', paramsHandler);
