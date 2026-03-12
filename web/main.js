@@ -2338,7 +2338,7 @@ if (beepboxSynthImportsToggleEl) {
 }
 
 if (generateRandomProjectBtn) {
-  generateRandomProjectBtn.addEventListener('click', () => {
+  const handleGenerateRandomProject = () => {
     if (isSessionRecording) stopSessionRecording();
     stopHandle && stopHandle();
     stopHandle = null;
@@ -2352,6 +2352,16 @@ if (generateRandomProjectBtn) {
     applyProjectSnapshot(JSON.stringify(randomProject));
     saveProjectToStorage();
     setPreferencesOpen(false);
+  };
+
+  generateRandomProjectBtn.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+  });
+
+  generateRandomProjectBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handleGenerateRandomProject();
   });
 }
 
