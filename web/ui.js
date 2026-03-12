@@ -957,6 +957,7 @@ function createStepFxPanel(rootEl, track) {
 
   let onChange = null;
   let selectedIndex = -1;
+  let selectedIndices = [];
   let suppressEvents = false;
 
   let controlsWrap = null;
@@ -1409,130 +1410,163 @@ function createStepFxPanel(rootEl, track) {
     mbReleaseControl.update(releaseVal);
   };
 
-  const commitEffectType = (type) => {
-    if (selectedIndex < 0) return;
+  const getSelectedSteps = () => {
     const steps = track?.steps;
-    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
-    const step = steps[selectedIndex];
-    if (!step) return;
+    if (!Array.isArray(steps) || !selectedIndices.length) return [];
+    return selectedIndices
+      .map((index) => (index >= 0 && index < steps.length ? { index, step: steps[index] } : null))
+      .filter((entry) => entry && entry.step);
+  };
 
-    let nextFx;
-    if (type === STEP_FX_TYPES.DELAY) {
-      const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
-      const baseConfig = step.fx?.type === STEP_FX_TYPES.DELAY
-        ? step.fx.config
-        : defaults;
-      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DELAY, config: { ...baseConfig } });
-    } else if (type === STEP_FX_TYPES.DUCK) {
-      const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
-      const baseConfig = step.fx?.type === STEP_FX_TYPES.DUCK
-        ? step.fx.config
-        : defaults;
-      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DUCK, config: { ...baseConfig } });
-    } else if (type === STEP_FX_TYPES.MULTIBAND_DUCK) {
-      const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.MULTIBAND_DUCK] || {};
-      const baseConfig = step.fx?.type === STEP_FX_TYPES.MULTIBAND_DUCK
-        ? step.fx.config
-        : defaults;
-      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.MULTIBAND_DUCK, config: { ...baseConfig } });
-    } else {
-      nextFx = normalizeStepFx({ type: STEP_FX_TYPES.NONE });
-    }
+  const commitEffectType = (type) => {
+    const selectedSteps = getSelectedSteps();
+    if (!selectedSteps.length) return;
 
-    step.fx = nextFx;
+    let sampleFx = null;
+
+    selectedSteps.forEach(({ step }) => {
+      let nextFx;
+      if (type === STEP_FX_TYPES.DELAY) {
+        const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
+        const baseConfig = step.fx?.type === STEP_FX_TYPES.DELAY
+          ? step.fx.config
+          : defaults;
+        nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DELAY, config: { ...baseConfig } });
+      } else if (type === STEP_FX_TYPES.DUCK) {
+        const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
+        const baseConfig = step.fx?.type === STEP_FX_TYPES.DUCK
+          ? step.fx.config
+          : defaults;
+        nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DUCK, config: { ...baseConfig } });
+      } else if (type === STEP_FX_TYPES.MULTIBAND_DUCK) {
+        const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.MULTIBAND_DUCK] || {};
+        const baseConfig = step.fx?.type === STEP_FX_TYPES.MULTIBAND_DUCK
+          ? step.fx.config
+          : defaults;
+        nextFx = normalizeStepFx({ type: STEP_FX_TYPES.MULTIBAND_DUCK, config: { ...baseConfig } });
+      } else {
+        nextFx = normalizeStepFx({ type: STEP_FX_TYPES.NONE });
+      }
+      step.fx = nextFx;
+      sampleFx = nextFx;
+    });
+
+    if (!sampleFx) return;
+
     suppressEvents = true;
-    typeSelect.value = nextFx.type || STEP_FX_TYPES.NONE;
-    updateEffectVisibility(nextFx.type);
-    syncDelayInputs(nextFx.config);
-    syncDuckingInputs(nextFx.config);
-    syncMultibandInputs(nextFx.config);
+    typeSelect.value = sampleFx.type || STEP_FX_TYPES.NONE;
+    updateEffectVisibility(sampleFx.type);
+    syncDelayInputs(sampleFx.config);
+    syncDuckingInputs(sampleFx.config);
+    syncMultibandInputs(sampleFx.config);
     suppressEvents = false;
 
-    if (typeof onChange === 'function') onChange(selectedIndex, step);
+    if (typeof onChange === 'function') onChange(selectedIndex, selectedSteps[0]?.step || null);
   };
 
   const commitDelayConfig = (partial = {}) => {
-    if (selectedIndex < 0) return;
-    const steps = track?.steps;
-    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
-    const step = steps[selectedIndex];
-    if (!step) return;
+    const selectedSteps = getSelectedSteps();
+    if (!selectedSteps.length) return;
 
-    const current = normalizeStepFx(step.fx);
-    if (current.type !== STEP_FX_TYPES.DELAY) return;
+    let sampleFx = null;
 
-    const merged = { ...current.config, ...partial };
-    const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DELAY, config: merged });
-    step.fx = nextFx;
+    selectedSteps.forEach(({ step }) => {
+      const current = normalizeStepFx(step.fx);
+      if (current.type !== STEP_FX_TYPES.DELAY) return;
+
+      const merged = { ...current.config, ...partial };
+      const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DELAY, config: merged });
+      step.fx = nextFx;
+      sampleFx = nextFx;
+    });
+
+    if (!sampleFx) return;
 
     suppressEvents = true;
-    syncDelayInputs(nextFx.config);
+    syncDelayInputs(sampleFx.config);
     suppressEvents = false;
 
-    if (typeof onChange === 'function') onChange(selectedIndex, step);
+    if (typeof onChange === 'function') onChange(selectedIndex, selectedSteps[0]?.step || null);
   };
 
   const commitDuckingConfig = (partial = {}) => {
-    if (selectedIndex < 0) return;
-    const steps = track?.steps;
-    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
-    const step = steps[selectedIndex];
-    if (!step) return;
+    const selectedSteps = getSelectedSteps();
+    if (!selectedSteps.length) return;
 
-    const current = normalizeStepFx(step.fx);
-    if (current.type !== STEP_FX_TYPES.DUCK) return;
+    let sampleFx = null;
 
-    const merged = { ...current.config, ...partial };
-    const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DUCK, config: merged });
-    step.fx = nextFx;
+    selectedSteps.forEach(({ step }) => {
+      const current = normalizeStepFx(step.fx);
+      if (current.type !== STEP_FX_TYPES.DUCK) return;
+
+      const merged = { ...current.config, ...partial };
+      const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.DUCK, config: merged });
+      step.fx = nextFx;
+      sampleFx = nextFx;
+    });
+
+    if (!sampleFx) return;
 
     suppressEvents = true;
-    syncDuckingInputs(nextFx.config);
+    syncDuckingInputs(sampleFx.config);
     suppressEvents = false;
 
-    if (typeof onChange === 'function') onChange(selectedIndex, step);
+    if (typeof onChange === 'function') onChange(selectedIndex, selectedSteps[0]?.step || null);
   };
 
   const commitMultibandConfig = (partial = {}) => {
-    if (selectedIndex < 0) return;
-    const steps = track?.steps;
-    if (!Array.isArray(steps) || selectedIndex >= steps.length) return;
-    const step = steps[selectedIndex];
-    if (!step) return;
+    const selectedSteps = getSelectedSteps();
+    if (!selectedSteps.length) return;
 
-    const current = normalizeStepFx(step.fx);
-    if (current.type !== STEP_FX_TYPES.MULTIBAND_DUCK) return;
+    let sampleFx = null;
 
-    const merged = { ...current.config, ...partial };
-    const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.MULTIBAND_DUCK, config: merged });
-    step.fx = nextFx;
+    selectedSteps.forEach(({ step }) => {
+      const current = normalizeStepFx(step.fx);
+      if (current.type !== STEP_FX_TYPES.MULTIBAND_DUCK) return;
+
+      const merged = { ...current.config, ...partial };
+      const nextFx = normalizeStepFx({ type: STEP_FX_TYPES.MULTIBAND_DUCK, config: merged });
+      step.fx = nextFx;
+      sampleFx = nextFx;
+    });
+
+    if (!sampleFx) return;
 
     suppressEvents = true;
-    syncMultibandInputs(nextFx.config);
+    syncMultibandInputs(sampleFx.config);
     suppressEvents = false;
 
-    if (typeof onChange === 'function') onChange(selectedIndex, step);
+    if (typeof onChange === 'function') onChange(selectedIndex, selectedSteps[0]?.step || null);
   };
-
-  const updateSelection = (index) => {
-    selectedIndex = Number.isInteger(index) ? index : -1;
+  const updateSelection = (selection) => {
+    if (Array.isArray(selection)) {
+      selectedIndices = selection.filter((index) => Number.isInteger(index));
+      selectedIndex = selectedIndices.length ? selectedIndices[0] : -1;
+    } else {
+      selectedIndex = Number.isInteger(selection) ? selection : -1;
+      selectedIndices = selectedIndex >= 0 ? [selectedIndex] : [];
+    }
     if (!track || (track.mode !== 'steps' && track.mode !== 'piano')) {
       showPlaceholder('Step effects are available in Steps or Piano mode.');
       return;
     }
     const steps = track.steps;
-    if (!Array.isArray(steps) || selectedIndex < 0 || selectedIndex >= steps.length) {
+    if (!Array.isArray(steps) || !selectedIndices.length) {
       showPlaceholder('Select a step to edit step effects.');
       return;
     }
-    const step = steps[selectedIndex];
-    if (!step) {
+
+    const targetSteps = selectedIndices
+      .map((index) => (index >= 0 && index < steps.length ? steps[index] : null))
+      .filter(Boolean);
+    if (!targetSteps.length) {
       showPlaceholder('Select a step to edit step effects.');
       return;
     }
 
     ensureControls();
 
+    const step = targetSteps[0];
     const normalized = normalizeStepFx(step.fx);
     if (step.fx !== normalized) {
       step.fx = normalized;
@@ -1552,7 +1586,7 @@ function createStepFxPanel(rootEl, track) {
   return {
     updateSelection,
     refresh() {
-      updateSelection(selectedIndex);
+      updateSelection(selectedIndices.length ? selectedIndices : selectedIndex);
     },
     setOnChange(fn) {
       onChange = typeof fn === 'function' ? fn : null;
@@ -2444,8 +2478,8 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       const fxHandler = (ev) => {
         const detail = ev?.detail;
         if (!detail || detail.track !== t) return;
-        const idx = Number.isInteger(detail.index) ? detail.index : -1;
-        stepFxEditor.updateSelection(idx);
+        const indices = Array.isArray(detail.indices) ? detail.indices.filter((idx) => Number.isInteger(idx)) : [];
+        stepFxEditor.updateSelection(indices.length ? indices : (Number.isInteger(detail.index) ? detail.index : -1));
       };
       containerEl._stepFxSelectionHandler = fxHandler;
       containerEl.addEventListener('stepselectionchange', fxHandler);
