@@ -62,6 +62,7 @@ const preferencesBackdropEl = document.getElementById('preferencesBackdrop');
 const closePreferencesBtn = document.getElementById('closePreferences');
 const earrapeToggleEl = document.getElementById('earrapeToggle');
 const beepboxSynthImportsToggleEl = document.getElementById('beepboxSynthImportsToggle');
+const generateRandomProjectBtn = document.getElementById('generateRandomProject');
 const undoProjectBtn = document.getElementById('undoProject');
 const redoProjectBtn = document.getElementById('redoProject');
 
@@ -235,6 +236,214 @@ function createDefaultProject() {
     loopChain: false,
     selectedTrackIndex: 0,
     tempo: 120,
+  };
+}
+
+function randomInt(min, max) {
+  const lo = Math.ceil(Math.min(min, max));
+  const hi = Math.floor(Math.max(min, max));
+  return lo + Math.floor(Math.random() * (hi - lo + 1));
+}
+
+function randomFloat(min, max, decimals = 3) {
+  const value = min + Math.random() * (max - min);
+  return Number(value.toFixed(decimals));
+}
+
+function randomChoice(list, fallback = null) {
+  if (!Array.isArray(list) || !list.length) return fallback;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function randomBool(probability = 0.5) {
+  return Math.random() < probability;
+}
+
+function randomizeValueFromTemplate(template) {
+  if (Array.isArray(template)) {
+    return template.map((value) => randomizeValueFromTemplate(value));
+  }
+  if (typeof template === 'number') {
+    const magnitude = Math.max(Math.abs(template), 1);
+    const min = template < 0 ? template * 2 : 0;
+    const max = template < 0 ? magnitude : Math.max(magnitude * 2, 1);
+    return randomFloat(min, max);
+  }
+  if (typeof template === 'boolean') {
+    return randomBool();
+  }
+  if (!template || typeof template !== 'object') {
+    return template;
+  }
+  const next = {};
+  for (const [key, value] of Object.entries(template)) {
+    next[key] = randomizeValueFromTemplate(value);
+  }
+  return next;
+}
+
+function createRandomTrack(index, beepboxEnabled) {
+  const length = randomChoice([16, 24, 32, 48, 64], 16);
+  const baseEngines = ['synth', 'tb303', 'juno60', 'noise', 'kick808', 'snare808', 'hat808', 'clap909', 'sampler'];
+  const enginePool = beepboxEnabled
+    ? [...baseEngines, ...BEEPBOX_SYNTH_ENGINES.map((engine) => engine.id)]
+    : baseEngines;
+  const selectedEngine = randomChoice(enginePool, 'synth');
+  const track = normalizeTrack(createTrack(`Random ${index + 1}`, selectedEngine, length));
+
+  const laneChoices = [1, 2, 3, 4];
+  track.gain = randomFloat(0.45, 1);
+  track.pan = randomFloat(-1, 1);
+  track.mode = randomBool(0.4) ? 'piano' : 'steps';
+  track.arp = {
+    enabled: randomBool(0.3),
+    rate: randomChoice([1, 2, 4, 8, 16], 4),
+    direction: randomChoice(['up', 'down', 'upDown', 'random'], 'up'),
+    octaves: randomInt(1, 3),
+    gate: randomFloat(0.25, 1),
+  };
+
+  if (track.params && typeof track.params === 'object') {
+    const randomEngineParams = randomizeValueFromTemplate(track.params[selectedEngine] || track.params.synth || {});
+    track.params[selectedEngine] = {
+      ...(track.params[selectedEngine] || {}),
+      ...randomEngineParams,
+    };
+  }
+
+  track.effects = normalizeTrackEffects({
+    compression: {
+      enabled: randomBool(0.6),
+      threshold: randomFloat(-42, -6),
+      knee: randomFloat(0, 40),
+      ratio: randomFloat(1, 12),
+      attack: randomFloat(0, 0.2),
+      release: randomFloat(0.05, 1),
+    },
+    eq3: {
+      enabled: randomBool(0.7),
+      lowGain: randomFloat(-12, 12),
+      midGain: randomFloat(-12, 12),
+      highGain: randomFloat(-12, 12),
+    },
+  });
+  syncTrackEffects(track);
+
+  const stepFxTypes = [STEP_FX_TYPES.NONE, STEP_FX_TYPES.DELAY, STEP_FX_TYPES.DUCK, STEP_FX_TYPES.MULTIBAND_DUCK];
+  const noteCount = randomInt(2, Math.max(4, Math.floor(length / 2)));
+  track.notes = [];
+  for (let i = 0; i < length; i++) {
+    const step = normalizeStep(track.steps[i]);
+    step.on = randomBool(0.45);
+    setStepVelocity(step, randomFloat(0.15, 1));
+    const stepFxType = randomChoice(stepFxTypes, STEP_FX_TYPES.NONE);
+    if (stepFxType === STEP_FX_TYPES.NONE || randomBool(0.55)) {
+      step.fx = normalizeStepFx({ type: STEP_FX_TYPES.NONE, config: {} });
+    } else {
+      step.fx = normalizeStepFx({
+        type: stepFxType,
+        config: randomizeValueFromTemplate(STEP_FX_DEFAULTS[stepFxType] || {}),
+      });
+    }
+    track.steps[i] = step;
+  }
+
+  for (let i = 0; i < noteCount; i++) {
+    const start = randomInt(0, Math.max(0, length - 1));
+    const maxLength = Math.max(1, length - start);
+    track.notes.push({
+      start,
+      length: randomInt(1, Math.min(8, maxLength)),
+      pitch: randomInt(-12, 24),
+      vel: randomFloat(0.2, 1),
+      chance: randomFloat(0.35, 1),
+    });
+  }
+  track.noteModTargets = track.notes.slice(0, 6).map((note) => ({
+    step: note.start,
+    pitch: note.pitch,
+  }));
+
+  if (track.engine === 'sampler') {
+    track.params.sampler = {
+      ...track.params.sampler,
+      start: randomFloat(0, 0.7),
+      end: randomFloat(0.3, 1),
+      semis: randomInt(-24, 24),
+      gain: randomFloat(0.4, 1.6),
+      loop: randomBool(0.3),
+      advanced: randomBool(0.4),
+    };
+  }
+
+  track.mods = [];
+  const modCount = randomInt(1, 4);
+  const enginePrefix = track.engine;
+  const modTargets = [
+    `${enginePrefix}.cutoff`,
+    `${enginePrefix}.q`,
+    `${enginePrefix}.d`,
+    `${enginePrefix}.gain`,
+    `${enginePrefix}.baseFreq`,
+    'fx.delay.mix',
+    'fx.duck.depthDb',
+    'fx.multiband-duck.lowDepthDb',
+    ...track.noteModTargets.flatMap((target) => [
+      `note.${target.step}.${target.pitch}.vel`,
+      `note.${target.step}.${target.pitch}.chance`,
+      `note.${target.step}.${target.pitch}.length`,
+    ]),
+  ];
+
+  for (let i = 0; i < modCount; i++) {
+    const source = randomChoice(['lfo', 'sampleHold'], 'lfo');
+    const target = randomChoice(modTargets, `${enginePrefix}.cutoff`);
+    createModulator(track, {
+      source,
+      target,
+      amount: randomFloat(-0.8, 0.8),
+      enabled: true,
+      options: source === 'sampleHold'
+        ? {
+          hold: randomInt(1, 8),
+          depth: randomFloat(0.25, 1),
+          bias: randomFloat(-0.4, 0.4),
+          unipolar: randomBool(0.5),
+          sampleInput: randomChoice(['random', 'stepVelocity'], 'random'),
+        }
+        : {
+          rate: randomFloat(0.05, 6),
+          shape: randomChoice(['sine', 'triangle', 'square', 'saw', 'ramp'], 'sine'),
+          phase: randomFloat(0, 1),
+          depth: randomFloat(0.2, 1),
+          bias: randomFloat(-0.4, 0.4),
+          unipolar: randomBool(0.5),
+        },
+    });
+  }
+
+  if (track.type === 'cvl') {
+    track.cvl.lanes = randomChoice(laneChoices, 1);
+  }
+
+  return track;
+}
+
+function createRandomProject() {
+  const beepboxEnabled = getBeepboxSynthImportsPreference();
+  const trackCount = randomInt(1, 8);
+  const tracksForPattern = Array.from({ length: trackCount }, (_, index) => createRandomTrack(index, beepboxEnabled));
+  const patternLength = randomChoice([16, 24, 32, 48, 64], 16);
+
+  return {
+    version: 1,
+    patterns: [serializePattern('RDM 1', tracksForPattern, patternLength)],
+    current: 0,
+    chain: [{ pattern: 0, repeats: 1 }],
+    followChain: false,
+    loopChain: false,
+    selectedTrackIndex: 0,
+    tempo: randomInt(80, 180),
   };
 }
 
@@ -2125,6 +2334,24 @@ if (beepboxSynthImportsToggleEl) {
   beepboxSynthImportsToggleEl.addEventListener('change', () => {
     applyBeepboxSynthImportsPreference(beepboxSynthImportsToggleEl.checked);
     saveProjectToStorage();
+  });
+}
+
+if (generateRandomProjectBtn) {
+  generateRandomProjectBtn.addEventListener('click', () => {
+    if (isSessionRecording) stopSessionRecording();
+    stopHandle && stopHandle();
+    stopHandle = null;
+    currentStepIntervalMs = 0;
+    clearPendingDelayTriggers();
+    lastTransportStepIndex = -1;
+    playbackPatternStepOffset = 0;
+    for (const track of tracks) track.pos = -1;
+    paintPlayhead();
+    const randomProject = createRandomProject();
+    applyProjectSnapshot(JSON.stringify(randomProject));
+    saveProjectToStorage();
+    setPreferencesOpen(false);
   });
 }
 
