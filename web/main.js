@@ -22,6 +22,7 @@ const trackDropdownEl = document.getElementById('trackDropdown');
 const addTrackBtn  = document.getElementById('addTrack');
 const engineSel    = document.getElementById('engine');
 const seqEl        = document.getElementById('sequencer');
+const selectMultipleToggleBtn = document.getElementById('selectMultipleToggle');
 const arpEl        = document.getElementById('arpPanel');
 const paramsEl     = document.getElementById('params');
 const pianoNoteParamsEl = document.getElementById('pianoNoteParams');
@@ -77,6 +78,7 @@ function applyCvlLayout(isCvl) {
 const tracks = [];
 let selectedTrackIndex = 0;
 const currentTrack = () => tracks[selectedTrackIndex];
+let isStepMultiSelectMode = false;
 
 const sampleCache = {};
 const sampleWaveformCache = new Map();
@@ -480,6 +482,19 @@ function normalizeTrack(t) {
     t.selectedStep = -1;
   }
 
+  if (!Array.isArray(t.selectedSteps)) {
+    t.selectedSteps = [];
+  } else {
+    const deduped = new Set();
+    for (const value of t.selectedSteps) {
+      const idx = Number(value);
+      if (!Number.isFinite(idx)) continue;
+      const next = Math.trunc(idx);
+      if (next >= 0 && next < t.length) deduped.add(next);
+    }
+    t.selectedSteps = [...deduped].sort((a, b) => a - b);
+  }
+
   if (!t.selectedNote || typeof t.selectedNote !== 'object') {
     t.selectedNote = null;
   } else {
@@ -734,8 +749,14 @@ function normalizeTrack(t) {
 /* ---------- Editors ---------- */
 const stepGrid = createGrid(
   seqEl,
-  (i) => { // click = toggle
-    const st = currentTrack()?.steps?.[i];
+  (i) => {
+    const track = currentTrack();
+    if (!track) return;
+    if (isStepMultiSelectMode) {
+      toggleTrackSelectedStep(track, i);
+      return;
+    }
+    const st = track.steps?.[i];
     if (!st) return;
     const prevVel = getStepVelocity(st, 1);
     st.on = !st.on;
@@ -752,6 +773,10 @@ const stepGrid = createGrid(
   (i) => {
     const track = currentTrack();
     if (!track) return;
+    if (isStepMultiSelectMode) {
+      toggleTrackSelectedStep(track, i);
+      return;
+    }
     setTrackSelectedStep(track, i);
   }
 );
@@ -797,6 +822,13 @@ if (pianoNoteParams) {
   });
 }
 
+
+if (selectMultipleToggleBtn) {
+  selectMultipleToggleBtn.addEventListener('click', () => {
+    setStepMultiSelectMode(!isStepMultiSelectMode);
+  });
+}
+
 function getTrackStepCount(track) {
   if (!track) return 0;
   if (Number.isInteger(track.length)) return track.length;
@@ -810,6 +842,58 @@ function getTrackSelectedStep(track) {
   const len = getTrackStepCount(track);
   if (index < 0 || index >= len) return -1;
   return index;
+}
+
+
+function getTrackSelectedSteps(track) {
+  if (!track || !Array.isArray(track.selectedSteps)) return [];
+  const len = getTrackStepCount(track);
+  const unique = new Set();
+  for (const value of track.selectedSteps) {
+    const idx = Number(value);
+    if (!Number.isFinite(idx)) continue;
+    const next = Math.trunc(idx);
+    if (next >= 0 && next < len) unique.add(next);
+  }
+  return [...unique].sort((a, b) => a - b);
+}
+
+function setTrackSelectedSteps(track, indices = [], { skipBroadcast = false } = {}) {
+  if (!track) return;
+  track.selectedSteps = getTrackSelectedSteps({ ...track, selectedSteps: indices });
+  const first = track.selectedSteps.length ? track.selectedSteps[0] : -1;
+  track.selectedStep = first;
+  if (!skipBroadcast) broadcastSelection(track);
+}
+
+function toggleTrackSelectedStep(track, index) {
+  if (!track) return;
+  const next = Math.trunc(Number(index));
+  if (!Number.isFinite(next)) return;
+  const current = getTrackSelectedSteps(track);
+  const set = new Set(current);
+  if (set.has(next)) set.delete(next);
+  else set.add(next);
+  setTrackSelectedSteps(track, [...set]);
+}
+
+function setStepMultiSelectMode(enabled) {
+  isStepMultiSelectMode = !!enabled;
+  if (selectMultipleToggleBtn) {
+    selectMultipleToggleBtn.classList.toggle('active', isStepMultiSelectMode);
+    selectMultipleToggleBtn.setAttribute('aria-pressed', isStepMultiSelectMode ? 'true' : 'false');
+  }
+  const track = currentTrack();
+  if (!track) return;
+  if (isStepMultiSelectMode) {
+    const single = getTrackSelectedStep(track);
+    const indices = single >= 0 ? [single] : [];
+    setTrackSelectedSteps(track, indices);
+  } else {
+    const selected = getTrackSelectedSteps(track);
+    setTrackSelectedStep(track, selected.length ? selected[0] : -1);
+    track.selectedSteps = [];
+  }
 }
 
 function getTrackSelectedNote(track) {
@@ -853,8 +937,11 @@ function syncSelectionUI() {
     return;
   }
   const selectedIndex = getTrackSelectedStep(track);
+  const selectedIndices = getTrackSelectedSteps(track);
   if (track.mode === 'steps') {
-    if (stepGrid && typeof stepGrid.select === 'function') {
+    if (stepGrid && typeof stepGrid.selectMany === 'function' && isStepMultiSelectMode) {
+      stepGrid.selectMany(selectedIndices);
+    } else if (stepGrid && typeof stepGrid.select === 'function') {
       stepGrid.select(selectedIndex);
     }
     if (piano && typeof piano.select === 'function') {
@@ -892,6 +979,7 @@ function broadcastSelection(track) {
   const index = getTrackSelectedStep(track);
   const detail = {
     index,
+    indices: getTrackSelectedSteps(track),
     note,
     track,
     trackIndex: tracks.indexOf(track),
@@ -923,9 +1011,11 @@ function setTrackSelectedStep(track, index, { force = false, skipBroadcast = fal
   }
 
   const prev = Number.isInteger(track.selectedStep) ? track.selectedStep : -1;
-  if (!force && prev === next) return;
+  const hadMulti = Array.isArray(track.selectedSteps) && track.selectedSteps.length > 0;
+  if (!force && prev === next && !hadMulti) return;
 
   track.selectedStep = next;
+  track.selectedSteps = [];
   if (!skipBroadcast) {
     broadcastSelection(track);
   }

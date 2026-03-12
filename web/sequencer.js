@@ -9,6 +9,7 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
   let gridCells = [];
   let currentLen = 16;
   let selectedIndex = -1;
+  let selectedIndices = new Set();
 
   const toIndex = (value) => {
     if (value === null || value === undefined) return -1;
@@ -17,27 +18,45 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
     return Math.trunc(num);
   };
 
+  function paintSelection() {
+    const len = gridCells.length;
+    for (let i = 0; i < len; i += 1) {
+      const cell = gridCells[i];
+      if (!cell) continue;
+      const isSingle = i === selectedIndex;
+      const isMulti = selectedIndices.has(i);
+      cell.classList.toggle('selected', isSingle || isMulti);
+    }
+  }
+
   function select(index) {
     const len = gridCells.length;
     let next = toIndex(index);
     if (next < 0 || next >= len) next = -1;
-
-    if (selectedIndex >= 0 && selectedIndex < len) {
-      const prevCell = gridCells[selectedIndex];
-      if (prevCell) prevCell.classList.remove('selected');
-    }
-
     selectedIndex = next;
-    if (selectedIndex >= 0 && selectedIndex < len) {
-      const cell = gridCells[selectedIndex];
-      if (cell) cell.classList.add('selected');
+    selectedIndices.clear();
+    paintSelection();
+  }
+
+  function selectMany(indices) {
+    selectedIndex = -1;
+    selectedIndices.clear();
+    const len = gridCells.length;
+    if (Array.isArray(indices)) {
+      for (const value of indices) {
+        const next = toIndex(value);
+        if (next >= 0 && next < len) selectedIndices.add(next);
+      }
     }
+    paintSelection();
   }
 
   function rebuild(len){
     currentLen = len;
     const prevSelected = selectedIndex;
+    const prevMany = [...selectedIndices];
     selectedIndex = -1;
+    selectedIndices.clear();
     seqEl.innerHTML = '';
     gridCells = [];
 
@@ -137,7 +156,11 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
       gridCells.push(cell);
     }
 
-    select(prevSelected);
+    if (prevMany.length > 0) {
+      selectMany(prevMany);
+    } else {
+      select(prevSelected);
+    }
   }
 
   function update(getStep){
@@ -171,5 +194,5 @@ export function createGrid(seqEl, onToggle, onDoubleToggle, onSelect) {
   // initial
   rebuild(16);
 
-  return { update, paint, setLength: rebuild, select };
+  return { update, paint, setLength: rebuild, select, selectMany };
 }
