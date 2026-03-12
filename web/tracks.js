@@ -105,9 +105,16 @@ const TRACK_EQ3_DEFAULT = Object.freeze({
   highGain: 0,
 });
 
+const TRACK_PITCH_DEFAULT = Object.freeze({
+  enabled: false,
+  pitch: 0,
+  octave: 0,
+});
+
 export const TRACK_FX_DEFAULTS = Object.freeze({
   compression: TRACK_COMPRESSION_DEFAULT,
   eq3: TRACK_EQ3_DEFAULT,
+  pitch: TRACK_PITCH_DEFAULT,
 });
 
 export const ARP_DEFAULTS = Object.freeze({
@@ -345,6 +352,8 @@ export function normalizeTrackEffects(effects = {}) {
   const defaults = TRACK_COMPRESSION_DEFAULT;
   const eqSource = source.eq3 && typeof source.eq3 === 'object' ? source.eq3 : {};
   const eqDefaults = TRACK_EQ3_DEFAULT;
+  const pitchSource = source.pitch && typeof source.pitch === 'object' ? source.pitch : {};
+  const pitchDefaults = TRACK_PITCH_DEFAULT;
   const normalizedCompression = {
     enabled: compressionSource.enabled === true,
     threshold: clampNumber(compressionSource.threshold, -60, 0, defaults.threshold),
@@ -359,9 +368,15 @@ export function normalizeTrackEffects(effects = {}) {
     midGain: clampNumber(eqSource.midGain, -24, 24, eqDefaults.midGain),
     highGain: clampNumber(eqSource.highGain, -24, 24, eqDefaults.highGain),
   };
+  const normalizedPitch = {
+    enabled: pitchSource.enabled === true,
+    pitch: clampNumber(pitchSource.pitch, -12, 12, pitchDefaults.pitch),
+    octave: clampNumber(pitchSource.octave, -4, 4, pitchDefaults.octave),
+  };
   return {
     compression: normalizedCompression,
     eq3: normalizedEq3,
+    pitch: normalizedPitch,
   };
 }
 
