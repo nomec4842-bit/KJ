@@ -3206,6 +3206,19 @@ playBtn.onclick = async () => {
         if (typeof restore === 'function') restoreStack.push(restore);
       }
 
+      const pitchFxState = t?.effects?.pitch && typeof t.effects.pitch === 'object' ? t.effects.pitch : null;
+      const pitchFxEnabled = pitchFxState?.enabled === true;
+      const pitchFxSemis = Number.isFinite(Number(pitchFxState?.pitch)) ? Number(pitchFxState.pitch) : 0;
+      const pitchFxOctave = Number.isFinite(Number(pitchFxState?.octave)) ? Math.trunc(Number(pitchFxState.octave)) : 0;
+      const pitchFxOffsets = effectOffsets && typeof effectOffsets === 'object' && effectOffsets.pitch && typeof effectOffsets.pitch === 'object'
+        ? effectOffsets.pitch
+        : null;
+      const pitchFxSemisOffset = Number.isFinite(Number(pitchFxOffsets?.pitch)) ? Number(pitchFxOffsets.pitch) : 0;
+      const pitchFxOctaveOffset = Number.isFinite(Number(pitchFxOffsets?.octave)) ? Number(pitchFxOffsets.octave) : 0;
+      const livePitchShift = pitchFxEnabled
+        ? (pitchFxSemis + pitchFxSemisOffset + ((pitchFxOctave + pitchFxOctaveOffset) * 12))
+        : 0;
+
       try {
         if (t.type === 'cvl') {
           const trackLengthBeats = Math.max(0, t.length / 4);
@@ -3263,7 +3276,7 @@ playBtn.onclick = async () => {
                 semis: Number.isFinite(clipPitch) ? Math.max(-24, Math.min(24, clipPitch)) : 0,
               };
               const durationSec = clipLength * secondsPerBeat;
-              triggerEngine?.(t, 1, 0, scheduledTime, durationSec, {
+              triggerEngine?.(t, 1, livePitchShift, scheduledTime, durationSec, {
                 pan: Number.isFinite(clipPan) ? Math.max(-1, Math.min(1, clipPan)) : 0,
                 drive: Number.isFinite(clipDrive) ? Math.max(0, Math.min(1, clipDrive)) : 0,
                 delay: Number.isFinite(clipDelay) ? Math.max(0, Math.min(1, clipDelay)) : 0,
@@ -3300,7 +3313,7 @@ playBtn.onclick = async () => {
                 const duration = interval * gate;
                 let vel = (Number.isFinite(note.vel) ? note.vel : 1) + velocityOffset;
                 vel = Math.max(0, Math.min(1, vel));
-                if (vel > 0) triggerEngine?.(t, vel, note.pitch, time, duration);
+                if (vel > 0) triggerEngine?.(t, vel, note.pitch + livePitchShift, time, duration);
               }
             }
           } else {
@@ -3314,7 +3327,7 @@ playBtn.onclick = async () => {
               const gateSec = stepSeconds && Number.isFinite(n?.length)
                 ? Math.max(0.01, n.length * stepSeconds)
                 : undefined;
-              if (vel > 0) triggerEngine?.(t, vel, n.pitch, scheduledTime, gateSec);
+              if (vel > 0) triggerEngine?.(t, vel, n.pitch + livePitchShift, scheduledTime, gateSec);
             }
           }
         } else {
@@ -3329,7 +3342,7 @@ playBtn.onclick = async () => {
               }
             }
             vel = Math.max(0, Math.min(1, vel));
-            if (vel > 0) triggerEngine?.(t, vel, 0, scheduledTime);
+            if (vel > 0) triggerEngine?.(t, vel, livePitchShift, scheduledTime);
           }
         }
       } finally {

@@ -134,6 +134,12 @@ const CVL_TARGETS = [
   { value: 'cvl.scrubber', label: 'CVL Scrubber' },
 ];
 
+const TRACK_FX_MOD_TARGETS = [
+  { value: 'effects.pitch.pitch', label: 'Track FX Pitch Amount' },
+  { value: 'effects.pitch.octave', label: 'Track FX Pitch Octave' },
+];
+
+
 function getNoteTargetOptions(track) {
   if (!track || !Array.isArray(track.noteModTargets) || !track.noteModTargets.length) return [];
   const options = [];
@@ -181,6 +187,11 @@ function formatParamLabel(key) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function getTrackFxModTargets(track) {
+  if (!track?.effects?.pitch?.enabled) return [];
+  return TRACK_FX_MOD_TARGETS;
+}
+
 function getTargetOptionsForTrack(track) {
   const isBeepbox = isBeepboxSynthEngine(track?.engine);
   const engine = isBeepbox ? 'synth' : track?.engine;
@@ -222,7 +233,7 @@ function getTargetOptionsForTrack(track) {
           });
         });
         const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
-        return withNoteTargets(track, merged);
+        return withNoteTargets(track, [...merged, ...getTrackFxModTargets(track)]);
       }
       const options = TARGETS_BY_ENGINE.synth.map((target) => ({
         ...target,
@@ -241,14 +252,14 @@ function getTargetOptionsForTrack(track) {
         });
       });
       const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
-      return withNoteTargets(track, merged);
+      return withNoteTargets(track, [...merged, ...getTrackFxModTargets(track)]);
     }
     const options = TARGETS_BY_ENGINE[engine];
     const merged = isCvl ? [...options, ...CVL_TARGETS] : options;
-    return withNoteTargets(track, merged);
+    return withNoteTargets(track, [...merged, ...getTrackFxModTargets(track)]);
   }
   const merged = isCvl ? [...FALLBACK_TARGETS, ...CVL_TARGETS] : FALLBACK_TARGETS;
-  return withNoteTargets(track, merged);
+  return withNoteTargets(track, [...merged, ...getTrackFxModTargets(track)]);
 }
 
 function createModCell(labelText, controlEl) {
@@ -1608,6 +1619,7 @@ function createTrackFxPanel(rootEl, track) {
 
   const compressionDefaults = TRACK_FX_DEFAULTS?.compression || {};
   const eq3Defaults = TRACK_FX_DEFAULTS?.eq3 || {};
+  const pitchDefaults = TRACK_FX_DEFAULTS?.pitch || {};
 
   const ensureTrackEffectState = () => {
     const normalized = normalizeTrackEffects(track.effects);
@@ -1623,6 +1635,10 @@ function createTrackFxPanel(rootEl, track) {
 
   const ensureEq3State = () => {
     return ensureTrackEffectState().eq3;
+  };
+
+  const ensurePitchState = () => {
+    return ensureTrackEffectState().pitch;
   };
 
   const clamp = (value, min, max) => {
@@ -1650,6 +1666,10 @@ function createTrackFxPanel(rootEl, track) {
   eq3Option.value = 'eq3';
   eq3Option.textContent = '3-Band EQ';
   effectSelect.appendChild(eq3Option);
+  const pitchOption = document.createElement('option');
+  pitchOption.value = 'pitch';
+  pitchOption.textContent = 'Pitch';
+  effectSelect.appendChild(pitchOption);
   effectSelectWrap.appendChild(effectSelectLabel);
   effectSelectWrap.appendChild(effectSelect);
   wrap.appendChild(effectSelectWrap);
@@ -1675,15 +1695,19 @@ function createTrackFxPanel(rootEl, track) {
   const effectPanels = {
     compression: document.createElement('div'),
     eq3: document.createElement('div'),
+    pitch: document.createElement('div'),
   };
   effectPanels.compression.className = 'track-fx-effect-panel';
   effectPanels.eq3.className = 'track-fx-effect-panel';
+  effectPanels.pitch.className = 'track-fx-effect-panel';
   controls.appendChild(effectPanels.compression);
   controls.appendChild(effectPanels.eq3);
+  controls.appendChild(effectPanels.pitch);
 
   const hints = {
     compression: document.createElement('span'),
     eq3: document.createElement('span'),
+    pitch: document.createElement('span'),
   };
 
   const addControlRow = (panel, labelText, sliderControl) => {
@@ -1810,27 +1834,61 @@ function createTrackFxPanel(rootEl, track) {
   });
   addControlRow(effectPanels.eq3, 'High (dB)', eqHighControl);
 
+  const pitchControl = createSliderControl({
+    min: -12,
+    max: 12,
+    step: 0.01,
+    value: Number.isFinite(pitchDefaults.pitch) ? pitchDefaults.pitch : 0,
+    format: (val) => formatSliderValue(val, 2),
+    parseDisplay: (text) => {
+      const raw = Number.parseFloat(text);
+      if (!Number.isFinite(raw)) return NaN;
+      return clamp(raw, -12, 12);
+    },
+  });
+  addControlRow(effectPanels.pitch, 'Pitch (semitones)', pitchControl);
+
+  const octaveRow = document.createElement('div');
+  octaveRow.className = 'track-fx-row';
+  const octaveLabel = document.createElement('span');
+  octaveLabel.className = 'track-fx-label';
+  octaveLabel.textContent = 'Octave';
+  const octaveInput = document.createElement('input');
+  octaveInput.type = 'number';
+  octaveInput.min = '-4';
+  octaveInput.max = '4';
+  octaveInput.step = '1';
+  octaveInput.className = 'track-fx-octave-input';
+  octaveInput.setAttribute('aria-label', 'Pitch octave');
+  octaveRow.appendChild(octaveLabel);
+  octaveRow.appendChild(octaveInput);
+  effectPanels.pitch.appendChild(octaveRow);
+
   hints.compression.className = 'track-fx-hint';
   hints.compression.textContent = 'Smooth out peaks and glue the track together with gentle compression.';
   effectPanels.compression.appendChild(hints.compression);
   hints.eq3.className = 'track-fx-hint';
   hints.eq3.textContent = 'Shape low, mid, and high tone on the track bus.';
   effectPanels.eq3.appendChild(hints.eq3);
+  hints.pitch.className = 'track-fx-hint';
+  hints.pitch.textContent = 'Shift live playback pitch with semitone and octave controls.';
+  effectPanels.pitch.appendChild(hints.pitch);
 
   const sliderControls = [thresholdControl, ratioControl, attackControl, releaseControl, kneeControl];
   const eqControls = [eqLowControl, eqMidControl, eqHighControl];
 
   const selectEffect = (effect) => {
-    selectedEffect = effect === 'eq3' ? 'eq3' : 'compression';
+    selectedEffect = effect === 'eq3' ? 'eq3' : (effect === 'pitch' ? 'pitch' : 'compression');
     effectPanels.compression.hidden = selectedEffect !== 'compression';
     effectPanels.eq3.hidden = selectedEffect !== 'eq3';
-    toggleText.textContent = selectedEffect === 'eq3' ? '3-Band EQ' : 'Compression';
-    toggleInput.setAttribute('aria-label', selectedEffect === 'eq3' ? 'Enable 3-band EQ' : 'Enable compression');
+    effectPanels.pitch.hidden = selectedEffect !== 'pitch';
+    toggleText.textContent = selectedEffect === 'eq3' ? '3-Band EQ' : (selectedEffect === 'pitch' ? 'Pitch' : 'Compression');
+    toggleInput.setAttribute('aria-label', selectedEffect === 'eq3' ? 'Enable 3-band EQ' : (selectedEffect === 'pitch' ? 'Enable pitch' : 'Enable compression'));
   };
 
   const setControlsEnabled = (enabled) => {
-    const activeControls = selectedEffect === 'eq3' ? eqControls : sliderControls;
-    const inactiveControls = selectedEffect === 'eq3' ? sliderControls : eqControls;
+    const activeControls = selectedEffect === 'eq3' ? eqControls : (selectedEffect === 'pitch' ? [pitchControl] : sliderControls);
+    const inactiveControls = selectedEffect === 'eq3' ? [...sliderControls, pitchControl] : (selectedEffect === 'pitch' ? [...sliderControls, ...eqControls] : [...eqControls, pitchControl]);
     activeControls.forEach(ctrl => {
       ctrl.input.disabled = !enabled;
       ctrl.valueEl.contentEditable = enabled ? 'true' : 'false';
@@ -1841,6 +1899,7 @@ function createTrackFxPanel(rootEl, track) {
       ctrl.valueEl.contentEditable = 'false';
       ctrl.valueEl.setAttribute('aria-disabled', 'true');
     });
+    octaveInput.disabled = !(enabled && selectedEffect === 'pitch');
     controls.classList.toggle('track-fx-disabled', !enabled);
   };
 
@@ -1848,6 +1907,7 @@ function createTrackFxPanel(rootEl, track) {
     const effects = ensureTrackEffectState();
     const comp = effects.compression;
     const eq = effects.eq3;
+    const pitch = effects.pitch;
     let changed = false;
 
     if (partial.enabled !== undefined) {
@@ -1855,6 +1915,11 @@ function createTrackFxPanel(rootEl, track) {
       if (selectedEffect === 'eq3') {
         if (eq.enabled !== enabled) {
           eq.enabled = enabled;
+          changed = true;
+        }
+      } else if (selectedEffect === 'pitch') {
+        if (pitch.enabled !== enabled) {
+          pitch.enabled = enabled;
           changed = true;
         }
       } else if (comp.enabled !== enabled) {
@@ -1918,6 +1983,20 @@ function createTrackFxPanel(rootEl, track) {
         changed = true;
       }
     }
+    if (partial.pitch !== undefined) {
+      const next = clamp(partial.pitch, -12, 12);
+      if (next !== null && pitch.pitch !== next) {
+        pitch.pitch = next;
+        changed = true;
+      }
+    }
+    if (partial.octave !== undefined) {
+      const next = clamp(partial.octave, -4, 4);
+      if (next !== null && pitch.octave !== next) {
+        pitch.octave = Math.trunc(next);
+        changed = true;
+      }
+    }
 
 
     suppress = true;
@@ -1930,10 +2009,11 @@ function createTrackFxPanel(rootEl, track) {
   const refresh = () => {
     const comp = ensureCompressionState();
     const eq = ensureEq3State();
+    const pitch = ensurePitchState();
     suppress = true;
     effectSelect.value = selectedEffect;
     selectEffect(selectedEffect);
-    const enabled = selectedEffect === 'eq3' ? !!eq.enabled : !!comp.enabled;
+    const enabled = selectedEffect === 'eq3' ? !!eq.enabled : (selectedEffect === 'pitch' ? !!pitch.enabled : !!comp.enabled);
     toggleInput.checked = enabled;
     setControlsEnabled(enabled);
     thresholdControl.setValue(comp.threshold, { silent: true });
@@ -1944,14 +2024,17 @@ function createTrackFxPanel(rootEl, track) {
     eqLowControl.setValue(eq.lowGain, { silent: true });
     eqMidControl.setValue(eq.midGain, { silent: true });
     eqHighControl.setValue(eq.highGain, { silent: true });
+    pitchControl.setValue(pitch.pitch, { silent: true });
+    octaveInput.value = String(Math.trunc(Number.isFinite(pitch.octave) ? pitch.octave : 0));
     sliderControls.forEach(ctrl => ctrl.updateDisplay());
     eqControls.forEach(ctrl => ctrl.updateDisplay());
+    pitchControl.updateDisplay();
     suppress = false;
   };
 
   effectSelect.addEventListener('change', () => {
     if (suppress) return;
-    selectedEffect = effectSelect.value === 'eq3' ? 'eq3' : 'compression';
+    selectedEffect = effectSelect.value === 'eq3' ? 'eq3' : (effectSelect.value === 'pitch' ? 'pitch' : 'compression');
     refresh();
   });
 
@@ -1990,6 +2073,16 @@ function createTrackFxPanel(rootEl, track) {
   eqHighControl.setOnChange((val) => {
     if (suppress) return;
     applyUpdate({ highGain: val });
+  });
+  pitchControl.setOnChange((val) => {
+    if (suppress) return;
+    applyUpdate({ pitch: val });
+  });
+  octaveInput.addEventListener('input', () => {
+    if (suppress) return;
+    const parsed = Number.parseInt(octaveInput.value, 10);
+    if (!Number.isFinite(parsed)) return;
+    applyUpdate({ octave: parsed });
   });
 
   rootEl.innerHTML = '';
