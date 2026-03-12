@@ -506,10 +506,12 @@ h3 { margin:0 0 8px; font-weight:600; }
 .cvl-controls select, .cvl-controls input[type="range"] { min-width:120px; }
 
 
-#selectMultipleToggle.active {
-  background: var(--accent);
-  color: #081018;
-  border-color: var(--accent);
+.select-multiple-toggle {
+  user-select: none;
+}
+
+#selectMultipleToggle {
+  accent-color: var(--accent);
 }
 
 #sequencer { display:grid; grid-template-columns: repeat(16, minmax(22px,1fr)); gap:6px; }
