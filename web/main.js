@@ -824,8 +824,8 @@ if (pianoNoteParams) {
 
 
 if (selectMultipleToggleBtn) {
-  selectMultipleToggleBtn.addEventListener('click', () => {
-    setStepMultiSelectMode(!isStepMultiSelectMode);
+  selectMultipleToggleBtn.addEventListener('change', (event) => {
+    setStepMultiSelectMode(event.target.checked);
   });
 }
 
@@ -880,8 +880,7 @@ function toggleTrackSelectedStep(track, index) {
 function setStepMultiSelectMode(enabled) {
   isStepMultiSelectMode = !!enabled;
   if (selectMultipleToggleBtn) {
-    selectMultipleToggleBtn.classList.toggle('active', isStepMultiSelectMode);
-    selectMultipleToggleBtn.setAttribute('aria-pressed', isStepMultiSelectMode ? 'true' : 'false');
+    selectMultipleToggleBtn.checked = isStepMultiSelectMode;
   }
   const track = currentTrack();
   if (!track) return;

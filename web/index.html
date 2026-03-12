@@ -67,9 +67,10 @@
   <main>
     <section class="panel" id="timelinePanel">
       <h3>Timeline</h3>
-      <button id="selectMultipleToggle" class="ghost" type="button" aria-pressed="false" style="margin-bottom:8px">
-        Select Multiple
-      </button>
+      <label class="ctrl select-multiple-toggle" for="selectMultipleToggle" style="margin-bottom:8px;display:inline-flex;align-items:center;gap:6px">
+        <span>Select Multiple</span>
+        <input id="selectMultipleToggle" type="checkbox">
+      </label>
       <div id="sequencer"></div>
       <label class="ctrl" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px">
         <input id="togglePiano" type="checkbox">
