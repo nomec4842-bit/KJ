@@ -1291,7 +1291,13 @@ function renderParamsPanel(){
   if (trackFx && typeof trackFx.refresh === 'function') {
     trackFx.refresh();
   }
-  setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
+  if (isStepMultiSelectMode) {
+    const selectedIndices = getTrackSelectedSteps(track);
+    setTrackSelectedSteps(track, selectedIndices, { skipBroadcast: true });
+    broadcastSelection(track);
+  } else {
+    setTrackSelectedStep(track, getTrackSelectedStep(track), { force: true });
+  }
 }
 
 function renderCvlPanel() {
