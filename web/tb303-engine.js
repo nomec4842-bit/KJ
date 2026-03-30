@@ -15,6 +15,6 @@ export function tb303Blip(p, dest, vel = 1, semis = 0, when, durationSec) {
     wavetable: !!p?.wavetable,
     morph: p?.morph ?? 0,
   };
-  const samples = renderSynthSamples(mapped, vel * (1 + accent * 0.5), semis);
-  playSamples(samples, dest, when, durationSec);
+  const samples = renderSynthSamples(mapped, vel * (1 + accent * 0.5), 0);
+  playSamples(samples, dest, when, durationSec, { pitchSemis: semis });
 }
