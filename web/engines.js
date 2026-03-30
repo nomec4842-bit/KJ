@@ -16,35 +16,35 @@ export { samplerPlay } from './sampler-engine.js';
 /* ===========================
    808 Kick
    =========================== */
-export function kick808(p, dest, vel = 1, when, durationSec) {
+export function kick808(p, dest, vel = 1, semis = 0, when, durationSec) {
   if (!isDspReady()) return;
   const samples = renderKickSamples(p, vel);
-  playSamples(samples, dest, when, durationSec);
+  playSamples(samples, dest, when, durationSec, { pitchSemis: semis });
 }
 
 /* ===========================
    808 Snare
    =========================== */
-export function snare808(p, dest, vel = 1, when, durationSec) {
+export function snare808(p, dest, vel = 1, semis = 0, when, durationSec) {
   if (!isDspReady()) return;
   const samples = renderSnareSamples(p, vel);
-  playSamples(samples, dest, when, durationSec);
+  playSamples(samples, dest, when, durationSec, { pitchSemis: semis });
 }
 
 /* ===========================
    808 Hat
    =========================== */
-export function hat808(p, dest, vel = 1, when, durationSec) {
+export function hat808(p, dest, vel = 1, semis = 0, when, durationSec) {
   if (!isDspReady()) return;
   const samples = renderHatSamples(p, vel);
-  playSamples(samples, dest, when, durationSec);
+  playSamples(samples, dest, when, durationSec, { pitchSemis: semis });
 }
 
 /* ===========================
    909 Clap
    =========================== */
-export function clap909(p, dest, vel = 1, when, durationSec) {
+export function clap909(p, dest, vel = 1, semis = 0, when, durationSec) {
   if (!isDspReady()) return;
   const samples = renderClapSamples(p, vel);
-  playSamples(samples, dest, when, durationSec);
+  playSamples(samples, dest, when, durationSec, { pitchSemis: semis });
 }

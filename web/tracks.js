@@ -490,10 +490,10 @@ export function triggerEngine(track, vel=1, semis=0, when, gateSec, options){
     case 'juno60':   return juno60Blip(track.params.juno60,   dest, vel, semis, when, gateSec);
     case 'tb303':    return tb303Blip(track.params.tb303,    dest, vel, semis, when, gateSec);
     case 'noise':    return noiseSynth(track.params.noise,   dest, vel, semis, when, gateSec);
-    case 'kick808':  return kick808(track.params.kick808,    dest, vel, when, gateSec);
-    case 'snare808': return snare808(track.params.snare808,  dest, vel, when, gateSec);
-    case 'hat808':   return hat808(track.params.hat808,      dest, vel, when, gateSec);
-    case 'clap909':  return clap909(track.params.clap909,    dest, vel, when, gateSec);
+    case 'kick808':  return kick808(track.params.kick808,    dest, vel, semis, when, gateSec);
+    case 'snare808': return snare808(track.params.snare808,  dest, vel, semis, when, gateSec);
+    case 'hat808':   return hat808(track.params.hat808,      dest, vel, semis, when, gateSec);
+    case 'clap909':  return clap909(track.params.clap909,    dest, vel, semis, when, gateSec);
     case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, semis, when, gateSec, options);
   }
 }
