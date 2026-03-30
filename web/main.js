@@ -3289,12 +3289,19 @@ playBtn.onclick = async () => {
         } else if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
           const notesWithOffsets = noteOffsets ? applyNoteOffsets(notes, noteOffsets, t.length) : notes;
+          const notesForStepFx = notesWithOffsets.map((note) => {
+            const basePitch = Number(note?.pitch);
+            return {
+              ...note,
+              pitch: (Number.isFinite(basePitch) ? basePitch : 0) + livePitchShift,
+            };
+          });
           const columnStep = t.steps?.[t.pos];
           const columnVelocity = notesWithOffsets.length
             ? Math.max(...notesWithOffsets.map((note) => Number.isFinite(note?.vel) ? note.vel : 0))
             : 0;
           const fxResult = columnStep
-            ? evaluateStepFx(t, columnStep, t.pos, effectOffsets, scheduledTime, tracks, notesWithOffsets, columnVelocity)
+            ? evaluateStepFx(t, columnStep, t.pos, effectOffsets, scheduledTime, tracks, notesForStepFx, columnVelocity)
             : null;
           const velocityOffset = fxResult && typeof fxResult === 'object' && Number.isFinite(fxResult.velocityOffset)
             ? fxResult.velocityOffset
@@ -3333,7 +3340,7 @@ playBtn.onclick = async () => {
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const stepNotes = [{ vel: getStepVelocity(st, 1), pitch: 0 }];
+            const stepNotes = [{ vel: getStepVelocity(st, 1), pitch: livePitchShift }];
             const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime, tracks, stepNotes, stepNotes[0].vel);
             let vel = getStepVelocity(st, 1);
             if (fxResult && typeof fxResult === 'object') {
