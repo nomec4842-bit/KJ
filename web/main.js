@@ -2882,7 +2882,7 @@ function clearPendingDelayTriggers() {
   // Placeholder for any pending scheduling cleanup.
 }
 
-function scheduleDelayedTrigger(track, velocity, delayMs, scheduledTime, pitch = 0) {
+function scheduleDelayedTrigger(track, velocity, delayMs, scheduledTime, pitch = 0, trackPitchSemisOffset = 0) {
   const vel = Number(velocity);
   const ms = Number(delayMs);
   if (!Number.isFinite(vel) || vel <= 0) return;
@@ -2892,7 +2892,7 @@ function scheduleDelayedTrigger(track, velocity, delayMs, scheduledTime, pitch =
   const baseTime = Number.isFinite(scheduledTime) ? scheduledTime : ctx.currentTime;
   const startTime = baseTime + (ms / 1000);
   if (!track) return;
-  triggerEngine?.(track, clampedVel, Number.isFinite(pitch) ? pitch : 0, startTime);
+  triggerEngine?.(track, clampedVel, Number.isFinite(pitch) ? pitch : 0, startTime, undefined, { trackPitchSemisOffset });
 }
 
 function resolveDelayConfig(baseConfig = {}, offsets) {
@@ -3074,7 +3074,7 @@ function scheduleMultibandDucking(tracks, sourceTrack, config, scheduledTime) {
   }
 }
 
-function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime, notes, baseVelocityOverride) {
+function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime, notes, baseVelocityOverride, trackPitchSemisOffset = 0) {
   if (!track || !step) return null;
   if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return null;
 
@@ -3103,14 +3103,14 @@ function evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime, no
       if (repeatVelocity <= 0.0001) break;
       const delayMs = stepDuration * config.spacing * (i + 1);
       if (!Number.isFinite(delayMs) || delayMs <= 0) continue;
-      scheduleDelayedTrigger(track, repeatVelocity, delayMs, scheduledTime, resolvedPitch);
+      scheduleDelayedTrigger(track, repeatVelocity, delayMs, scheduledTime, resolvedPitch, trackPitchSemisOffset);
     }
   }
 
   return null;
 }
 
-function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, allTracks, notes, baseVelocityOverride) {
+function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, allTracks, notes, baseVelocityOverride, trackPitchSemisOffset = 0) {
   if (!track || !step || !step.fx || typeof step.fx !== 'object') return null;
   const rawType = typeof step.fx.type === 'string' ? step.fx.type.trim().toLowerCase() : '';
   if (!rawType || rawType === 'none' || rawType === STEP_FX_TYPES.NONE) return null;
@@ -3122,7 +3122,7 @@ function evaluateStepFx(track, step, stepIndex, effectOffsets, scheduledTime, al
   if (rawType === STEP_FX_TYPES.DELAY) {
     const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
     const baseConfig = { ...defaults, ...(step.fx.config && typeof step.fx.config === 'object' ? step.fx.config : {}) };
-    return evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime, notes, baseVelocityOverride);
+    return evaluateDelayStepFx(track, step, baseConfig, offsets, scheduledTime, notes, baseVelocityOverride, trackPitchSemisOffset);
   }
   if (rawType === STEP_FX_TYPES.DUCK) {
     const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DUCK] || {};
@@ -3208,15 +3208,13 @@ playBtn.onclick = async () => {
 
       const pitchFxState = t?.effects?.pitch && typeof t.effects.pitch === 'object' ? t.effects.pitch : null;
       const pitchFxEnabled = pitchFxState?.enabled === true;
-      const pitchFxSemis = Number.isFinite(Number(pitchFxState?.pitch)) ? Number(pitchFxState.pitch) : 0;
-      const pitchFxOctave = Number.isFinite(Number(pitchFxState?.octave)) ? Math.trunc(Number(pitchFxState.octave)) : 0;
       const pitchFxOffsets = effectOffsets && typeof effectOffsets === 'object' && effectOffsets.pitch && typeof effectOffsets.pitch === 'object'
         ? effectOffsets.pitch
         : null;
       const pitchFxSemisOffset = Number.isFinite(Number(pitchFxOffsets?.pitch)) ? Number(pitchFxOffsets.pitch) : 0;
       const pitchFxOctaveOffset = Number.isFinite(Number(pitchFxOffsets?.octave)) ? Number(pitchFxOffsets.octave) : 0;
-      const livePitchShift = pitchFxEnabled
-        ? (pitchFxSemis + pitchFxSemisOffset + ((pitchFxOctave + pitchFxOctaveOffset) * 12))
+      const trackPitchSemisOffset = pitchFxEnabled
+        ? (pitchFxSemisOffset + (pitchFxOctaveOffset * 12))
         : 0;
 
       try {
@@ -3276,7 +3274,8 @@ playBtn.onclick = async () => {
                 semis: Number.isFinite(clipPitch) ? Math.max(-24, Math.min(24, clipPitch)) : 0,
               };
               const durationSec = clipLength * secondsPerBeat;
-              triggerEngine?.(t, 1, livePitchShift, scheduledTime, durationSec, {
+              triggerEngine?.(t, 1, 0, scheduledTime, durationSec, {
+                trackPitchSemisOffset,
                 pan: Number.isFinite(clipPan) ? Math.max(-1, Math.min(1, clipPan)) : 0,
                 drive: Number.isFinite(clipDrive) ? Math.max(0, Math.min(1, clipDrive)) : 0,
                 delay: Number.isFinite(clipDelay) ? Math.max(0, Math.min(1, clipDelay)) : 0,
@@ -3289,19 +3288,12 @@ playBtn.onclick = async () => {
         } else if (t.mode === 'piano') {
           const notes = notesStartingAt?.(t, t.pos) || [];
           const notesWithOffsets = noteOffsets ? applyNoteOffsets(notes, noteOffsets, t.length) : notes;
-          const notesForStepFx = notesWithOffsets.map((note) => {
-            const basePitch = Number(note?.pitch);
-            return {
-              ...note,
-              pitch: (Number.isFinite(basePitch) ? basePitch : 0) + livePitchShift,
-            };
-          });
           const columnStep = t.steps?.[t.pos];
           const columnVelocity = notesWithOffsets.length
             ? Math.max(...notesWithOffsets.map((note) => Number.isFinite(note?.vel) ? note.vel : 0))
             : 0;
           const fxResult = columnStep
-            ? evaluateStepFx(t, columnStep, t.pos, effectOffsets, scheduledTime, tracks, notesForStepFx, columnVelocity)
+            ? evaluateStepFx(t, columnStep, t.pos, effectOffsets, scheduledTime, tracks, notesWithOffsets, columnVelocity, trackPitchSemisOffset)
             : null;
           const velocityOffset = fxResult && typeof fxResult === 'object' && Number.isFinite(fxResult.velocityOffset)
             ? fxResult.velocityOffset
@@ -3320,7 +3312,7 @@ playBtn.onclick = async () => {
                 const duration = interval * gate;
                 let vel = (Number.isFinite(note.vel) ? note.vel : 1) + velocityOffset;
                 vel = Math.max(0, Math.min(1, vel));
-                if (vel > 0) triggerEngine?.(t, vel, note.pitch + livePitchShift, time, duration);
+                if (vel > 0) triggerEngine?.(t, vel, note.pitch, time, duration, { trackPitchSemisOffset });
               }
             }
           } else {
@@ -3334,14 +3326,14 @@ playBtn.onclick = async () => {
               const gateSec = stepSeconds && Number.isFinite(n?.length)
                 ? Math.max(0.01, n.length * stepSeconds)
                 : undefined;
-              if (vel > 0) triggerEngine?.(t, vel, n.pitch + livePitchShift, scheduledTime, gateSec);
+              if (vel > 0) triggerEngine?.(t, vel, n.pitch, scheduledTime, gateSec, { trackPitchSemisOffset });
             }
           }
         } else {
           const st = t.steps[t.pos];
           if (st?.on) {
-            const stepNotes = [{ vel: getStepVelocity(st, 1), pitch: livePitchShift }];
-            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime, tracks, stepNotes, stepNotes[0].vel);
+            const stepNotes = [{ vel: getStepVelocity(st, 1), pitch: 0 }];
+            const fxResult = evaluateStepFx(t, st, t.pos, effectOffsets, scheduledTime, tracks, stepNotes, stepNotes[0].vel, trackPitchSemisOffset);
             let vel = getStepVelocity(st, 1);
             if (fxResult && typeof fxResult === 'object') {
               if (Number.isFinite(fxResult.velocityOffset)) {
@@ -3349,7 +3341,7 @@ playBtn.onclick = async () => {
               }
             }
             vel = Math.max(0, Math.min(1, vel));
-            if (vel > 0) triggerEngine?.(t, vel, livePitchShift, scheduledTime);
+            if (vel > 0) triggerEngine?.(t, vel, 0, scheduledTime, undefined, { trackPitchSemisOffset });
           }
         }
       } finally {

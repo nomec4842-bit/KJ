@@ -478,23 +478,30 @@ export function resizeTrackSteps(track, newLen){
 
 export function triggerEngine(track, vel=1, semis=0, when, gateSec, options){
   const dest = track?.inputNode || track?.gainNode;
+  const pitchFxState = track?.effects?.pitch && typeof track.effects.pitch === 'object' ? track.effects.pitch : null;
+  const pitchFxEnabled = pitchFxState?.enabled === true;
+  const pitchSemis = Number.isFinite(Number(pitchFxState?.pitch)) ? Number(pitchFxState.pitch) : 0;
+  const pitchOctave = Number.isFinite(Number(pitchFxState?.octave)) ? Math.trunc(Number(pitchFxState.octave)) : 0;
+  const pitchOffset = Number.isFinite(Number(options?.trackPitchSemisOffset)) ? Number(options.trackPitchSemisOffset) : 0;
+  const resolvedSemis = (Number.isFinite(Number(semis)) ? Number(semis) : 0)
+    + (pitchFxEnabled ? (pitchSemis + (pitchOctave * 12) + pitchOffset) : 0);
   if (isBeepboxSynthEngine(track.engine)) {
     const sourceParams = track.params[track.engine] && typeof track.params[track.engine] === 'object'
       ? track.params[track.engine]
       : track.params.synth;
     const beepboxParams = getBeepboxSynthParams(track.engine, sourceParams);
-    return synthBlip(beepboxParams, dest, vel, semis, when, gateSec);
+    return synthBlip(beepboxParams, dest, vel, resolvedSemis, when, gateSec);
   }
   switch(track.engine){
-    case 'synth':    return synthBlip(track.params.synth,    dest, vel, semis, when, gateSec);
-    case 'juno60':   return juno60Blip(track.params.juno60,   dest, vel, semis, when, gateSec);
-    case 'tb303':    return tb303Blip(track.params.tb303,    dest, vel, semis, when, gateSec);
-    case 'noise':    return noiseSynth(track.params.noise,   dest, vel, semis, when, gateSec);
-    case 'kick808':  return kick808(track.params.kick808,    dest, vel, semis, when, gateSec);
-    case 'snare808': return snare808(track.params.snare808,  dest, vel, semis, when, gateSec);
-    case 'hat808':   return hat808(track.params.hat808,      dest, vel, semis, when, gateSec);
-    case 'clap909':  return clap909(track.params.clap909,    dest, vel, semis, when, gateSec);
-    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, semis, when, gateSec, options);
+    case 'synth':    return synthBlip(track.params.synth,    dest, vel, resolvedSemis, when, gateSec);
+    case 'juno60':   return juno60Blip(track.params.juno60,   dest, vel, resolvedSemis, when, gateSec);
+    case 'tb303':    return tb303Blip(track.params.tb303,    dest, vel, resolvedSemis, when, gateSec);
+    case 'noise':    return noiseSynth(track.params.noise,   dest, vel, resolvedSemis, when, gateSec);
+    case 'kick808':  return kick808(track.params.kick808,    dest, vel, resolvedSemis, when, gateSec);
+    case 'snare808': return snare808(track.params.snare808,  dest, vel, resolvedSemis, when, gateSec);
+    case 'hat808':   return hat808(track.params.hat808,      dest, vel, resolvedSemis, when, gateSec);
+    case 'clap909':  return clap909(track.params.clap909,    dest, vel, resolvedSemis, when, gateSec);
+    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, resolvedSemis, when, gateSec, options);
   }
 }
 
