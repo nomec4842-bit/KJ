@@ -18,6 +18,26 @@ const MOD_SOURCES = [
   { value: 'sampleHold', label: 'Sample & Hold' },
 ];
 
+function isActiveStepFx(fx) {
+  return !!fx && typeof fx === 'object'
+    && typeof fx.type === 'string'
+    && fx.type.trim().toLowerCase() !== ''
+    && fx.type.trim().toLowerCase() !== 'none';
+}
+
+function normalizeCvlClipStepFx(clip) {
+  if (!clip || typeof clip !== 'object') return normalizeStepFx();
+
+  const fromFx = normalizeStepFx(clip.fx);
+  const fromEffects = normalizeStepFx(clip.effects);
+  const resolved = isActiveStepFx(fromFx)
+    ? fromFx
+    : (isActiveStepFx(fromEffects) ? fromEffects : fromFx);
+  clip.fx = resolved;
+  clip.effects = resolved;
+  return resolved;
+}
+
 const LFO_SHAPE_OPTIONS = [
   { value: 'sine', label: 'Sine' },
   { value: 'triangle', label: 'Triangle' },
@@ -2488,9 +2508,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       : null)
     : null;
   if (cvlClipStepFxRoot && cvlClipStepFxSource) {
-    const normalizedClipFx = normalizeStepFx(cvlClipStepFxSource.fx || cvlClipStepFxSource.effects);
-    cvlClipStepFxSource.fx = normalizedClipFx;
-    cvlClipStepFxSource.effects = normalizedClipFx;
+    normalizeCvlClipStepFx(cvlClipStepFxSource);
     const cvlClipFxTrack = { mode: 'steps', steps: [cvlClipStepFxSource] };
     const cvlClipFxEditor = createStepFxPanel(cvlClipStepFxRoot, cvlClipFxTrack);
     if (cvlClipFxEditor) {
@@ -2639,9 +2657,10 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     const cvlClipFxEditor = containerEl._cvlClipFxEditor;
     if (cvlClipFxEditor && selectedClip) {
       cvlClipFxEditor.setOnChange((index, step) => {
-        const nextFx = normalizeStepFx(step?.fx || selectedClip.fx || selectedClip.effects);
-        selectedClip.fx = nextFx;
-        selectedClip.effects = nextFx;
+        if (step && typeof step === 'object') {
+          selectedClip.fx = step.fx;
+        }
+        normalizeCvlClipStepFx(selectedClip);
         if (typeof onCvlClipChange === 'function') onCvlClipChange();
       });
     }

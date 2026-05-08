@@ -124,6 +124,26 @@ const CVL_RATES = [
 ];
 const CVL_SNAP_GRID = 0.25;
 
+function isActiveStepFx(fx) {
+  return !!fx && typeof fx === 'object'
+    && typeof fx.type === 'string'
+    && fx.type.trim().toLowerCase() !== ''
+    && fx.type.trim().toLowerCase() !== 'none';
+}
+
+function resolveClipStepFx(clip) {
+  if (!clip || typeof clip !== 'object') return normalizeStepFx();
+
+  const fromFx = normalizeStepFx(clip.fx);
+  const fromEffects = normalizeStepFx(clip.effects);
+  const resolved = isActiveStepFx(fromFx)
+    ? fromFx
+    : (isActiveStepFx(fromEffects) ? fromEffects : fromFx);
+  clip.fx = resolved;
+  clip.effects = resolved;
+  return resolved;
+}
+
 function createCvlClipId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -895,14 +915,12 @@ function normalizeTrack(t) {
           ? Number(clip.lengthBeats)
           : Number(clip.length);
         const rawParams = clip.params && typeof clip.params === 'object' ? clip.params : {};
-        const rawEffects = clip.effects && typeof clip.effects === 'object' ? clip.effects : {};
         const gain = Number(rawParams.gain);
         const pan = Number(rawParams.pan);
         const pitch = Number(rawParams.pitch);
         const start = Number(rawParams.start);
         const end = Number(rawParams.end);
-        const clipEffects = normalizeStepFx(rawEffects);
-        return {
+        const normalizedClip = {
           id: typeof clip.id === 'string' && clip.id.trim() ? clip.id : createCvlClipId(),
           lane: 0,
           startBeat: Number.isFinite(startBeat) ? Math.max(0, startBeat) : 0,
@@ -915,8 +933,11 @@ function normalizeTrack(t) {
             pan: Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0,
             pitch: Number.isFinite(pitch) ? Math.max(-24, Math.min(24, pitch)) : 0,
           },
-          effects: clipEffects,
+          fx: normalizeStepFx(clip.fx),
+          effects: normalizeStepFx(clip.effects),
         };
+        resolveClipStepFx(normalizedClip);
+        return normalizedClip;
       });
   }
 
@@ -1713,6 +1734,7 @@ function renderCvlPanel() {
         lengthBeats: Math.max(minClipLength, 1),
         sampleName,
         params: { start: 0, end: 1, gain: 1, pan: 0, pitch: 0 },
+        fx: normalizeStepFx(),
         effects: normalizeStepFx(),
       };
       if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
@@ -3264,8 +3286,7 @@ playBtn.onclick = async () => {
               const clipGain = Number(clipParams.gain);
               const clipPan = Number(clipParams.pan);
               const clipPitch = Number(clipParams.pitch);
-              const clipFx = normalizeStepFx(clip.effects);
-              if (clip.effects !== clipFx) clip.effects = clipFx;
+              const clipFx = resolveClipStepFx(clip);
               const samplerParams = {
                 ...previousSamplerParams,
                 start: Number.isFinite(clipRangeStart) ? Math.max(0, Math.min(1, clipRangeStart)) : 0,
