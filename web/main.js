@@ -3,7 +3,7 @@ import { ctx, master, startTransport, stopTransport, dspReady, ensureAudioReady,
 import {
   createTrack, triggerEngine, applyMixer, resizeTrackSteps,
   notesStartingAt, normalizeStep, setStepVelocity, getStepVelocity,
-  syncTrackEffects, defaults, ARP_DEFAULTS,
+  syncTrackEffects, updateTrackPitchVoices, defaults, ARP_DEFAULTS,
 } from './tracks.js';
 import { STEP_FX_TYPES, STEP_FX_DEFAULTS, normalizeStepFx } from './stepfx.js';
 import { applyMods } from './mods.js';
@@ -3216,6 +3216,7 @@ playBtn.onclick = async () => {
       const trackPitchSemisOffset = pitchFxEnabled
         ? (pitchFxSemisOffset + (pitchFxOctaveOffset * 12))
         : 0;
+      updateTrackPitchVoices?.(t, trackPitchSemisOffset, scheduledTime);
 
       try {
         if (t.type === 'cvl') {

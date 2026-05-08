@@ -99,4 +99,9 @@ export function samplerPlay(p, dest, vel = 1, sample, semis = 0, when, durationS
   applyDeclickEnvelope(vca, (p.gain ?? 1) * vel, startTime, duration);
   src.start(startTime, startSec, duration);
   src.stop(startTime + duration + 0.005);
+  src.onended = () => {
+    try { src.disconnect(); } catch {}
+    try { vca.disconnect(); } catch {}
+  };
+  return { source: src, gain: vca, playbackRate: rate };
 }
