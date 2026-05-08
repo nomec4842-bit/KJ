@@ -2488,8 +2488,9 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       : null)
     : null;
   if (cvlClipStepFxRoot && cvlClipStepFxSource) {
-    cvlClipStepFxSource.fx = normalizeStepFx(cvlClipStepFxSource.effects);
-    cvlClipStepFxSource.effects = cvlClipStepFxSource.fx;
+    const normalizedClipFx = normalizeStepFx(cvlClipStepFxSource.fx || cvlClipStepFxSource.effects);
+    cvlClipStepFxSource.fx = normalizedClipFx;
+    cvlClipStepFxSource.effects = normalizedClipFx;
     const cvlClipFxTrack = { mode: 'steps', steps: [cvlClipStepFxSource] };
     const cvlClipFxEditor = createStepFxPanel(cvlClipStepFxRoot, cvlClipFxTrack);
     if (cvlClipFxEditor) {
@@ -2637,9 +2638,10 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     });
     const cvlClipFxEditor = containerEl._cvlClipFxEditor;
     if (cvlClipFxEditor && selectedClip) {
-      cvlClipFxEditor.setOnChange(() => {
-        selectedClip.effects = normalizeStepFx(selectedClip.fx);
-        selectedClip.fx = selectedClip.effects;
+      cvlClipFxEditor.setOnChange((index, step) => {
+        const nextFx = normalizeStepFx(step?.fx || selectedClip.fx || selectedClip.effects);
+        selectedClip.fx = nextFx;
+        selectedClip.effects = nextFx;
         if (typeof onCvlClipChange === 'function') onCvlClipChange();
       });
     }
