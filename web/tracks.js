@@ -380,6 +380,66 @@ export function normalizeTrackEffects(effects = {}) {
   };
 }
 
+
+function resolveTrackPitchSemis(track, extraOffset = 0) {
+  const pitchFxState = track?.effects?.pitch && typeof track.effects.pitch === 'object' ? track.effects.pitch : null;
+  if (pitchFxState?.enabled !== true) return 0;
+  const pitchSemis = Number.isFinite(Number(pitchFxState.pitch)) ? Number(pitchFxState.pitch) : 0;
+  const pitchOctave = Number.isFinite(Number(pitchFxState.octave)) ? Math.trunc(Number(pitchFxState.octave)) : 0;
+  const pitchOffset = Number.isFinite(Number(extraOffset)) ? Number(extraOffset) : 0;
+  return pitchSemis + (pitchOctave * 12) + pitchOffset;
+}
+
+function getVoiceSource(voice) {
+  return voice?.source || voice?.src || null;
+}
+
+function registerTrackPitchVoice(track, voice, appliedTrackPitchSemis = 0) {
+  const source = getVoiceSource(voice);
+  if (!track || !source?.playbackRate) return voice;
+  if (!Array.isArray(track._pitchVoices)) track._pitchVoices = [];
+  const voiceRate = Number(voice?.playbackRate);
+  const paramRate = Number(source.playbackRate.value);
+  const startRate = Number.isFinite(voiceRate) && voiceRate > 0
+    ? voiceRate
+    : paramRate;
+  const basePlaybackRate = Number.isFinite(startRate) && startRate > 0
+    ? startRate / Math.pow(2, appliedTrackPitchSemis / 12)
+    : Math.pow(2, -appliedTrackPitchSemis / 12);
+  const entry = { source, basePlaybackRate };
+  track._pitchVoices.push(entry);
+
+  const previousOnEnded = source.onended;
+  source.onended = (...args) => {
+    const voices = Array.isArray(track._pitchVoices) ? track._pitchVoices : [];
+    const idx = voices.indexOf(entry);
+    if (idx >= 0) voices.splice(idx, 1);
+    if (typeof previousOnEnded === 'function') previousOnEnded.apply(source, args);
+  };
+  return voice;
+}
+
+export function updateTrackPitchVoices(track, extraOffset = 0, when = ctx.currentTime) {
+  if (!track || !Array.isArray(track._pitchVoices) || !track._pitchVoices.length) return;
+  const pitchSemis = resolveTrackPitchSemis(track, extraOffset);
+  const rateMultiplier = Math.pow(2, pitchSemis / 12);
+  const now = Number.isFinite(when) ? Math.max(ctx.currentTime, when) : ctx.currentTime;
+  track._pitchVoices = track._pitchVoices.filter((entry) => {
+    const source = entry?.source;
+    const param = source?.playbackRate;
+    const baseRate = Number(entry?.basePlaybackRate);
+    if (!param || !Number.isFinite(baseRate) || baseRate <= 0) return false;
+    const nextRate = Math.max(0.0001, baseRate * rateMultiplier);
+    try {
+      param.cancelScheduledValues(now);
+      param.setTargetAtTime(nextRate, now, 0.01);
+    } catch {
+      try { param.setValueAtTime(nextRate, now); } catch { return false; }
+    }
+    return true;
+  });
+}
+
 export function syncTrackEffects(track) {
   if (!track) return null;
   const normalized = normalizeTrackEffects(track.effects);
@@ -404,6 +464,7 @@ export function syncTrackEffects(track) {
     try { eqNodes.high.gain.setValueAtTime(eq3.highGain, now); } catch {}
   }
   rebuildTrackFxChain(track);
+  updateTrackPitchVoices(track);
   return normalized;
 }
 
@@ -478,31 +539,30 @@ export function resizeTrackSteps(track, newLen){
 
 export function triggerEngine(track, vel=1, semis=0, when, gateSec, options){
   const dest = track?.inputNode || track?.gainNode;
-  const pitchFxState = track?.effects?.pitch && typeof track.effects.pitch === 'object' ? track.effects.pitch : null;
-  const pitchFxEnabled = pitchFxState?.enabled === true;
-  const pitchSemis = Number.isFinite(Number(pitchFxState?.pitch)) ? Number(pitchFxState.pitch) : 0;
-  const pitchOctave = Number.isFinite(Number(pitchFxState?.octave)) ? Math.trunc(Number(pitchFxState.octave)) : 0;
   const pitchOffset = Number.isFinite(Number(options?.trackPitchSemisOffset)) ? Number(options.trackPitchSemisOffset) : 0;
-  const resolvedSemis = (Number.isFinite(Number(semis)) ? Number(semis) : 0)
-    + (pitchFxEnabled ? (pitchSemis + (pitchOctave * 12) + pitchOffset) : 0);
+  const trackPitchSemis = resolveTrackPitchSemis(track, pitchOffset);
+  const resolvedSemis = (Number.isFinite(Number(semis)) ? Number(semis) : 0) + trackPitchSemis;
+  let voice = null;
   if (isBeepboxSynthEngine(track.engine)) {
     const sourceParams = track.params[track.engine] && typeof track.params[track.engine] === 'object'
       ? track.params[track.engine]
       : track.params.synth;
     const beepboxParams = getBeepboxSynthParams(track.engine, sourceParams);
-    return synthBlip(beepboxParams, dest, vel, resolvedSemis, when, gateSec);
+    voice = synthBlip(beepboxParams, dest, vel, resolvedSemis, when, gateSec);
+    return registerTrackPitchVoice(track, voice, trackPitchSemis);
   }
   switch(track.engine){
-    case 'synth':    return synthBlip(track.params.synth,    dest, vel, resolvedSemis, when, gateSec);
-    case 'juno60':   return juno60Blip(track.params.juno60,   dest, vel, resolvedSemis, when, gateSec);
-    case 'tb303':    return tb303Blip(track.params.tb303,    dest, vel, resolvedSemis, when, gateSec);
-    case 'noise':    return noiseSynth(track.params.noise,   dest, vel, resolvedSemis, when, gateSec);
-    case 'kick808':  return kick808(track.params.kick808,    dest, vel, resolvedSemis, when, gateSec);
-    case 'snare808': return snare808(track.params.snare808,  dest, vel, resolvedSemis, when, gateSec);
-    case 'hat808':   return hat808(track.params.hat808,      dest, vel, resolvedSemis, when, gateSec);
-    case 'clap909':  return clap909(track.params.clap909,    dest, vel, resolvedSemis, when, gateSec);
-    case 'sampler':  return samplerPlay(track.params.sampler,dest, vel, track.sample, resolvedSemis, when, gateSec, options);
+    case 'synth':    voice = synthBlip(track.params.synth,    dest, vel, resolvedSemis, when, gateSec); break;
+    case 'juno60':   voice = juno60Blip(track.params.juno60,   dest, vel, resolvedSemis, when, gateSec); break;
+    case 'tb303':    voice = tb303Blip(track.params.tb303,    dest, vel, resolvedSemis, when, gateSec); break;
+    case 'noise':    voice = noiseSynth(track.params.noise,   dest, vel, resolvedSemis, when, gateSec); break;
+    case 'kick808':  voice = kick808(track.params.kick808,    dest, vel, resolvedSemis, when, gateSec); break;
+    case 'snare808': voice = snare808(track.params.snare808,  dest, vel, resolvedSemis, when, gateSec); break;
+    case 'hat808':   voice = hat808(track.params.hat808,      dest, vel, resolvedSemis, when, gateSec); break;
+    case 'clap909':  voice = clap909(track.params.clap909,    dest, vel, resolvedSemis, when, gateSec); break;
+    case 'sampler':  voice = samplerPlay(track.params.sampler,dest, vel, track.sample, resolvedSemis, when, gateSec, options); break;
   }
+  return registerTrackPitchVoice(track, voice, trackPitchSemis);
 }
 
 export function applyMixer(tracks){

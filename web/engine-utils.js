@@ -30,9 +30,9 @@ export function playSamples(samples, dest, when, durationSec, options = {}) {
   source.connect(gain).connect(target);
   const startTime = Number.isFinite(when) ? when : ctx.currentTime;
   const semis = Number(options?.pitchSemis);
-  if (Number.isFinite(semis) && semis !== 0) {
-    const rate = Math.pow(2, semis / 12);
-    source.playbackRate.setValueAtTime(rate, startTime);
+  const playbackRate = Number.isFinite(semis) ? Math.pow(2, semis / 12) : 1;
+  if (playbackRate !== 1) {
+    source.playbackRate.setValueAtTime(playbackRate, startTime);
   }
   const playDuration = Number.isFinite(durationSec) && durationSec > 0
     ? Math.min(buffer.duration, durationSec)
@@ -48,5 +48,5 @@ export function playSamples(samples, dest, when, durationSec, options = {}) {
     try { source.disconnect(); } catch {}
     try { gain.disconnect(); } catch {}
   };
-  return { source, gain };
+  return { source, gain, playbackRate };
 }
