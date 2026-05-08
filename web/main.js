@@ -1713,7 +1713,7 @@ function renderCvlPanel() {
         lengthBeats: Math.max(minClipLength, 1),
         sampleName,
         params: { start: 0, end: 1, gain: 1, pan: 0, pitch: 0 },
-        effects: { drive: 0, delay: 0, reverb: 0 },
+        effects: normalizeStepFx(),
       };
       if (!Array.isArray(track.cvl.clips)) track.cvl.clips = [];
       track.cvl.clips.push(clip);
@@ -3018,6 +3018,15 @@ function scheduleEnvelope(param, startValue, targetValue, attackSec, holdSec, re
   try { param.linearRampToValueAtTime(startValue, releaseEnd); } catch {}
 }
 
+function getDuckingTargets(tracks, sourceTrack, includeSelf = false) {
+  if (!Array.isArray(tracks) || !tracks.length) return [];
+  return tracks.filter((track) => {
+    if (!track || typeof track !== 'object') return false;
+    if (!includeSelf && sourceTrack && track === sourceTrack) return false;
+    return true;
+  });
+}
+
 function scheduleDucking(tracks, sourceTrack, config, scheduledTime) {
   if (!Array.isArray(tracks) || !tracks.length) return;
   if (!Number.isFinite(currentStepIntervalMs) || currentStepIntervalMs <= 0) return;
@@ -3032,10 +3041,11 @@ function scheduleDucking(tracks, sourceTrack, config, scheduledTime) {
   if (config.depthDb <= 0 || (!attackSec && !holdSec && !releaseSec)) return;
   const targetGain = Math.pow(10, -config.depthDb / 20);
 
-  if (!sourceTrack) return;
-  const duckGain = sourceTrack.duckGainNode?.gain;
-  if (!duckGain) return;
-  scheduleEnvelope(duckGain, 1, targetGain, attackSec, holdSec, releaseSec, startTime);
+  for (const targetTrack of getDuckingTargets(tracks, sourceTrack, config.includeSelf === true)) {
+    const duckGain = targetTrack.duckGainNode?.gain;
+    if (!duckGain) continue;
+    scheduleEnvelope(duckGain, 1, targetGain, attackSec, holdSec, releaseSec, startTime);
+  }
 }
 
 function scheduleMultibandDucking(tracks, sourceTrack, config, scheduledTime) {
@@ -3054,17 +3064,18 @@ function scheduleMultibandDucking(tracks, sourceTrack, config, scheduledTime) {
   const highDb = -Math.max(0, Number(config.highDepthDb) || 0);
   if ((!lowDb && !midDb && !highDb) || (!attackSec && !holdSec && !releaseSec)) return;
 
-  if (!sourceTrack) return;
-  const filters = sourceTrack.duckFilters;
-  if (!filters) return;
-  if (filters.low?.gain) {
-    scheduleEnvelope(filters.low.gain, 0, lowDb, attackSec, holdSec, releaseSec, startTime);
-  }
-  if (filters.mid?.gain) {
-    scheduleEnvelope(filters.mid.gain, 0, midDb, attackSec, holdSec, releaseSec, startTime);
-  }
-  if (filters.high?.gain) {
-    scheduleEnvelope(filters.high.gain, 0, highDb, attackSec, holdSec, releaseSec, startTime);
+  for (const targetTrack of getDuckingTargets(tracks, sourceTrack, config.includeSelf === true)) {
+    const filters = targetTrack.duckFilters;
+    if (!filters) continue;
+    if (filters.low?.gain) {
+      scheduleEnvelope(filters.low.gain, 0, lowDb, attackSec, holdSec, releaseSec, startTime);
+    }
+    if (filters.mid?.gain) {
+      scheduleEnvelope(filters.mid.gain, 0, midDb, attackSec, holdSec, releaseSec, startTime);
+    }
+    if (filters.high?.gain) {
+      scheduleEnvelope(filters.high.gain, 0, highDb, attackSec, holdSec, releaseSec, startTime);
+    }
   }
 }
 
