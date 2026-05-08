@@ -2250,7 +2250,6 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     const clips = Array.isArray(t.cvl?.clips) ? t.cvl.clips : [];
     const selectedClip = clips.find((clip) => clip.id === t.cvl?.selectedClipId) || null;
     const selectedClipParams = selectedClip?.params || { start: 0, end: 1, gain: 1, pan: 0, pitch: 0 };
-    const selectedClipEffects = selectedClip?.effects || { drive: 0, delay: 0, reverb: 0 };
     const cvlClipPanel = selectedClip
       ? `
         <div class="cvl-clip-editor-fields">
@@ -2274,18 +2273,9 @@ export function renderParams(containerEl, track, makeFieldHtml) {
             End
             <input id="cvl_clipEnd" type="range" min="0" max="1" step="0.001" value="${selectedClipParams.end}">
           </label>
-          <label class="ctrl">
-            Drive
-            <input id="cvl_clipDrive" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.drive}">
-          </label>
-          <label class="ctrl">
-            Delay
-            <input id="cvl_clipDelay" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.delay}">
-          </label>
-          <label class="ctrl">
-            Reverb
-            <input id="cvl_clipReverb" type="range" min="0" max="1" step="0.01" value="${selectedClipEffects.reverb}">
-          </label>
+          <div id="cvl_clipStepFx" class="step-detail cvl-clip-step-fx">
+            <span class="hint">Clip step effects will appear here.</span>
+          </div>
         </div>
       `
       : '<span class="hint">Double tap a left trim handle to edit clip params + effects.</span>';
@@ -2491,6 +2481,25 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     delete containerEl._stepFxEditor;
   }
 
+  const cvlClipStepFxRoot = containerEl.querySelector('#cvl_clipStepFx');
+  const cvlClipStepFxSource = track?.type === 'cvl'
+    ? (Array.isArray(track.cvl?.clips)
+      ? track.cvl.clips.find((clip) => clip.id === track.cvl?.selectedClipId)
+      : null)
+    : null;
+  if (cvlClipStepFxRoot && cvlClipStepFxSource) {
+    cvlClipStepFxSource.fx = normalizeStepFx(cvlClipStepFxSource.effects);
+    cvlClipStepFxSource.effects = cvlClipStepFxSource.fx;
+    const cvlClipFxTrack = { mode: 'steps', steps: [cvlClipStepFxSource] };
+    const cvlClipFxEditor = createStepFxPanel(cvlClipStepFxRoot, cvlClipFxTrack);
+    if (cvlClipFxEditor) {
+      cvlClipFxEditor.updateSelection(0);
+      containerEl._cvlClipFxEditor = cvlClipFxEditor;
+    }
+  } else if (containerEl._cvlClipFxEditor) {
+    delete containerEl._cvlClipFxEditor;
+  }
+
   const trackFxRoot = containerEl.querySelector('#trk_trackFx');
   const trackFxEditor = createTrackFxPanel(trackFxRoot, track);
   if (trackFxEditor) {
@@ -2626,15 +2635,14 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       const currentStart = Number.isFinite(Number(selectedClip.params.start)) ? Number(selectedClip.params.start) : 0;
       selectedClip.params.end = Math.max(next, currentStart);
     });
-    bindClipControl('cvl_clipDrive', (value) => {
-      selectedClip.effects.drive = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-    });
-    bindClipControl('cvl_clipDelay', (value) => {
-      selectedClip.effects.delay = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-    });
-    bindClipControl('cvl_clipReverb', (value) => {
-      selectedClip.effects.reverb = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-    });
+    const cvlClipFxEditor = containerEl._cvlClipFxEditor;
+    if (cvlClipFxEditor && selectedClip) {
+      cvlClipFxEditor.setOnChange(() => {
+        selectedClip.effects = normalizeStepFx(selectedClip.fx);
+        selectedClip.fx = selectedClip.effects;
+        if (typeof onCvlClipChange === 'function') onCvlClipChange();
+      });
+    }
 
     // Engine params
     if (effectiveEngine === 'synth') {

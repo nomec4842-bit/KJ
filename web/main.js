@@ -901,9 +901,7 @@ function normalizeTrack(t) {
         const pitch = Number(rawParams.pitch);
         const start = Number(rawParams.start);
         const end = Number(rawParams.end);
-        const drive = Number(rawEffects.drive);
-        const delay = Number(rawEffects.delay);
-        const reverb = Number(rawEffects.reverb);
+        const clipEffects = normalizeStepFx(rawEffects);
         return {
           id: typeof clip.id === 'string' && clip.id.trim() ? clip.id : createCvlClipId(),
           lane: 0,
@@ -917,11 +915,7 @@ function normalizeTrack(t) {
             pan: Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0,
             pitch: Number.isFinite(pitch) ? Math.max(-24, Math.min(24, pitch)) : 0,
           },
-          effects: {
-            drive: Number.isFinite(drive) ? Math.max(0, Math.min(1, drive)) : 0,
-            delay: Number.isFinite(delay) ? Math.max(0, Math.min(1, delay)) : 0,
-            reverb: Number.isFinite(reverb) ? Math.max(0, Math.min(1, reverb)) : 0,
-          },
+          effects: clipEffects,
         };
       });
   }
@@ -3252,22 +3246,16 @@ playBtn.onclick = async () => {
               const sampleName = typeof clip.sampleName === 'string' ? clip.sampleName : '';
               const buffer = sampleName ? sampleCache[sampleName] : null;
               if (!buffer) continue;
-              const previousSample = t.sample;
               const previousSamplerParams = { ...(t.params?.sampler || {}) };
               const clipParams = clip.params && typeof clip.params === 'object' ? clip.params : {};
-              t.sample = { buffer, name: sampleName };
               const clipRangeStart = Number(clipParams.start);
               const clipRangeEnd = Number(clipParams.end);
               const clipGain = Number(clipParams.gain);
               const clipPan = Number(clipParams.pan);
               const clipPitch = Number(clipParams.pitch);
-              const clipEffects = clip.effects && typeof clip.effects === 'object' ? clip.effects : {};
-              const clipDrive = Number(clipEffects.drive);
-              const clipDelay = Number(clipEffects.delay);
-              const clipReverb = Number(clipEffects.reverb);
-              if (!t.params || typeof t.params !== 'object') t.params = {};
-              if (!t.params.sampler || typeof t.params.sampler !== 'object') t.params.sampler = {};
-              t.params.sampler = {
+              const clipFx = normalizeStepFx(clip.effects);
+              if (clip.effects !== clipFx) clip.effects = clipFx;
+              const samplerParams = {
                 ...previousSamplerParams,
                 start: Number.isFinite(clipRangeStart) ? Math.max(0, Math.min(1, clipRangeStart)) : 0,
                 end: Number.isFinite(clipRangeEnd) ? Math.max(0, Math.min(1, clipRangeEnd)) : 1,
@@ -3275,15 +3263,36 @@ playBtn.onclick = async () => {
                 semis: Number.isFinite(clipPitch) ? Math.max(-24, Math.min(24, clipPitch)) : 0,
               };
               const durationSec = clipLength * secondsPerBeat;
-              triggerEngine?.(t, 1, 0, scheduledTime, durationSec, {
-                trackPitchSemisOffset,
-                pan: Number.isFinite(clipPan) ? Math.max(-1, Math.min(1, clipPan)) : 0,
-                drive: Number.isFinite(clipDrive) ? Math.max(0, Math.min(1, clipDrive)) : 0,
-                delay: Number.isFinite(clipDelay) ? Math.max(0, Math.min(1, clipDelay)) : 0,
-                reverb: Number.isFinite(clipReverb) ? Math.max(0, Math.min(1, clipReverb)) : 0,
-              });
-              t.params.sampler = previousSamplerParams;
-              t.sample = previousSample;
+              const pan = Number.isFinite(clipPan) ? Math.max(-1, Math.min(1, clipPan)) : 0;
+              const triggerClip = (time, velocity = 1) => {
+                const previousSampleForTrigger = t.sample;
+                const previousParamsForTrigger = { ...(t.params?.sampler || {}) };
+                t.sample = { buffer, name: sampleName };
+                if (!t.params || typeof t.params !== 'object') t.params = {};
+                t.params.sampler = samplerParams;
+                triggerEngine?.(t, velocity, 0, time, durationSec, { trackPitchSemisOffset, pan });
+                t.params.sampler = previousParamsForTrigger;
+                t.sample = previousSampleForTrigger;
+              };
+
+              if (clipFx.type === STEP_FX_TYPES.DUCK || clipFx.type === STEP_FX_TYPES.MULTIBAND_DUCK) {
+                evaluateStepFx(t, { on: true, fx: clipFx }, t.pos, effectOffsets, scheduledTime, tracks, [{ vel: 1, pitch: 0 }], 1, trackPitchSemisOffset);
+              }
+              triggerClip(scheduledTime, 1);
+              if (clipFx.type === STEP_FX_TYPES.DELAY && Number.isFinite(currentStepIntervalMs) && currentStepIntervalMs > 0) {
+                const defaults = STEP_FX_DEFAULTS[STEP_FX_TYPES.DELAY] || {};
+                const offsets = effectOffsets && typeof effectOffsets === 'object'
+                  ? (effectOffsets[STEP_FX_TYPES.DELAY] || effectOffsets[clipFx.type])
+                  : null;
+                const config = resolveDelayConfig({ ...defaults, ...(clipFx.config || {}) }, offsets);
+                for (let i = 0; i < config.repeats; i++) {
+                  const repeatVelocity = config.mix * Math.pow(config.feedback, i);
+                  if (repeatVelocity <= 0.0001) break;
+                  const delayMs = currentStepIntervalMs * config.spacing * (i + 1);
+                  if (!Number.isFinite(delayMs) || delayMs <= 0) continue;
+                  triggerClip(scheduledTime + (delayMs / 1000), repeatVelocity);
+                }
+              }
             }
           }
         } else if (t.mode === 'piano') {

@@ -464,7 +464,8 @@ h3 { margin:0 0 8px; font-weight:600; }
   flex-direction:column;
   gap:8px;
 }
-.cvl-clip-editor-fields .ctrl {
+.cvl-clip-editor-fields .ctrl,
+.cvl-clip-step-fx {
   width:100%;
 }
 .cvl-ruler-track {
