@@ -2269,7 +2269,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
   if (t.type === 'cvl') {
     const clips = Array.isArray(t.cvl?.clips) ? t.cvl.clips : [];
     const selectedClip = clips.find((clip) => clip.id === t.cvl?.selectedClipId) || null;
-    const selectedClipParams = selectedClip?.params || { start: 0, end: 1, gain: 1, pan: 0, pitch: 0 };
+    const selectedClipParams = selectedClip?.params || { start: 0, end: 1, gain: 1, pan: 0, pitch: 0, drive: 0, delay: 0, reverb: 0 };
     const cvlClipPanel = selectedClip
       ? `
         <div class="cvl-clip-editor-fields">
@@ -2284,6 +2284,18 @@ export function renderParams(containerEl, track, makeFieldHtml) {
           <label class="ctrl">
             Pitch
             <input id="cvl_clipPitch" type="range" min="-24" max="24" step="1" value="${selectedClipParams.pitch}">
+          </label>
+          <label class="ctrl">
+            Drive
+            <input id="cvl_clipDrive" type="range" min="0" max="1" step="0.01" value="${selectedClipParams.drive ?? 0}">
+          </label>
+          <label class="ctrl">
+            Delay
+            <input id="cvl_clipDelay" type="range" min="0" max="1" step="0.01" value="${selectedClipParams.delay ?? 0}">
+          </label>
+          <label class="ctrl">
+            Reverb
+            <input id="cvl_clipReverb" type="range" min="0" max="1" step="0.01" value="${selectedClipParams.reverb ?? 0}">
           </label>
           <label class="ctrl">
             Start
@@ -2630,6 +2642,7 @@ export function renderParams(containerEl, track, makeFieldHtml) {
       if (!control || !selectedClip) return;
       control.oninput = (ev) => {
         updater(Number(ev.target.value));
+        if (typeof onCvlClipChange === 'function') onCvlClipChange();
       };
       control.onchange = () => {
         if (typeof onCvlClipChange === 'function') onCvlClipChange();
@@ -2643,6 +2656,15 @@ export function renderParams(containerEl, track, makeFieldHtml) {
     });
     bindClipControl('cvl_clipPitch', (value) => {
       selectedClip.params.pitch = Number.isFinite(value) ? Math.max(-24, Math.min(24, value)) : 0;
+    });
+    bindClipControl('cvl_clipDrive', (value) => {
+      selectedClip.params.drive = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    });
+    bindClipControl('cvl_clipDelay', (value) => {
+      selectedClip.params.delay = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    });
+    bindClipControl('cvl_clipReverb', (value) => {
+      selectedClip.params.reverb = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
     });
     bindClipControl('cvl_clipStart', (value) => {
       const next = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;

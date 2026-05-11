@@ -83,6 +83,7 @@ let isStepMultiSelectMode = false;
 
 const sampleCache = {};
 const sampleWaveformCache = new Map();
+const activeCvlClipVoices = new Map();
 const song = {
   patterns: [],
   current: 0,
@@ -166,6 +167,55 @@ function getCvlScrubberOffset(trackLengthBeats, elapsedSeconds, rateSeconds, dep
   const phase = (elapsedSeconds / rateSeconds) % 1;
   const smooth = Math.sin(phase * Math.PI * 2);
   return smooth * depth * trackLengthBeats;
+}
+
+function clampCvlClipEffectValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(1, num));
+}
+
+function getCvlClipRealtimeEffects(clip) {
+  const params = clip?.params && typeof clip.params === 'object' ? clip.params : {};
+  return {
+    pan: Number.isFinite(Number(params.pan)) ? Math.max(-1, Math.min(1, Number(params.pan))) : 0,
+    drive: clampCvlClipEffectValue(params.drive),
+    delay: clampCvlClipEffectValue(params.delay),
+    reverb: clampCvlClipEffectValue(params.reverb),
+  };
+}
+
+function registerActiveCvlClipVoice(clip, voice) {
+  if (!clip?.id || !voice) return;
+  const entry = { clipId: clip.id, voice };
+  const voices = activeCvlClipVoices.get(clip.id) || [];
+  voices.push(entry);
+  activeCvlClipVoices.set(clip.id, voices);
+
+  const source = voice.source || voice.src || null;
+  if (source) {
+    const previousOnEnded = source.onended;
+    source.onended = (...args) => {
+      const currentVoices = activeCvlClipVoices.get(clip.id) || [];
+      const index = currentVoices.indexOf(entry);
+      if (index >= 0) currentVoices.splice(index, 1);
+      if (currentVoices.length) activeCvlClipVoices.set(clip.id, currentVoices);
+      else activeCvlClipVoices.delete(clip.id);
+      if (typeof previousOnEnded === 'function') previousOnEnded.apply(source, args);
+    };
+  }
+}
+
+function updateActiveCvlClipEffects(clip) {
+  if (!clip?.id) return;
+  const voices = activeCvlClipVoices.get(clip.id);
+  if (!Array.isArray(voices) || !voices.length) return;
+  const effects = getCvlClipRealtimeEffects(clip);
+  for (const entry of voices) {
+    if (typeof entry?.voice?.setClipEffects === 'function') {
+      entry.voice.setClipEffects(effects, ctx.currentTime);
+    }
+  }
 }
 
 function shuffleArray(source) {
@@ -920,6 +970,9 @@ function normalizeTrack(t) {
         const pitch = Number(rawParams.pitch);
         const start = Number(rawParams.start);
         const end = Number(rawParams.end);
+        const drive = Number(rawParams.drive);
+        const delay = Number(rawParams.delay);
+        const reverb = Number(rawParams.reverb);
         const normalizedClip = {
           id: typeof clip.id === 'string' && clip.id.trim() ? clip.id : createCvlClipId(),
           lane: 0,
@@ -932,6 +985,9 @@ function normalizeTrack(t) {
             gain: Number.isFinite(gain) ? Math.max(0, Math.min(2, gain)) : 1,
             pan: Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0,
             pitch: Number.isFinite(pitch) ? Math.max(-24, Math.min(24, pitch)) : 0,
+            drive: clampCvlClipEffectValue(drive),
+            delay: clampCvlClipEffectValue(delay),
+            reverb: clampCvlClipEffectValue(reverb),
           },
           fx: normalizeStepFx(clip.fx),
           effects: normalizeStepFx(clip.effects),
@@ -1491,6 +1547,10 @@ function renderParamsPanel(){
       saveProjectToStorage();
     },
     onCvlClipChange: () => {
+      const selectedClip = Array.isArray(track.cvl?.clips)
+        ? track.cvl.clips.find((clip) => clip.id === track.cvl?.selectedClipId)
+        : null;
+      updateActiveCvlClipEffects(selectedClip);
       saveProjectToStorage();
     },
     onParamsRerender: () => {
@@ -1733,7 +1793,7 @@ function renderCvlPanel() {
         startBeat: clippedStart,
         lengthBeats: Math.max(minClipLength, 1),
         sampleName,
-        params: { start: 0, end: 1, gain: 1, pan: 0, pitch: 0 },
+        params: { start: 0, end: 1, gain: 1, pan: 0, pitch: 0, drive: 0, delay: 0, reverb: 0 },
         fx: normalizeStepFx(),
         effects: normalizeStepFx(),
       };
@@ -3286,6 +3346,7 @@ playBtn.onclick = async () => {
               const clipGain = Number(clipParams.gain);
               const clipPan = Number(clipParams.pan);
               const clipPitch = Number(clipParams.pitch);
+              const clipRealtimeEffects = getCvlClipRealtimeEffects(clip);
               const clipFx = resolveClipStepFx(clip);
               const samplerParams = {
                 ...previousSamplerParams,
@@ -3302,7 +3363,15 @@ playBtn.onclick = async () => {
                 t.sample = { buffer, name: sampleName };
                 if (!t.params || typeof t.params !== 'object') t.params = {};
                 t.params.sampler = samplerParams;
-                triggerEngine?.(t, velocity, 0, time, durationSec, { trackPitchSemisOffset, pan });
+                const voice = triggerEngine?.(t, velocity, 0, time, durationSec, {
+                  trackPitchSemisOffset,
+                  pan,
+                  drive: clipRealtimeEffects.drive,
+                  delay: clipRealtimeEffects.delay,
+                  reverb: clipRealtimeEffects.reverb,
+                  realtimeEffects: true,
+                });
+                registerActiveCvlClipVoice(clip, voice);
                 t.params.sampler = previousParamsForTrigger;
                 t.sample = previousSampleForTrigger;
               };
