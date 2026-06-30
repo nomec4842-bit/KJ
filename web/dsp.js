@@ -13,7 +13,7 @@ function randomNoise() {
   randState = (randState * 1664525 + 1013904223) >>> 0;
   const bits = randState >>> 1;
   const scale = 1 / 1073741824;
-  return (bits | 0) * scale;
+  return bits * scale - 1;
 }
 
 class Biquad {

@@ -19,7 +19,7 @@ inline float randomNoise() {
   gRandState = gRandState * 1664525u + 1013904223u;
   uint32_t bits = gRandState >> 1;
   const float scale = 1.0f / 1073741824.0f; // 2^30
-  return static_cast<float>(static_cast<int32_t>(bits) * scale);
+  return static_cast<float>(bits) * scale - 1.0f;
 }
 
 struct Biquad {
